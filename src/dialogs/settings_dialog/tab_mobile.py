@@ -18,7 +18,7 @@ from src import netinfo
 from src.dialogs.settings_dialog.fields import FieldSet
 from src.dialogs.settings_dialog.form_model import SaveOutcome
 from src.dialogs.settings_dialog.tab_rules import (
-    DISMISS_ERROR_TEXT, FIRST_ENABLE_NOTICE, REVOKE_ERROR_TEXT, address_options, address_to_choice,
+    address_options, address_to_choice, dismiss_error_text, first_enable_notice, revoke_error_text,
     device_row_text, has_revocable, is_device_unpaired, keystore_summary, mobile_status_view, mobile_updates,
     relay_pair_enabled, revoke_all_prompt, revoke_button_label, revoke_outcome, revoke_prompt, test_push_outcome, test_push_text, validate_mobile,
     visible_devices, window_cap_options, window_cap_to_choice,
@@ -146,7 +146,7 @@ class MobileTab:
         enabled = bool(self._enabled_var.get())
         if enabled and not self._last_enabled and not self._settings.get("mobile_notice_accepted"):
             if not themed_askyesno(self._dialog, "Handy-Erfassung einschalten",
-                                   FIRST_ENABLE_NOTICE, lock_ms=600):
+                                   first_enable_notice(), lock_ms=600):
                 self._enabled_var.set(False)            # zurück, nichts eingeschaltet
                 return
             self._settings.set("mobile_notice_accepted", True)
@@ -344,8 +344,8 @@ class MobileTab:
             self._sync_buttons()
             if not outcome["ok"]:
                 if dismissed:
-                    themed_showerror(self._dialog, "Entfernen fehlgeschlagen", DISMISS_ERROR_TEXT)
+                    themed_showerror(self._dialog, "Entfernen fehlgeschlagen", dismiss_error_text())
                 else:
-                    themed_showerror(self._dialog, "Widerruf fehlgeschlagen", REVOKE_ERROR_TEXT)
+                    themed_showerror(self._dialog, "Widerruf fehlgeschlagen", revoke_error_text())
         except tk.TclError:
             self._alive = False

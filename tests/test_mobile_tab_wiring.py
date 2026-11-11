@@ -44,7 +44,7 @@ def test_the_tab_title_and_interface():
 
 def test_the_first_enable_asks_before_anything_is_switched_on():
     source = TAB.read_text(encoding="utf-8")
-    assert "FIRST_ENABLE_NOTICE" in source and "mobile_notice_accepted" in source
+    assert "first_enable_notice()" in source and "mobile_notice_accepted" in source
     # Die Zustimmung wird erst nach der Antwort gespeichert, nicht beim Anzeigen.
     assert source.index("themed_askyesno") < source.index('"mobile_notice_accepted", True')
 
@@ -127,4 +127,4 @@ def test_the_tab_sets_the_button_text_through_the_theme_helper_not_the_private_l
 
 def test_a_failed_dismiss_does_not_claim_the_device_stays_paired():
     source = TAB.read_text(encoding="utf-8")
-    assert "DISMISS_ERROR_TEXT" in source and "Entfernen fehlgeschlagen" in source
+    assert "dismiss_error_text()" in source and "Entfernen fehlgeschlagen" in source

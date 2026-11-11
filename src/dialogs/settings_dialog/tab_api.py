@@ -21,7 +21,7 @@ import tkinter as tk
 from src.dialogs.settings_dialog.fields import FieldSet
 from src.dialogs.settings_dialog.form_model import SaveOutcome
 from src.dialogs.settings_dialog.tab_rules import (
-    API_AUTH_HINT, API_ROUTES, api_updates, curl_example, port_hint, status_view, token_buttons_enabled,
+    api_auth_hint, api_routes, api_updates, curl_example, port_hint, status_view, token_buttons_enabled,
     token_label_view, validate_api,
 )
 from src.theme import (
@@ -101,9 +101,9 @@ class ApiTab:
                   "Zwischenablage.")
 
         form.section("So sprichst du sie an")
-        form.hint(API_AUTH_HINT)
+        form.hint(api_auth_hint())
         routes = tk.Frame(body, bg=BG)
-        for i, (path, what) in enumerate(API_ROUTES):
+        for i, (path, what) in enumerate(api_routes()):
             tk.Label(routes, text=path, font=FONT_SMALL, bg=BG, fg=TEXT,
                      anchor="w").grid(row=i, column=0, sticky="w", padx=(0, 14))
             tk.Label(routes, text=what, font=FONT_SMALL, bg=BG, fg=TEXT_MUTED,

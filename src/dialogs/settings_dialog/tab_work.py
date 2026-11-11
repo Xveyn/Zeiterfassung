@@ -14,7 +14,9 @@ from src.dialogs.settings_dialog.tab_rules import (
     wsl_snapshot,
 )
 from src.dialogs.vacation_dialog import open_vacation_dialog
-from src.holidays_region import COUNTRIES, REGIONS, region_label
+from src.holidays_region import (
+    COUNTRIES, country_choices, country_label, region_choices, region_label,
+)
 from src.region import country_region
 from src.settings import WEEKDAY_KEYS
 from src.theme import (
@@ -44,9 +46,9 @@ class WorkTab:
         workweek_only_var = tk.BooleanVar(value=settings.get("workweek_only"))
         show_weekend_var = tk.BooleanVar(value=settings.get("show_weekend"))
         country, region = country_region(settings)
-        country_var = tk.StringVar(value=dict(COUNTRIES)[country])
+        country_var = tk.StringVar(value=country_label(country))
         region_var = tk.StringVar(value=region_label(country, region)
-                                  or REGIONS[country][0][1])
+                                  or region_choices(country)[0][1])
         form.section("Arbeitswoche")
         form.check("Nur Werktage — Wochenende (Sa/So) komplett ausblenden",
                    workweek_only_var)
@@ -55,18 +57,18 @@ class WorkTab:
         with form.depends_on(workweek_only_var, invert=True, indent=False):
             form.check("Wochenende (Sa/So) im Kalender anzeigen", show_weekend_var)
         region_combo = dark_combo(
-            body, region_var, [lbl for _, lbl in REGIONS[country]], width=22)
+            body, region_var, [lbl for _, lbl in region_choices(country)], width=22)
 
         def _country_changed(_event=None):
             code = country_code_for_label(country_var.get())
-            labels = [lbl for _, lbl in REGIONS.get(code, [])]
+            labels = [lbl for _, lbl in region_choices(code)]
             region_combo.configure(values=labels)
             region_var.set(labels[0] if labels else "")
 
         # Ein Land-Dropdown gibt es erst, wenn es mehr als ein Land gibt.
         if len(COUNTRIES) > 1:
             country_combo = dark_combo(
-                body, country_var, [lbl for _, lbl in COUNTRIES], width=22)
+                body, country_var, [lbl for _, lbl in country_choices()], width=22)
             country_combo.bind("<<ComboboxSelected>>", _country_changed)
             form.row("Land:", country_combo)
         form.row("Bundesland:", region_combo)

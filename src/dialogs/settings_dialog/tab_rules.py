@@ -24,7 +24,8 @@ from src.api_service import (
     REASON_TOKEN_UNAVAILABLE, STATE_ERROR, STATE_RUNNING, STATE_STARTING,
     ApiStatus, parse_port,
 )
-from src.holidays_region import COUNTRIES, REGIONS
+from src.holidays_region import country_choices, region_choices
+from src.i18n import N_, t
 from src.mobile_service import (
     DEFAULT_PORT as MOBILE_DEFAULT_PORT, REASON_ADDRESS_GONE, REASON_NO_ADDRESS,
     REASON_INVALID_PORT as MOBILE_INVALID_PORT, REASON_PORT_IN_USE as MOBILE_PORT_IN_USE,
@@ -71,36 +72,36 @@ def validate_work(raw: Mapping[str, Any]) -> tuple[str, str] | None:
     if mode_code(raw["default_times_mode"]) == MODE_GENERAL:
         ok, msg = validate_entry(raw["default_start_all"], raw["default_end_all"])
         if not ok:
-            return "Standard-Arbeitszeit ungültig", msg
+            return t("regeln.arbeit_zeit_titel"), msg
     else:
         for key, label in zip(WEEKDAY_KEYS, short_day_names(), strict=True):
             ok, msg = validate_entry(raw[f"default_start_{key}"],
                                      raw[f"default_end_{key}"])
             if not ok:
-                return "Standard-Arbeitszeit ungültig", f"{label}: {msg}"
+                return t("regeln.arbeit_zeit_titel"), f"{label}: {msg}"
     # Der Zeitraum zählt nur, wenn das Limit an ist — wie bisher.
     if raw["werkstudent_limit_enabled"]:
         start, end = _wsl_date(raw, "start"), _wsl_date(raw, "end")
         if start is None or end is None:
-            return ("Werkstudenten-Limit-Zeitraum ungültig",
-                    "Bitte ein gültiges Datum wählen.")
+            return (t("regeln.limit_zeitraum_titel"),
+                    t("regeln.datum_waehlen"))
         ok, msg = validate_period(start, end)
         if not ok:
-            return "Werkstudenten-Limit-Zeitraum ungültig", msg
+            return t("regeln.limit_zeitraum_titel"), msg
     return None
 
 
 def region_code_for_label(country: str, label: str) -> str:
     """Anzeigename → Regionscode des Landes; Unbekanntes und „keine Region“
-    → "". Nur für die Auswahl im Dialog: der Code wird aus `REGIONS`
+    → "". Nur für die Auswahl im Dialog: der Code wird aus `region_choices`
     abgeleitet, nie aus übersetztem Text geparst."""
-    return next((code for code, lbl in REGIONS.get(country, [])
+    return next((code for code, lbl in region_choices(country)
                  if lbl == label), "")
 
 
 def country_code_for_label(label: str) -> str:
     """Länder-Anzeigename → Code; Unbekanntes → "DE" (der Default)."""
-    return next((code for code, lbl in COUNTRIES if lbl == label), "DE")
+    return next((code for code, lbl in country_choices() if lbl == label), "DE")
 
 
 def work_updates(raw: Mapping[str, Any],
@@ -217,8 +218,8 @@ def shift_moves(label: str) -> bool:
 
 def validate_reminders(raw: Mapping[str, Any]) -> tuple[str, str] | None:
     if parse_reminder_minutes(raw["reminder_minutes_before"]) is None:
-        return ("Erinnerungszeit ungültig",
-                "Bitte eine ganze Zahl zwischen 0 und 120 Minuten angeben.")
+        return (t("regeln.erinnerung_zeit_titel"),
+                t("regeln.erinnerung_zeit_text"))
     return None
 
 
@@ -252,11 +253,12 @@ def phone_hint(device_count: int) -> str:
     """Die Zeile unter dem Handy-Schalter im Reiter „Erinnerungen“ (#331): wie viele Handys
     gekoppelt sind und wo die Erlaubnis für Benachrichtigungen erteilt wird. Die gilt je Gerät
     und Browser und lässt sich vom Desktop aus nicht setzen."""
-    where = "Benachrichtigungen erlaubt man in der Handy-App (Einstellungen → Verbindung)."
+    where = t("regeln.handy_wo")
     if device_count <= 0:
-        return f"Noch kein Handy gekoppelt (Reiter „Mobil“). {where}"
-    noun = "Handy" if device_count == 1 else "Handys"
-    return f"{device_count} {noun} gekoppelt. {where}"
+        return t("regeln.handy_keins", wo=where)
+    if device_count == 1:
+        return t("regeln.handy_anzahl.eins", anzahl=device_count, wo=where)
+    return t("regeln.handy_anzahl.viele", anzahl=device_count, wo=where)
 
 
 # ---- App -----------------------------------------------------------------
@@ -295,7 +297,7 @@ def update_tab_updates(raw: Mapping[str, Any]) -> dict[str, Any]:
 def last_check_text(last_check: str | None) -> str:
     """Anzeige der letzten erfolgreichen Update-Prüfung (`last_update_check_at`,
     nur ein Datum): „TT.MM.JJJJ" bzw. „noch nie"."""
-    return format_iso_date(last_check, fallback="noch nie")
+    return format_iso_date(last_check, fallback=t("regeln.updates_noch_nie"))
 
 
 # Symbol je Statusart. Bewusst nur Zeichen aus Pfeile/Dingbats/Verschiedene
@@ -348,10 +350,13 @@ def update_button_views(*, available: bool, checking: bool, updating: bool,
 
 def last_check_line(last_check: str | None) -> str:
     """Metazeile unter den Knöpfen: „Zuletzt geprüft: 05.11.2026"."""
-    return f"Zuletzt geprüft: {last_check_text(last_check)}"
+    return t("regeln.updates_zuletzt", datum=last_check_text(last_check))
 
 
-CHANGELOG_DEFAULT_HEADING = "Changelog:"
+def changelog_default_heading() -> str:
+    """Überschrift der Changelog-Box ohne Versionsbezug."""
+    return t("regeln.changelog_titel")
+
 
 # Höhe der Changelog-Box in Zeilen: folgt dem Inhalt, aber nie kürzer als
 # MIN (eine fast leere Box wirkt kaputt) und nie höher als MAX (darüber
@@ -365,13 +370,13 @@ def changelog_heading(result: Mapping[str, Any], installed_id: str) -> str:
     gehört. Pre-Releases tragen generierte Notes und behaupten deshalb keinen
     „Changelog"."""
     if result["changelog_notes"] is not None:
-        return "Enthaltene Änderungen:"
+        return t("regeln.changelog_enthalten")
     release = result.get("latest_release")
     if release is not None and result["changelog_version"]:
-        return f"Neu in {release.release_id}:"
+        return t("regeln.changelog_neu_in", version=release.release_id)
     if result["changelog_version"]:
-        return f"Änderungen in {result['changelog_version']}:"
-    return CHANGELOG_DEFAULT_HEADING
+        return t("regeln.changelog_aenderungen_in", version=result["changelog_version"])
+    return changelog_default_heading()
 
 
 def changelog_box_lines(content_lines: int) -> int:
@@ -398,11 +403,9 @@ _SINGLE_INSTANCE_TO = 31999
 _EPHEMERAL_FROM = 32768
 
 _API_ERRORS = {
-    REASON_INVALID_PORT: "Ungültiger Port — die API ist aus.",
-    REASON_PORT_IN_USE: ("Port {port} ist belegt. Einen anderen Port wählen oder das "
-                         "andere Programm beenden."),
-    REASON_TOKEN_UNAVAILABLE: ("Das Token ist nicht les- oder schreibbar "
-                               "(Zugriffsrechte des Datenordners?)."),
+    REASON_INVALID_PORT: N_("regeln.api_port_ungueltig"),
+    REASON_PORT_IN_USE: N_("regeln.api_port_belegt"),
+    REASON_TOKEN_UNAVAILABLE: N_("regeln.api_token_unlesbar"),
 }
 
 
@@ -410,8 +413,8 @@ def validate_api(raw: Mapping[str, Any]) -> tuple[str, str] | None:
     """Der Port muss gültig sein — auch bei ausgeschalteter API, damit ein
     kaputter Wert nicht erst beim späteren Einschalten auffällt."""
     if parse_port(raw["api_port"]) is None:
-        return ("Ungültiger Port",
-                f"Der Port muss eine Zahl zwischen {MIN_PORT} und {MAX_PORT} sein.")
+        return (t("regeln.port_titel"),
+                t("regeln.port_bereich", min=MIN_PORT, max=MAX_PORT))
     return None
 
 
@@ -430,56 +433,59 @@ def port_hint(raw_port: Any) -> str:
     if port is None:
         return ""
     if _SINGLE_INSTANCE_FROM <= port <= _SINGLE_INSTANCE_TO:
-        return ("Dieser Bereich wird auch vom Mehrfachstart-Schutz der App genutzt "
-                "(je Installationsordner ein Port). Bei einem Konflikt einen anderen "
-                "Port wählen.")
+        return t("regeln.port_hinweis_mehrfachstart")
     if port >= _EPHEMERAL_FROM:
-        return (f"Ab {_EPHEMERAL_FROM} vergibt das Betriebssystem kurzlebig Ports an "
-                "andere Programme; ist der Port beim Start belegt, bleibt die API aus.")
+        return t("regeln.port_hinweis_ephemer", ab=_EPHEMERAL_FROM)
     return ""
 
 
 def status_view(status: ApiStatus) -> tuple[str, str]:
     """(Text, Art) für die Statuszeile; Art ist `ok`, `muted` oder `error`."""
     if status.state == STATE_RUNNING:
-        return f"Läuft auf 127.0.0.1:{status.port}", "ok"
+        return t("regeln.api_laeuft", port=status.port), "ok"
     if status.state == STATE_STARTING:
-        return "Startet …", "muted"
+        return t("regeln.startet"), "muted"
     if status.state == STATE_ERROR:
-        text = _API_ERRORS.get(status.reason,
-                               "Start fehlgeschlagen. Details im Protokoll.")
-        return text.format(port=status.port), "error"
-    return "Aus.", "muted"
+        text = t(_API_ERRORS.get(status.reason, N_("regeln.start_fehlgeschlagen")),
+                 port=status.port)
+        return text, "error"
+    return t("regeln.aus"), "muted"
 
 
 def curl_example(raw_port: Any) -> str:
     """Beispielaufruf für die Hinweiszeile; mit Platzhalter statt echtem Token."""
     port = parse_port(raw_port) or DEFAULT_PORT
-    return f'curl -H "Authorization: Bearer <Token>" http://127.0.0.1:{port}/v1/status'
+    return t("regeln.api_curl", port=port)
 
 
 # Kurzfassung der Routen für den API-Tab: (Pfad, was dahinter liegt). Die
 # vollständige Tabelle samt Bodies steht in der README („Lokale HTTP-API“); ein
-# Test hält beide zusammen. Platzhalter sind deutsch: JJJJ-MM-TT, JJJJ-Www, …
-API_ROUTES: tuple[tuple[str, str], ...] = (
-    ("GET /v1/status", "Version, Gerätename"),
-    ("/v1/entries[/JJJJ-MM-TT]", "Ist-Zeiten (GET, PUT, DELETE)"),
-    ("/v1/reservations[/JJJJ-MM-TT]", "Reservierungen (GET, PUT, DELETE)"),
-    ("/v1/vacations[/id]", "Urlaub (GET, POST, DELETE)"),
-    ("GET /v1/summary/week/JJJJ-Www", "Auswertung einer Woche"),
-    ("GET /v1/summary/month/JJJJ-MM", "Auswertung eines Monats"),
-    ("GET /v1/categories", "Kategorien"),
-    ("GET /v1/holidays/JJJJ", "Feiertage"),
-)
-API_AUTH_HINT = (
-    "Jede Anfrage braucht den Kopf Authorization: Bearer <Token> "
-    "(Token kopieren). Antworten und Bodies sind JSON. Alle Pfade mit "
-    "Beispielen: README, Abschnitt „Lokale HTTP-API“."
-)
+# Test hält beide zusammen. Platzhalter folgen der Sprache (JJJJ-MM-TT, JJJJ-Www, …),
+# die Pfade ohne Platzhalter sind technisch und bleiben gleich.
+def api_routes() -> tuple[tuple[str, str], ...]:
+    return (
+        ("GET /v1/status", t("regeln.api_route_status")),
+        (t("regeln.api_pfad_eintraege"), t("regeln.api_route_eintraege")),
+        (t("regeln.api_pfad_reservierungen"), t("regeln.api_route_reservierungen")),
+        (t("regeln.api_pfad_urlaub"), t("regeln.api_route_urlaub")),
+        (t("regeln.api_pfad_woche"), t("regeln.api_route_woche")),
+        (t("regeln.api_pfad_monat"), t("regeln.api_route_monat")),
+        ("GET /v1/categories", t("regeln.api_route_kategorien")),
+        (t("regeln.api_pfad_feiertage"), t("regeln.api_route_feiertage")),
+    )
+
+
+def api_auth_hint() -> str:
+    return t("regeln.api_auth_hinweis")
+
 
 
 TOKEN_MASK = "•" * 24
-TOKEN_MISSING = "Kein lesbares Token — wird beim Einschalten der API erzeugt."
+
+
+def token_missing() -> str:
+    """Statuszeile der Token-Zeile, solange kein lesbares Token existiert."""
+    return t("regeln.token_fehlt")
 
 
 def token_buttons_enabled(*, api_on: bool, token_known: bool, busy: bool) -> bool:
@@ -497,47 +503,39 @@ def token_label_view(*, token_known: bool, notice: str | None) -> tuple[str, str
     überschreiben."""
     if notice:
         return notice, "ok"
-    return (TOKEN_MASK if token_known else TOKEN_MISSING), "muted"
+    return (TOKEN_MASK if token_known else token_missing()), "muted"
 
 
 # --- Mobil-Tab (#221) ---------------------------------------------------------------------------
 
-AUTO_ADDRESS = "Automatisch"
+def auto_address() -> str:
+    """Auswahl „Automatisch“ der Adress-Combobox (gespeichert wird die leere Adresse)."""
+    return t("regeln.adresse_automatisch")
 
-FIRST_ENABLE_NOTICE = (
-    "Die Handy-Erfassung öffnet einen Server in Ihrem WLAN/LAN. Die Verbindung zum Handy "
-    "läuft nicht über HTTPS, die Daten sind aber Ende-zu-Ende verschlüsselt: wer im selben "
-    "Netz mitliest, sieht keine Arbeitszeiten, erkennt aber, dass ein Handy mit Ihrem "
-    "Rechner spricht, und kann den Abgleich stören. Nutzen Sie die Funktion trotzdem nur "
-    "in einem vertrauenswürdigen Netz.\n\n"
-    "Die App muss laufen, damit sich das Handy abgleichen kann; ein Autostart "
-    "(Tab „App“) wird empfohlen. Unter Windows fragt die Firewall beim ersten Mal, ob "
-    "die App im privaten Netz Verbindungen annehmen darf.\n\n"
-    "Auf iPhone und iPad ist der Abgleich über einen Relay-Dienst im Internet der einzige Weg (Safari "
-    "erreicht den Rechner im WLAN nicht). Der Relay sieht, dass und wann ein Handy abgleicht, wie groß "
-    "die Daten sind und IP-Adressen, nie den Inhalt. Dazu wird erst gekoppelt, wenn Sie „Über Relay "
-    "koppeln“ wählen.\n\n"
-    "Jetzt einschalten?")
+
+def first_enable_notice() -> str:
+    """Rückfrage beim ersten Einschalten der Handy-Erfassung."""
+    return t("regeln.mobil_erster_hinweis")
+
+
 
 _MOBILE_ERRORS = {
-    MOBILE_INVALID_PORT: "Der Port ist ungültig (1024 bis 65535).",
-    REASON_NO_ADDRESS: ("Keine passende Netzwerkadresse gefunden. Mit einem WLAN oder "
-                        "LAN verbinden und die Einstellungen erneut speichern."),
-    REASON_ADDRESS_GONE: ("Die gewählte Adresse {address} gibt es nicht mehr (anderes "
-                          "Netz?). Bitte eine Adresse wählen oder „Automatisch“ einstellen."),
-    MOBILE_PORT_IN_USE: "Port {port} ist belegt. Einen anderen Port wählen.",
+    MOBILE_INVALID_PORT: N_("regeln.mobil_port_ungueltig"),
+    REASON_NO_ADDRESS: N_("regeln.mobil_keine_adresse"),
+    REASON_ADDRESS_GONE: N_("regeln.mobil_adresse_weg"),
+    MOBILE_PORT_IN_USE: N_("regeln.mobil_port_belegt"),
 }
 
 
 def address_options(candidates: list[str]) -> list[str]:
     """Die Auswahl der Adress-Combobox: „Automatisch“ (der Vorschlag der aktiven
     Verbindung) und die gefundenen LAN-Adressen."""
-    return [AUTO_ADDRESS, *candidates]
+    return [auto_address(), *candidates]
 
 
 def address_from_choice(choice: str) -> str:
     """Der Settings-Wert zu einer Auswahl: „Automatisch“ ist die leere Adresse."""
-    return "" if choice == AUTO_ADDRESS else choice
+    return "" if choice == auto_address() else choice
 
 
 def address_to_choice(address: str) -> str:
@@ -545,20 +543,21 @@ def address_to_choice(address: str) -> str:
     z. B. `123`) zeigt „Automatisch“, statt unverändert in der readonly-Combobox zu stehen
     und `validate_mobile` auch bei ausgeschaltetem Schalter zu stören. Eine gültige, aber
     gerade nicht vorhandene LAN-Adresse bleibt stehen (der Status meldet `address_gone`)."""
-    return address if address and is_lan_address(address) else AUTO_ADDRESS
+    return address if address and is_lan_address(address) else auto_address()
 
 
 def window_cap_options() -> list[str]:
     """Die Auswahl der Combobox „Verlauf bis zu“ (Obergrenze des Lesefensters, #250)."""
-    return [f"{days} Tage" for days in WINDOW_CAP_CHOICES]
+    return [t("regeln.mobil_tage", tage=days) for days in WINDOW_CAP_CHOICES]
 
 
 def window_cap_to_choice(days: object) -> str:
-    return f"{window_cap(days)} Tage"
+    return t("regeln.mobil_tage", tage=window_cap(days))
 
 
 def window_cap_from_choice(choice: object) -> int:
-    """Die Obergrenze zu einer Auswahl; alles Unlesbare ist das Maximum."""
+    """Die Obergrenze zu einer Auswahl; alles Unlesbare ist das Maximum. Die Zahl
+    steht in jeder Sprache vorn (`regeln.mobil_tage`)."""
     head = str(choice or "").split(" ", 1)[0]
     return window_cap(int(head)) if head.isdigit() else window_cap(None)
 
@@ -567,13 +566,11 @@ def validate_mobile(raw: Mapping[str, Any]) -> tuple[str, str] | None:
     """Port und Adresse müssen gültig sein — auch bei ausgeschaltetem Schalter, damit ein
     kaputter Wert nicht erst beim späteren Einschalten auffällt."""
     if parse_port(raw["mobile_port"]) is None:
-        return ("Ungültiger Port",
-                f"Der Port muss eine Zahl zwischen {MIN_PORT} und {MAX_PORT} sein.")
+        return (t("regeln.port_titel"),
+                t("regeln.port_bereich", min=MIN_PORT, max=MAX_PORT))
     address = address_from_choice(str(raw["mobile_address"]))
     if address and not is_lan_address(address):
-        return ("Ungültige Adresse",
-                "Die Adresse muss eine private IPv4-Adresse sein (10.x.x.x, 172.16–31.x.x "
-                "oder 192.168.x.x) oder „Automatisch“.")
+        return (t("regeln.adresse_titel"), t("regeln.adresse_text"))
     return None
 
 
@@ -591,14 +588,14 @@ def mobile_updates(raw: Mapping[str, Any]) -> dict[str, Any]:
 def mobile_status_view(status: MobileStatus) -> tuple[str, str]:
     """(Text, Art) für die Statuszeile; Art ist `ok`, `muted` oder `error`."""
     if status.state == MOBILE_RUNNING:
-        return f"Läuft auf {status.address}:{status.port}", "ok"
+        return t("regeln.mobil_laeuft", adresse=status.address, port=status.port), "ok"
     if status.state == MOBILE_STARTING:
-        return "Startet …", "muted"
+        return t("regeln.startet"), "muted"
     if status.state == MOBILE_ERROR:
-        text = _MOBILE_ERRORS.get(status.reason,
-                                  "Start fehlgeschlagen. Details im Protokoll.")
-        return text.format(address=status.address, port=status.port), "error"
-    return "Aus.", "muted"
+        text = t(_MOBILE_ERRORS.get(status.reason, N_("regeln.start_fehlgeschlagen")),
+                 address=status.address, port=status.port)
+        return text, "error"
+    return t("regeln.aus"), "muted"
 
 
 def is_device_unpaired(record: Mapping[str, Any]) -> bool:
@@ -624,47 +621,47 @@ def has_revocable(records: list[dict[str, Any]]) -> bool:
 
 def revoke_button_label(record: Mapping[str, Any] | None) -> str:
     """Beschriftung des Knopfes unter der Liste: ein getrenntes Gerät gibt es nur noch zu entfernen."""
-    return "Entfernen" if record is not None and is_device_unpaired(record) else "Widerrufen"
+    if record is not None and is_device_unpaired(record):
+        return t("regeln.knopf_entfernen")
+    return t("regeln.knopf_widerrufen")
 
 
 # Zustände der Relay-Box (`relay_link.STATE_*`, dazu `relay_service.STATE_OFF`) als Text. Die
 # Schlüssel sind Literale: dieses Modul darf `relay_link` (und damit die WebSocket-Bibliothek)
 # nicht importieren; ein Test hält sie gegen die Konstanten.
 _RELAY_STATE_TEXTS = {
-    "connecting": "verbindet …",
-    "connected": "verbunden",
-    "backoff": "keine Verbindung, neuer Versuch folgt",
-    "replaced": ("verdrängt (ein anderer Desktop nutzt diese Box) — der Abgleich steht, "
-                 "bis die App neu gestartet oder das Handy neu gekoppelt wird"),
-    "stopped": "angehalten",
-    "off": "getrennt",
+    "connecting": N_("regeln.relay_verbindet"),
+    "connected": N_("regeln.relay_verbunden"),
+    "backoff": N_("regeln.relay_gestoert"),
+    "replaced": N_("regeln.relay_verdraengt"),
+    "stopped": N_("regeln.relay_angehalten"),
+    "off": N_("regeln.relay_getrennt"),
 }
 
-PAIR_INTRO_LAN = (
-    "Kamera-App des Handys öffnen und den QR-Code scannen — oder die Adresse im Browser öffnen und den "
-    "Kopplungscode eintippen.")
+
+def pair_intro_lan() -> str:
+    """Einleitung des Koppel-Dialogs im LAN-Modus."""
+    return t("regeln.koppeln_einleitung_lan")
+
 
 # Die Kamera-App funktioniert auf einem aktuellen iPhone, je nach iOS-Version öffnet sie den Link aber im
 # Browser; dessen Speicher gehört nicht zur installierten Web-App. Der sichere Weg ist der Scan in der Web-App.
-PAIR_INTRO_RELAY = (
-    "In der installierten Web-App „QR-Code scannen“ wählen und den QR-Code scannen. Die Kamera-App geht oft "
-    "auch, aber nicht immer: je nach iOS-Version öffnet sie den Link im Browser, dessen Speicher nicht zur "
-    "installierten Web-App gehört.")
+def pair_intro_relay() -> str:
+    """Einleitung des Koppel-Dialogs im Relay-Modus."""
+    return t("regeln.koppeln_einleitung_relay")
 
-RELAY_PAIR_HINT = (
-    "Der Abgleich läuft über den Relay-Dienst im Internet. Er sieht Metadaten (dass und wann "
-    "ein Handy abgleicht, Größen, IP-Adressen), nie den Inhalt: der bleibt Ende-zu-Ende "
-    "verschlüsselt. Wer den QR-Code fotografiert, kann sich von überall im Internet koppeln, "
-    "solange der Code gilt — nur dem eigenen Handy zeigen.")
 
-RELAY_PAIR_REFUSED_TEXT = (
-    "Das Koppeln über den Relay ist gerade nicht möglich: die Handy-Erfassung ist aus, die "
-    "Gerätedatei ist nicht schreibbar oder eine frühere Kopplung wird noch abgeschlossen. "
-    "Später erneut versuchen („Neuer Code“).")
+def relay_pair_hint() -> str:
+    return t("regeln.relay_hinweis")
 
-RELAY_PAIR_ERROR_TEXT = (
-    "Beim Öffnen der Kopplung ist ein unerwarteter Fehler aufgetreten. Details stehen im "
-    "Protokoll. Später erneut versuchen („Neuer Code“).")
+
+def relay_pair_refused_text() -> str:
+    return t("regeln.relay_abgelehnt")
+
+
+def relay_pair_error_text() -> str:
+    return t("regeln.relay_fehler")
+
 
 
 @dataclass(frozen=True)
@@ -690,19 +687,19 @@ def relay_open_view(*, alive: bool, code: str | None, failed: bool,
     old = (own_code,) if own_code else ()
     if code is not None and not failed:
         return RelayOpenView(True, None, ())
-    return RelayOpenView(False, RELAY_PAIR_ERROR_TEXT if failed else RELAY_PAIR_REFUSED_TEXT, old)
+    return RelayOpenView(False, relay_pair_error_text() if failed else relay_pair_refused_text(), old)
 
 
 def autostart_path_hint(system: str, path: str) -> str | None:
     """Zeile unter dem Autostart-Schalter: wo der Eintrag liegt bzw. angelegt wird. Nur Linux: dort
     hängt der Ort an `XDG_CONFIG_HOME`; unter Windows ist es ein Registry-Wert, unter macOS eine
     feste Plist."""
-    return f"Eintrag: {path}" if system == "Linux" else None
+    return t("regeln.autostart_eintrag", pfad=path) if system == "Linux" else None
 
 
 def relay_state_text(state: str) -> str:
     """Kurztext zum Zustand der Relay-Box eines Geräts; Unbekanntes bekommt einen Ersatztext."""
-    return _RELAY_STATE_TEXTS.get(state, "Zustand unbekannt")
+    return t(_RELAY_STATE_TEXTS.get(state, N_("regeln.relay_unbekannt")))
 
 
 def relay_pair_enabled(*, saved_enabled: bool, has_relay: bool, busy: bool) -> bool:
@@ -717,15 +714,16 @@ def device_row_text(record: Mapping[str, Any], now: str, relay_state: str | None
     Box) hängt den Zustand der Relay-Verbindung an."""
     name = str(record.get("name") or record.get("id") or "?")
     if is_device_unpaired(record):
-        return f"{name}  —  vom Handy getrennt am {format_iso_datetime(record.get('revoked_at'))}"
+        return t("regeln.zeile_getrennt", name=name,
+                 datum=format_iso_datetime(record.get("revoked_at")))
     mark = ""
     if str(record.get("expires_at") or "9999") <= now:
-        mark = "  (abgelaufen)"
+        mark = t("regeln.zeile_abgelaufen")
     seen = format_iso_datetime(record.get("last_seen"))
     until = format_iso_date(record.get("expires_at"))
-    text = f"{name}{mark}  —  zuletzt {seen}, gültig bis {until}"
+    text = t("regeln.zeile_normal", name=name, marke=mark, zuletzt=seen, bis=until)
     if relay_state is not None:
-        text += f"  —  Relay: {relay_state_text(relay_state)}"
+        text += t("regeln.zeile_relay", zustand=relay_state_text(relay_state))
     return text
 
 
@@ -736,11 +734,10 @@ def keystore_summary(where: Mapping[str, str]) -> str:
     if not locations:
         return ""
     if locations == {"keyring"}:
-        return "Schlüsselspeicher: Schlüsselbund des Betriebssystems"
+        return t("regeln.speicher_schluesselbund")
     if locations == {"file"}:
-        return ("Schlüsselspeicher: Datei (kein Schlüsselbund verfügbar) — "
-                "nur für dein Benutzerkonto lesbar")
-    return "Schlüsselspeicher: teils Schlüsselbund, teils Datei (der Umzug steht noch aus)"
+        return t("regeln.speicher_datei")
+    return t("regeln.speicher_gemischt")
 
 
 def format_countdown(seconds: int) -> str:
@@ -792,19 +789,17 @@ def paired_notice(changes: PairChanges) -> PairedNotice:
     """Die Meldung, die nach dem Koppeln den Koppel-Dialog ablöst. Wurde dabei ein
     vorhandenes, nicht widerrufenes Gerät ersetzt, trägt sie zusätzlich die Warnung."""
     names = ", ".join(d["name"] for d in changes.added + changes.replaced)
-    text = f"Mobiles Gerät „{names}“ erfolgreich gekoppelt."
+    text = t("regeln.gekoppelt_text", namen=names)
     if not changes.replaced:
-        return PairedNotice("Handy gekoppelt", text, False)
+        return PairedNotice(t("regeln.gekoppelt_titel"), text, False)
     old = ", ".join(d["name"] for d in changes.replaced)
-    text += (f"\n\nAchtung: dabei wurde das vorhandene Gerät „{old}“ ersetzt "
-             "(jemand hat sich mit dessen Kennung gekoppelt). Gehörte der Code "
-             "nicht zu Ihrem eigenen Handy, widerrufen Sie das Gerät im Reiter.")
-    return PairedNotice("Handy gekoppelt", text, True)
+    text += t("regeln.gekoppelt_ersetzt", alt=old)
+    return PairedNotice(t("regeln.gekoppelt_titel"), text, True)
 
 
-PAIR_FAILED_TEXT = (
-    "Das Koppeln ist fehlgeschlagen: das Gerät ließ sich nicht speichern (Zugriffsrechte oder "
-    "freier Platz im Datenordner?). Der Code ist verbraucht — „Neuer Code“.")
+def pair_failed_text() -> str:
+    return t("regeln.koppeln_fehlgeschlagen")
+
 
 
 def pair_poll_view(*, active: bool, seconds_left: int, paired: bool,
@@ -819,10 +814,10 @@ def pair_poll_view(*, active: bool, seconds_left: int, paired: bool,
     if paired:
         return "paired", ""
     if failed:
-        return "failed", PAIR_FAILED_TEXT
+        return "failed", pair_failed_text()
     if active:
-        return "counting", f"Gültig noch {format_countdown(seconds_left)}"
-    return "expired", "Der Code ist abgelaufen — „Neuer Code“."
+        return "counting", t("regeln.code_gueltig", zeit=format_countdown(seconds_left))
+    return "expired", t("regeln.code_abgelaufen")
 
 
 def pair_poll_keeps_running(state: str) -> bool:
@@ -830,62 +825,53 @@ def pair_poll_keeps_running(state: str) -> bool:
     return state == "counting"
 
 
-DISMISS_ERROR_TEXT = (
-    "Der Eintrag konnte nicht entfernt werden: die Gerätedatei ist nicht schreibbar. "
-    "Das Gerät hat sich getrennt und kann sich nicht mehr abgleichen; der Eintrag bleibt nur in der Liste."
-)
+def dismiss_error_text() -> str:
+    return t("regeln.entfernen_fehler")
 
-REVOKE_ERROR_TEXT = (
-    "Das Gerät konnte nicht widerrufen werden (Zugriffsrechte des Datenordners?). Es "
-    "bleibt weiterhin gekoppelt und kann sich abgleichen.")
 
-_BOX_NOTICE_ONE = (
-    "Dabei wird auch die Box am Relay gelöscht (ist der Relay nicht erreichbar, verfällt sie nach 90 Tagen "
-    "ohne Nutzung von selbst). Das Handy meldet danach „Der Desktop hat nicht geantwortet“, bis es neu "
-    "gekoppelt ist.")
+def revoke_error_text() -> str:
+    return t("regeln.widerruf_fehler")
+
 
 
 def revoke_prompt(name: str, *, has_box: bool) -> str:
     """Rückfrage vor dem Widerruf eines Geräts. Mit Relay-Box (`has_box`) sagt sie, dass auch die Box am Relay
     gelöscht wird und was das Handy danach zeigt: es bekommt keine Antwort mit `token_revoked` mehr, sondern
     die Meldung der Web-App „Der Desktop hat nicht geantwortet“."""
-    text = f"„{name}“ wird ausgesperrt und muss neu gekoppelt werden."
+    text = t("regeln.widerruf_frage", name=name)
     if has_box:
-        text += f"\n\n{_BOX_NOTICE_ONE}"
-    return text + "\n\nFortfahren?"
+        text += "\n\n" + t("regeln.box_hinweis")
+    return text + t("regeln.fortfahren")
 
 
 def revoke_all_prompt(*, boxes: int) -> str:
     """Rückfrage vor „Alle widerrufen“; `boxes` ist die Zahl der Geräte mit Relay-Box."""
-    text = "Alle gekoppelten Handys werden ausgesperrt und müssen neu gekoppelt werden."
+    text = t("regeln.widerruf_alle")
     if boxes == 1:
-        text += f"\n\n{_BOX_NOTICE_ONE}"
+        text += "\n\n" + t("regeln.box_hinweis")
     elif boxes > 1:
-        text += (
-            f"\n\nDabei werden auch die {boxes} Boxen am Relay gelöscht (ist der Relay nicht erreichbar, "
-            "verfallen sie nach 90 Tagen ohne Nutzung von selbst). Die Handys melden danach „Der Desktop "
-            "hat nicht geantwortet“, bis sie neu gekoppelt sind.")
-    return text + "\n\nFortfahren?"
+        text += t("regeln.widerruf_alle_boxen", boxen=boxes)
+    return text + t("regeln.fortfahren")
 
 
 _TEST_PUSH_TEXTS = {
-    "ok": "Testbenachrichtigung gesendet. Sie sollte in wenigen Sekunden erscheinen.",
-    "no_secret": "Das Handy hat Benachrichtigungen noch nicht eingeschaltet oder noch nicht abgeglichen.",
-    "no_subscription": "Der Relay kennt dieses Gerät nicht (mehr). Am Handy die Benachrichtigungen "
-                       "aus- und wieder einschalten.",
-    "gone": "Das Abo des Handys ist abgelaufen. Am Handy die Benachrichtigungen neu erlauben.",
-    "too_soon": "Bitte einen Moment warten und dann erneut versuchen.",
-    "rate_limited": "Zu viele Anfragen an den Relay, später erneut versuchen.",
-    "unknown_route": "Der Relay kennt den Test noch nicht (muss neu ausgerollt werden).",
-    "offline": "Der Relay ist nicht erreichbar.",
-    "push_failed": "Der Push-Dienst hat die Nachricht nicht angenommen.",
-    "unauthorized": "Der Relay hat das Gerät nicht erkannt. Am Handy die Benachrichtigungen "
-                    "aus- und wieder einschalten.",
-    "server": "Der Relay antwortet gerade nicht.",
+    "ok": N_("regeln.test_ok"),
+    "no_secret": N_("regeln.test_kein_geheimnis"),
+    "no_subscription": N_("regeln.test_kein_abo"),
+    "gone": N_("regeln.test_abo_abgelaufen"),
+    "too_soon": N_("regeln.test_zu_frueh"),
+    "rate_limited": N_("regeln.test_zu_viele"),
+    "unknown_route": N_("regeln.test_unbekannte_route"),
+    "offline": N_("regeln.test_offline"),
+    "push_failed": N_("regeln.test_push_fehler"),
+    "unauthorized": N_("regeln.test_nicht_erkannt"),
+    "server": N_("regeln.test_server"),
 }
 
 
-_PUSH_CAUSE_TEXTS = {"network": "nicht erreichbar", "build": "Schlüssel des Relays unbrauchbar"}
+
+_PUSH_CAUSE_TEXTS = {"network": N_("regeln.test_ursache_netz"),
+                     "build": N_("regeln.test_ursache_schluessel")}
 
 
 def test_push_text(kind: str) -> str:
@@ -893,11 +879,15 @@ def test_push_text(kind: str) -> str:
     Art (ein künftiger Relay) wird zu „antwortet nicht“. `push_failed:<Ursache>` nennt, woran es lag
     (Status des Push-Dienstes, `network`, `build`). Dieselben Texte nutzt die Web-App."""
     base, _, cause = kind.partition(":")
-    text = _TEST_PUSH_TEXTS.get(base if not cause or base == "push_failed" else kind, _TEST_PUSH_TEXTS["server"])
+    text = t(_TEST_PUSH_TEXTS.get(base if not cause or base == "push_failed" else kind,
+                                  N_("regeln.test_server")))
     if base != "push_failed" or not cause:
         return text
-    detail = f"Antwort {cause}" if cause.isascii() and cause.isdigit() else _PUSH_CAUSE_TEXTS.get(cause)
-    return text if detail is None else f"{text[:-1]} ({detail})."
+    if cause.isascii() and cause.isdigit():
+        detail: str | None = t("regeln.test_antwort", status=cause)
+    else:
+        detail = t(_PUSH_CAUSE_TEXTS[cause]) if cause in _PUSH_CAUSE_TEXTS else None
+    return text if detail is None else t("regeln.test_mit_ursache", text=text[:-1], ursache=detail)
 
 
 def test_push_outcome(action: Callable[[], str]) -> str:

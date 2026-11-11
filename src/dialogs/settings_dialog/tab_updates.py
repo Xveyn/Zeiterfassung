@@ -15,7 +15,7 @@ from src.changelog import (
 from src.dialogs.settings_dialog.fields import FieldSet
 from src.dialogs.settings_dialog.form_model import SaveOutcome
 from src.dialogs.settings_dialog.tab_rules import (
-    CHANGELOG_DEFAULT_HEADING, changelog_box_lines, changelog_expected,
+    changelog_box_lines, changelog_default_heading, changelog_expected,
     changelog_heading, last_check_line, update_button_views,
     update_status_kind, update_status_text, update_tab_updates,
 )
@@ -131,7 +131,7 @@ class UpdatesTab:
         # werden sie erst, wenn ein Prüfergebnis ohne Changelog eintrifft
         # (`_show_changelog`) — das läuft immer nach dem Dialogaufbau.
         self._changelog_label = tk.Label(
-            body, text=CHANGELOG_DEFAULT_HEADING, font=FONT, bg=BG, fg=TEXT,
+            body, text=changelog_default_heading(), font=FONT, bg=BG, fg=TEXT,
             anchor="w",
         )
         # Bei Dev-/Source-Builds ganz weg: es gibt keinen Check und damit
@@ -278,7 +278,7 @@ class UpdatesTab:
         self._download_btn.pack_forget()
         # Zurücksetzen, sonst bliebe die Pre-Release-Beschriftung stehen,
         # wenn jemand das Häkchen abwählt und erneut prüft.
-        self._changelog_label.config(text=CHANGELOG_DEFAULT_HEADING)
+        self._changelog_label.config(text=changelog_default_heading())
         self._set_changelog("")
 
         # Tk-Variable im UI-Thread lesen und als Wert in die Closure geben —

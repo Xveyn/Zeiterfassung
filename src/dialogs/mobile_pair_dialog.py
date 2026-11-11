@@ -22,8 +22,8 @@ from functools import partial
 
 from src import qr
 from src.dialogs.settings_dialog.tab_rules import (
-    PAIR_INTRO_LAN, PAIR_INTRO_RELAY, RELAY_PAIR_HINT, format_countdown, pair_changes,
-    pair_poll_keeps_running, pair_poll_view, paired_notice, relay_open_view,
+    format_countdown, pair_changes, pair_intro_lan, pair_intro_relay,
+    pair_poll_keeps_running, pair_poll_view, paired_notice, relay_open_view, relay_pair_hint,
 )
 from src.theme import (
     BG, FONT, FONT_BOLD, STATUS_OK, STATUS_WARN, TEXT, TEXT_MUTED, center_dialog_on_parent,
@@ -56,7 +56,7 @@ class _PairDialog:
             parent, "Handy über Relay koppeln" if self._relay_mode else "Handy koppeln")
 
         tk.Label(
-            dialog, text=PAIR_INTRO_RELAY if self._relay_mode else PAIR_INTRO_LAN,
+            dialog, text=pair_intro_relay() if self._relay_mode else pair_intro_lan(),
             font=FONT, bg=BG, fg=TEXT, justify="left", anchor="w",
             wraplength=px(_WRAP_PX)).pack(padx=16, pady=(14, 8), anchor="w")
 
@@ -178,7 +178,7 @@ class _PairDialog:
             self._session_code = pairing.code
             self._before = self._service.list_devices()
             self._failures_before = self._service.pair_failures
-            self._hint.config(text=RELAY_PAIR_HINT)
+            self._hint.config(text=relay_pair_hint())
             self._countdown.config(
                 text=f"Gültig noch {format_countdown(self._service.pairing.seconds_left())}")
             self._draw(pairing.link)

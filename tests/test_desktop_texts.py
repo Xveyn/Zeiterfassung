@@ -89,6 +89,13 @@ _WIRE = "Ausgabe/Teil 3: Request-Header bzw. Multipart-Teil des Webhook-Versands
 _TECH_DESKTOP = "Dateiinhalt einer Freedesktop-`.desktop`-Datei, gelesen vom Desktop"
 
 ALLOWED: dict[str, dict[str, str]] = {
+    "src/dialogs/settings_dialog/tab_rules.py": {
+        "reminders_updates ohne vorheriges validate_reminders":
+            "Programmfehler-Text (ValueError): `reminders_updates` wird nur nach bestandenem "
+            "`validate_reminders` gerufen (tab_reminders.save); erreicht den Nutzer nie",
+        "GET /v1/status": "technisch: HTTP-Methode und Pfad der API-Tabelle (`api_routes`), keine Übersetzung",
+        "GET /v1/categories": "technisch: HTTP-Methode und Pfad der API-Tabelle (`api_routes`), keine Übersetzung",
+    },
     "src/locale_format.py": {
         "{weekday} - {date}": _LOCALE_TABLE,
         **{n: _LOCALE_TABLE for n in (
@@ -280,14 +287,12 @@ PENDING: list[str] = [
     # Task 3
     # Task 4
     "src/dialogs/settings_dialog/oauth_task.py",
-    # Task 6 (holidays_region: die Beschriftungen liest tab_work/tab_rules, beide hier)
-    "src/dialogs/settings_dialog/tab_rules.py",
+    # Task 6b
     "src/dialogs/settings_dialog/tab_work.py",
     "src/dialogs/settings_dialog/tab_reminders.py",
     "src/dialogs/settings_dialog/tab_app.py",
     "src/dialogs/settings_dialog/tab_sending.py",
     "src/dialogs/settings_dialog/dialog.py",
-    "src/holidays_region.py",
     # Task 7
     "src/dialogs/settings_dialog/tab_google.py",
     "src/dialogs/settings_dialog/tab_updates.py",
