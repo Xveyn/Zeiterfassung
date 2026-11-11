@@ -24,9 +24,6 @@ const PENDING = new Set([
   'debug-log.js',      // 4
   'pairing.js',        // 1
   'privacy-view.js',   // 4
-  'push-blob.js',      // 3
-  'push-message.js',   // 22
-  'push-policy.js',    // 5
   'scanner.js',        // 2
   'shift-policy.js',   // 3
   'sw-repair.js',      // 7
@@ -48,6 +45,7 @@ const ALLOWED = {
   'unpair.js': ['Abmeldung am Desktop', 'Push abmelden', 'Sitzungsmerker löschen', 'Protokoll löschen',
     'Lokale Daten löschen', 'Neu laden'],               // Schrittnamen: nur Log-Kontext (`log(step, error)` → Debug-Protokoll), nie angezeigt
   'browser-policy.js': ['Chromium'],                    // Markenname im User-Agent-Vergleich
+  'push-blob.js': ['Kein Schlüssel für Benachrichtigungen.', 'Blob zu kurz.'], // Fehler von `open`: nur im Service Worker, dort per logFailure('Push entschlüsseln') im Debug-Protokoll, nie angezeigt
   'diagnose.js': ['[Zeiterfassung] ${}: ${}',            // console-Präfix
     'Failed to update a ServiceWorker: '],               // Chromes englischer Fehlertext, wird nur abgeschnitten
   'view-model.js': ['Bestehende Einträge behalten den alten Namen.'], // exportierte Konstante, von view-model.test.js als String geprüft; mit views.js umstellen (Funktion + Schlüssel)

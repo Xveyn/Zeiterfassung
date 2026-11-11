@@ -61,3 +61,10 @@ test('an error text is added to the state text', () => {
   assert.match(describeState('on', 'Der Relay ist nicht erreichbar.').text, /Der Relay ist nicht erreichbar\./);
   assert.doesNotMatch(describeState('on', null).text, /Relay/);
 });
+
+test('describeState: der Text jedes Zustands bleibt wortgleich', () => {
+  assert.deepEqual(describeState('unsupported'), { text: 'Dieser Browser kann keine Benachrichtigungen anzeigen.', action: null });
+  assert.deepEqual(describeState('denied'), { text: 'Benachrichtigungen sind für diese Seite gesperrt. In den Einstellungen des Browsers lassen sie sich wieder erlauben.', action: null });
+  assert.deepEqual(describeState('needs_resubscribe'), { text: 'Das Abo ist abgelaufen. Erneut erlauben, dann kommen die Erinnerungen wieder.', action: 'enable' });
+  assert.deepEqual(describeState('on', 'Fehler.'), { text: 'An. Erinnerungen kommen auch dann, wenn der Desktop aus ist. Fehler.', action: 'disable' });
+});
