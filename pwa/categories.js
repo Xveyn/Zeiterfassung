@@ -3,6 +3,7 @@
 // die Prüfung und die Kurzfassung. Gegenstück zu `src/mobile_settings.py` (Prüfung der Anfrage) und
 // zu `collect_categories` am Desktop. Eine Kategorie im Modus „pro Wochentag“ (`per_day`) bearbeitet
 // die PWA nicht: ihr Eintrag wandert unverändert durch (`raw`).
+import { t } from './i18n.js';
 import { parseTime } from './minutes.js';
 
 export const MAX_CATEGORIES = 100;
@@ -56,42 +57,47 @@ function isControl(character) {
 /** Prüft die Zeilen wie der Server (`mobile_settings`), dazu: Ende nach Start, wenn beide gesetzt sind.
  *  Uhrzeiten prüft `parseTime` streng (genau `HH:MM`, also nicht `9:00`). */
 export function validateCategoryRows(rows) {
-  if (rows.length > MAX_CATEGORIES) return { ok: false, message: `Höchstens ${MAX_CATEGORIES} Kategorien.` };
+  if (rows.length > MAX_CATEGORIES) return { ok: false, message: t('kategorien.pruefung.zu_viele', { max: MAX_CATEGORIES }) };
   const seen = new Set();
   for (const row of rows) {
     const name = row.name.trim();
-    if (name === '') return { ok: false, message: 'Der Name einer Kategorie darf nicht leer sein.' };
+    if (name === '') return { ok: false, message: t('kategorien.pruefung.name_leer') };
     if ([...name].length > MAX_NAME_LENGTH) {
-      return { ok: false, message: `Der Name „${name.slice(0, 20)}…“ ist länger als ${MAX_NAME_LENGTH} Zeichen (höchstens ${MAX_NAME_LENGTH}).` };
+      return { ok: false, message: t('kategorien.pruefung.name_zu_lang', { name: name.slice(0, 20), max: MAX_NAME_LENGTH }) };
     }
-    if ([...name].some(isControl)) return { ok: false, message: `Der Name „${name}“ enthält ungültige Zeichen.` };
-    if (seen.has(name)) return { ok: false, message: `Der Name „${name}“ kommt doppelt vor.` };
+    if ([...name].some(isControl)) return { ok: false, message: t('kategorien.pruefung.name_zeichen', { name }) };
+    if (seen.has(name)) return { ok: false, message: t('kategorien.pruefung.name_doppelt', { name }) };
     seen.add(name);
     if (row.mode === 'per_day') continue;
     const start = row.start === '' ? null : parseTime(row.start);
     const end = row.end === '' ? null : parseTime(row.end);
-    if (row.start !== '' && start === null) return { ok: false, message: `„${name}“: Start muss HH:MM sein.` };
-    if (row.end !== '' && end === null) return { ok: false, message: `„${name}“: Ende muss HH:MM sein.` };
+    if (row.start !== '' && start === null) return { ok: false, message: t('kategorien.pruefung.start_format', { name }) };
+    if (row.end !== '' && end === null) return { ok: false, message: t('kategorien.pruefung.ende_format', { name }) };
     if (start !== null && end !== null && end <= start) {
-      return { ok: false, message: `„${name}“: Ende muss nach dem Start liegen. Ende und Start tauschen oder eine Zeit leeren.` };
+      return { ok: false, message: t('kategorien.pruefung.ende_nach_start', { name }) };
     }
     if (row.pause !== '') {
       const pause = Number(row.pause);
       if (!/^[0-9]+$/.test(row.pause) || !Number.isInteger(pause) || pause > MAX_PAUSE) {
-        return { ok: false, message: `„${name}“: Pause muss eine ganze Zahl von 0 bis ${MAX_PAUSE} Minuten sein.` };
+        return { ok: false, message: t('kategorien.pruefung.pause', { name, max: MAX_PAUSE }) };
       }
     }
   }
   return { ok: true, message: '' };
 }
 
-const DAY_NAMES = { mon: 'Mo', tue: 'Di', wed: 'Mi', thu: 'Do', fri: 'Fr', sat: 'Sa', sun: 'So' };
-const DAY_ORDER = Object.keys(DAY_NAMES);
+const DAY_ORDER = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+
+/** Kurzname des Wochentags nach Position in `DAY_ORDER`, zum Aufrufzeitpunkt in der gewählten Sprache. */
+function dayName(index) {
+  return [t('woche.tag.kurz.mo'), t('woche.tag.kurz.di'), t('woche.tag.kurz.mi'), t('woche.tag.kurz.do'),
+    t('woche.tag.kurz.fr'), t('woche.tag.kurz.sa'), t('woche.tag.kurz.so')][index];
+}
 
 function clockText(day) {
   if (day.start && day.end) return `${day.start}–${day.end}`;
-  if (day.start) return `ab ${day.start}`;
-  if (day.end) return `bis ${day.end}`;
+  if (day.start) return t('kategorien.zeit.ab', { zeit: day.start });
+  if (day.end) return t('kategorien.zeit.bis', { zeit: day.end });
   return '';
 }
 
@@ -111,8 +117,8 @@ function perDayText(raw) {
       const run = runs.at(-1);
       if (run && run.at(-1) === index - 1) run.push(index); else runs.push([index]);
     }
-    return runs.map((run) => (run.length > 2 ? `${DAY_NAMES[DAY_ORDER[run[0]]]}–${DAY_NAMES[DAY_ORDER[run.at(-1)]]}`
-      : run.map((index) => DAY_NAMES[DAY_ORDER[index]]).join(', '))).join(', ');
+    return runs.map((run) => (run.length > 2 ? `${dayName(run[0])}–${dayName(run.at(-1))}`
+      : run.map((index) => dayName(index)).join(', '))).join(', ');
   };
   return [...groups].map(([text, indexes]) => `${names(indexes)} ${text}`).join(' · ');
 }
@@ -120,16 +126,16 @@ function perDayText(raw) {
 /** Die Zeiten einer Zeile in einer kurzen Zeile. Auch „pro Wochentag“ ist lesbar (am Handy nicht bearbeitbar). */
 export function timesSummary(row) {
   if (row.mode === 'per_day') {
-    const parts = [perDayText(row.raw) || 'pro Wochentag'];
-    if (Number.isInteger(row.raw?.pause)) parts.push(`${row.raw.pause} min Pause`);
+    const parts = [perDayText(row.raw) || t('kategorien.pro_wochentag')];
+    if (Number.isInteger(row.raw?.pause)) parts.push(t('kategorien.pause_min', { min: row.raw.pause }));
     return parts.join(', ');
   }
   const parts = [];
   if (row.start && row.end) parts.push(`${row.start}–${row.end}`);
-  else if (row.start) parts.push(`ab ${row.start}`);
-  else if (row.end) parts.push(`bis ${row.end}`);
-  if (row.pause !== '') parts.push(`${row.pause} min Pause`);
-  return parts.length ? parts.join(', ') : 'Keine Standardzeiten';
+  else if (row.start) parts.push(t('kategorien.zeit.ab', { zeit: row.start }));
+  else if (row.end) parts.push(t('kategorien.zeit.bis', { zeit: row.end }));
+  if (row.pause !== '') parts.push(t('kategorien.pause_min', { min: row.pause }));
+  return parts.length ? parts.join(', ') : t('kategorien.keine_standardzeiten');
 }
 
 /** Vertauscht die Zeile mit ihrem Nachbarn; eine ungültige Bewegung gibt das Original zurück. */

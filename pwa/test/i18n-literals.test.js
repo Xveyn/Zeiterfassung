@@ -20,10 +20,8 @@ const sources = readdirSync(root).filter((f) => f.endsWith('.js')).sort();
 
 // Stand der Inventur (Treffer in Klammern: Nutzertexte außerhalb der Ausnahmen).
 const PENDING = new Set([
-  'categories.js',     // 20
   'debug-info.js',     // 27
   'debug-log.js',      // 4
-  'lock.js',           // 14
   'pairing.js',        // 1
   'privacy-view.js',   // 4
   'push-blob.js',      // 3
@@ -32,7 +30,6 @@ const PENDING = new Set([
   'scanner.js',        // 2
   'shift-policy.js',   // 3
   'sw-repair.js',      // 7
-  'unpair.js',         // 6
   'vault.js',          // 4
 ]);
 
@@ -46,6 +43,10 @@ const ALLOWED = {
     '(display-mode: standalone)',                       // Media-Query
     'Zustand',                                          // Zeilenname des Debug-Blocks, mit debug-info.js entscheiden
     'Kein Export vorbereitet', 'Protokoll nicht geleert'], // interne Errors, nie angezeigt (views.js/unpair.js fangen sie mit eigenem Text bzw. Log)
+  'lock.js': ['Zeitüberschreitung',                     // Meldung der AbortError-Ausnahme, nie angezeigt (`reasonOf` wählt nach `name`)
+    'Zeiterfassung'],                                   // Produktname als rp-/Anzeigename des Passkeys
+  'unpair.js': ['Abmeldung am Desktop', 'Push abmelden', 'Sitzungsmerker löschen', 'Protokoll löschen',
+    'Lokale Daten löschen', 'Neu laden'],               // Schrittnamen: nur Log-Kontext (`log(step, error)` → Debug-Protokoll), nie angezeigt
   'browser-policy.js': ['Chromium'],                    // Markenname im User-Agent-Vergleich
   'diagnose.js': ['[Zeiterfassung] ${}: ${}',            // console-Präfix
     'Failed to update a ServiceWorker: '],               // Chromes englischer Fehlertext, wird nur abgeschnitten
