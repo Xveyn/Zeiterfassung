@@ -731,6 +731,21 @@ für Fragen: `docs/datenschutz.md` (die Web-App verlinkt es im Koppel-Bildschirm
 - **Offene Randfälle:** #422 (Koppel-Dialog), #423 („verdrängt“ ohne Ausweg), #425 und #426 (Relay-Transport der
   Web-App, Tests und Doku).
 
+## Land, Region und Sprache: bekannte Grenzen
+
+- **Ein Wechsel von Land oder Region korrigiert keine bestehenden Urlaubsperioden.** Ihre `days` werden einmalig beim
+  Anlegen aus den Feiertagen der damals eingestellten Region berechnet (Urlaub ist Periode als Einheit); der Hinweis
+  in den Einstellungen sagt das. Wer die Region ändert, legt betroffene Perioden neu an.
+- **Heute gibt es nur Deutschland und Deutsch.** `COUNTRIES`, `LANGUAGES` und der PWA-Katalog kennen je einen
+  Eintrag; die Desktop-Oberfläche selbst ist nicht übersetzt (nur die PWA hat eine Textschicht).
+- **PWA, Service Worker:** Push-Texte nutzen die Standardsprache `de`, nicht die in der PWA gewählte. Mit nur einer
+  Sprache ohne Wirkung; bei einer zweiten bleiben sie deutsch, bis der Worker die Sprache liest.
+- **PWA, Debug-Export:** er folgt der Sprache der Oberfläche statt einer festen Support-Sprache.
+- **PWA, Datenschutzseite:** `datenschutz.html` erscheint immer in der Standardsprache, ebenso das gebündelte
+  Dokument selbst.
+- **Downgrade:** `state` bleibt als Spiegel von `region` (nur Deutschland) erhalten, ein älterer Desktop liest also
+  weiter dasselbe Bundesland; `country`, `region` und `language` sind gerätelokal und reisen nicht per Drive-Sync.
+
 ## Beschädigte oder fremde Daten (Storage)
 
 - **Ungültige Slot-Werte werden beim Lesen ersetzt, nicht repariert.** Eine gespeicherte Pause, die keine ganze Zahl von 0 bis 1440 ist (`null`, Text, `30.5`, negativ, `inf`), zählt `0`; `start`/`end` ohne Text zählen als leer, eine Kategorie ohne Text als „ohne Kategorie“. Die Datei behält den Originalwert, bis der Tag neu gespeichert wird.

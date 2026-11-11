@@ -747,6 +747,46 @@ Rückfrage (`unpairDialog`), nichts wird sofort gelöscht. Spec: `docs/superpowe
   ist nicht auslesbar und ohne Personenbezug. Passkeys der Sperre und der Service-Worker-Cache bleiben (aus dem Web nicht löschbar bzw. ohne
   Personenbezug).
 
+## Textschicht und Sprache
+
+Alle Nutzertexte der PWA stehen im Katalog `i18n/de.js` und werden über `t('schlüssel', {param})` aus `i18n.js`
+gelesen; die Sprache der Oberfläche ist `setLanguage`/`getLanguage` (`normalizeLanguage` fällt bei allem
+Unbekannten auf `de`). `i18n.js` läuft auch im Service Worker (eigene Modulinstanz, kein `document`).
+
+- **Schlüssel stehen nur als Literal im Aufruf.** Die Ratsche liest sie am Quelltext, ein berechneter Schlüssel
+  (`t(prefix + name)`) wäre für sie unsichtbar. Aufgelöst wird **zum Aufrufzeitpunkt**: kein `t()` auf
+  Modulebene und keine Textkonstanten, die beim Import gebaut werden, sonst bliebe der Text bei einem
+  Sprachwechsel stehen. Ein Satz ist **ein** Schlüssel mit `{param}`, nie aus Fragmenten zusammengesetzt.
+- **`locale.js`** hält das Locale als BCP-47-Tag aus Sprache und Land (`de-DE`) und die Formatierer für Datum und
+  Uhrzeit. `localeTag` wirft nie: `Intl` wirft bei kaputten Tags `RangeError` (auch `supportedLocalesOf`), deshalb
+  prüft eine Regex den Tag, und jeder Formatierer fängt den Wurf und fällt auf `de-DE`.
+- **`language.js`**: die Sprache gehört der PWA (eigene Einstellung, `language` in der Meta), das Land kommt immer
+  vom Desktop (Kopplungsantwort und Block `desktop` des Abgleichs, additiv, `PROTOCOL` bleibt 2; ein älterer
+  Desktop liefert beides nicht, dann `de`/`DE`). Der Desktop-Vorschlag für die Sprache wird nur übernommen, solange
+  die PWA nie eine gewählt hat (`language === null`); das betrifft praktisch nur Altkopplungen.
+- **Die Ratsche** (`test/i18n-literals.test.js`) prüft **jede** Datei direkt unter `pwa/` (der Katalog liegt in
+  `i18n/`): kein Text-Literal (`test/text-rule.js`) außerhalb von `t(`, außerhalb des Kontexts von `logFailure(`/
+  `this._log(` und außerhalb von `console.*(`. Ausnahmen gibt es nur zwei Arten, beide mit Begründung im Test:
+  `FILE_EXEMPT` (ganze Dateien: `crypto.js`, `relay-frame.js`, `db.js`, `memory-adapter.js`) und `ALLOWED`
+  (einzelne Literale je Datei). Ein `ALLOWED`-Eintrag, den es im Quelltext nicht mehr gibt, macht den Test rot
+  (Veraltungsprüfung). Was die Ratsche zählt, zeigt `node scripts/pwa_text_inventory.mjs [--list]`.
+- **Bleibt deutsch:** Log-Kontexte und Debug-Protokolltexte, Krypto- und Protokollfehler (`SyncError`-Meldungen
+  und Transportfehler, die nie angezeigt werden — `describeError` wählt den Text nach `kind`/`code`), und der
+  Standard-Gerätename `Handy` (`DEFAULT_DEVICE_NAME` in `pairing.js`): er geht als Datenwert an den Desktop und
+  steht dort in der Geräteliste, kein Oberflächentext. Die `ALLOWED`-Einträge für `relay-transport.js` und `sync.js`
+  bleiben nur so lange „nie angezeigt“, wie `describeError` die `message` dieser Arten ignoriert; wer das ändert,
+  zieht sie in den Katalog.
+- **Bekannte Grenzen:** der Service Worker nutzt für Push-Texte die Standardsprache `de` (er liest die Sprache nicht
+  aus der Meta in IndexedDB); der Debug-Export folgt der Sprache der Oberfläche, weil er Katalogtexte mit dem
+  Debug-Reiter teilt (`formatExport` müsste bei einer zweiten Sprache auf eine feste Sprache gesetzt werden);
+  `datenschutz.html` ruft `setLanguage` nicht auf und erscheint immer in der Standardsprache; `app.js` zeigt beim
+  Grund `client_error` den rohen Text der Ausnahme. Heute gibt es nur Deutsch (`LANGUAGES` am Desktop und
+  `CATALOGS` in `i18n.js` kennen nur `de`).
+- **Eine Sprache ergänzen:** neue Katalogdatei `i18n/<code>.js` mit denselben Schlüsseln, Eintrag in `CATALOGS` von
+  `i18n.js` (davon hängt `normalizeLanguage` ab) und `LANGUAGES` in `src/region.py`, die Datei in `PRECACHE`
+  (`sw-core.js`), Muster und Wochentagsnamen in `src/locale_format.py` und die Auswahl in den Einstellungen; dazu
+  die Grenzen oben (Service Worker, Debug-Export) nachziehen.
+
 ## Datenschutzseite
 
 `datenschutz.html` zeigt `docs/datenschutz.md` ab Abschnitt 1 (Titel, Zitat und Einleitung sind fürs Repository

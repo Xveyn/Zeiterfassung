@@ -359,7 +359,7 @@ curl -H "Authorization: Bearer <Token>" http://127.0.0.1:17653/v1/summary/month/
 | `GET /v1/summary/week/{YYYY-Www}` | Auswertung einer ISO-Woche (z. B. `2026-W41`) |
 | `GET /v1/summary/month/{YYYY-MM}` | Auswertung eines Monats (z. B. `2026-10`) |
 | `GET /v1/categories` | die in den Einstellungen konfigurierten Kategorien |
-| `GET /v1/holidays/{YYYY}` | Feiertage des eingestellten Bundeslands (leer, solange keins gesetzt ist) |
+| `GET /v1/holidays/{YYYY}` | Feiertage der eingestellten Region (leer, solange keine gesetzt ist); die Antwort nennt zusätzlich `country` und `region` *(ab --VERSION--)*, `state` bleibt als Alias von `region` |
 
 Einen Tag eintragen (ersetzt den ganzen Tag; `pause` in Minuten und `kategorie` sind optional; eine Kategorie darf nicht auf `*` enden und nicht „(ohne Kategorie)“ heißen — die App zeigt beides anders an, als sie es speichert, die API lehnt es mit `422 invalid_category` ab):
 

@@ -68,7 +68,7 @@ ZEITERFASSUNG_LOG_LEVEL=DEBUG python -m src.main
 | `google-api-python-client` | Gmail API Client |
 | `xhtml2pdf` | PDF-Generierung aus HTML |
 | `pyinstaller` | Paketierung als Standalone-Binary |
-| `holidays` | Feiertags-Lookup (deutsche Feiertage) |
+| `holidays` | Feiertags-Lookup (nach Land und Region) |
 | `keyring` | SMTP-Passwörter, OAuth-Refresh-Token, Webhook-Secrets im Schlüsselbund des Betriebssystems |
 | `segno` | QR-Code im Koppel-Dialog der Handy-Erfassung (reines Python) |
 | `websockets` | sync-Client des Relay-Abgleichs der Handy-Erfassung (#358); keine Abhängigkeiten |
@@ -175,6 +175,8 @@ Zeiterfassung/
 │   ├── self_update.py     # Update laden, gegen SHA256SUMS prüfen und installieren (Windows/Linux)
 │   ├── changelog.py       # Lädt/parst den Changelog-Abschnitt einer Release-Version
 │   ├── holidays_region.py # Feiertags-Lookup nach Land und Region (python-holidays)
+│   ├── region.py          # Land/Region/Sprache aus den Einstellungen, Übernahme des alten `state`
+│   ├── locale_format.py   # Locale aus Sprache und Land, Datumsmuster
 │   ├── time_utils.py      # Zeitberechnung und Validierung
 │   ├── logging_setup.py   # File-Logging + globaler Excepthook
 │   ├── platform_open.py   # os.startfile/open/xdg-open-Wrapper
@@ -198,6 +200,7 @@ Zeiterfassung/
 │   ├── coverage_gate.py   # Coverage-Untergrenze für die Tk-freien Module (CI)
 │   ├── pwa_devserver.py   # Dev-Server: echte Handy-Instanz plus pwa/ auf localhost:8099
 │   ├── pwa_icons.py       # erzeugt pwa/icons aus dem Markenbild
+│   ├── pwa_text_inventory.mjs # Nutzertexte in pwa/*.js, die die Ratsche prüft
 │   ├── pwa_stamp.py       # stempelt die Build-Kennung der Handy-PWA (pages.yml)
 │   ├── qr_fixtures.py     # Referenz-Matrizen für den QR-Decoder der PWA
 │   ├── demo_data.py       # Demo-Daten für Screenshots und zum Ausprobieren
@@ -256,6 +259,8 @@ Die Handy-Web-App ist reines JavaScript ohne Build und ohne npm-Abhängigkeiten 
 ```
 cd pwa && node --test
 ```
+
+Nutzertexte der PWA stehen im Katalog `pwa/i18n/de.js` und werden über `t('schlüssel')` gelesen; ein Test (`pwa/test/i18n-literals.test.js`) lehnt neue Text-Literale im Quelltext ab (`pwa/CLAUDE.md`, „Textschicht und Sprache“).
 
 Die JSON-Beispiele in `pwa/test/fixtures/` sind der Vertrag zum Python-Server: Dieselben Dateien lesen die JS-Tests und `tests/test_mobile_contract.py`. Ändert sich Request, Response oder ein Fehlercode des Servers, ändern sich die Beispiele mit — sonst wird einer der beiden Tests rot.
 

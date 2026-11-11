@@ -758,18 +758,22 @@ SMTP-Konten und beliebig viele Webhooks unabhängig voneinander und liefert
 je Kanal ein Result-Dict zurück, statt zu werfen (siehe `src/CLAUDE.md`,
 Abschnitt „Threading-Modell").
 
-## Datumsformat: intern ISO, in der UI deutsch
+## Datumsformat: intern ISO, in der UI nach Locale
 
 Gespeichert und intern verarbeitet wird **immer ISO** (`YYYY-MM-DD`,
 Timestamps `…THH:MM…`): Storage-Keys, Filter, Sync-Doc, gcal-Payloads,
 Update-Throttle. Nicht anfassen — daran hängen Vergleiche und Persistenz.
 
-In der **UI** wird **immer deutsch** angezeigt: Datum `TT.MM.JJJJ`,
-Zeitstempel `TT.MM.JJJJ HH:MM`. Dafür gibt es die zentralen Helfer
+In der **UI** richtet sich die Anzeige nach dem **Locale**, das aus
+`language` und `country` abgeleitet wird (nie eingestellt, s.
+`src/locale_format.py`). Heute gibt es nur `de-DE`: Datum `TT.MM.JJJJ`,
+Zeitstempel `TT.MM.JJJJ HH:MM`. Dafür gibt es weiter die zentralen Helfer
 `src/time_utils.py::format_iso_date` / `format_iso_datetime` (reine
-Anzeige-Formatierung, ISO bleibt die Quelle). Neue datumsanzeigende
-UI-Stellen über diese Helfer formatieren, nicht roh `isoformat()`/`str()`
-ausgeben.
+Anzeige-Formatierung, ISO bleibt die Quelle); die Muster stehen **einmal** in
+der Tabelle von `locale_format`, das aktive Locale setzt die App aus den
+Einstellungen. Neue datumsanzeigende UI-Stellen über diese Helfer
+formatieren, nicht roh `isoformat()`/`str()` ausgeben und kein eigenes Muster
+danebenstellen.
 
 ## Stunden: intern dezimal, angezeigt in Minuten — Summen NUR über Minuten
 
@@ -931,11 +935,12 @@ Folge zweier verschiedener Fragen.
 
 **Zwei bekannte Grenzen, die man kennen muss:**
 
-- **Ohne gesetztes Bundesland** (`settings["state"] == ""`, der Default eines
+- **Ohne gesetzte Region** (`settings["region"] == ""`, der Default eines
   frischen Nutzers) kennt `holidays_region` keine Feiertage — ein Weihnachtsurlaub
   trägt dann für den 25./26.12. volle Stunden. Der Anlege-Dialog weist darauf
   hin; die `days` werden **einmalig beim Anlegen** berechnet, ein späterer
-  Bundesland-Wechsel korrigiert bestehende Perioden also nicht.
+  Wechsel von Land oder Region korrigiert bestehende Perioden also nicht
+  (der Hinweis in den Einstellungen sagt das).
 - **Urlaub ist gerätelokal.** Bei aktivem Drive-Sync zeigen zwei Geräte
   identische Ist-Zeiten, aber jedes nur seinen eigenen Urlaub. Derselbe Monat,
   vom Laptop statt vom Desktop gesendet, weist deshalb ein anderes „Zu
@@ -1402,7 +1407,7 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
 - `src/dialogs/` — Modal-Dialoge; Beschreibung, Verträge und Reihenfolge der Settings-Tabs in `src/CLAUDE.md`, Abschnitt „Dialoge“. Module: `entry_dialog` (Tages-Dialog), `slot_rows` (Slot-Zeilenliste), `category_dialog` (Kategorien samt Standardzeiten), `conflicts_dialog` (Sync-Konflikte), `date_row` (Tag/Monat/Jahr-Widget), `period_picker` (Zeitraum-Auswahl mit Vorschau), `send_dialog` + `send_task` (Versand, Worker-Kern Tk-frei), `export_dialog` + `export_task` (PDF-Export), `share_dialog` + `share_task` (Teilen), `import_dialog` (Import), `mail_task` (gemeinsamer Fehler-Klassifikator der Mail-Kerne), `smtp_dialog`, `webhook_dialog`, `vacation_dialog` (Urlaub verwalten), `scopes_dialog` (gewährte OAuth-Scopes), `mobile_pair_dialog` (Koppel-Dialog Handy), `removal_dialog` (Rückfrage „Zeiterfassung entfernen“), `privacy_dialog` (Datenschutzhinweise, Einstellungen → App), `settings_dialog/` (Paket, ein Modul je Tab)
 - `src/json_store.py` — gemeinsame Mechanik der lokalen JSON-Stores und einziger Ort der beiden Regeln N1 (`atomic_write_json`: fsync vor `os.replace`) und N4 (`load_json_or_quarantine`: korrupte Datei nach `.corrupt-<stamp>` statt stillem Verwerfen). Neue Stores nutzen die beiden Funktionen, statt die Mechanik zu kopieren
 - `src/storage.py` — JSON-Persistenz der Zeiteinträge (Schlüssel: ISO-Datum). Gelesen wird nur bereinigt (`sanitize_slot`), eine beschädigte Datei wird beim Laden mit Sicherung repariert (s. `src/CLAUDE.md`)
-- `src/settings.py` — Benutzereinstellungen mit Defaults
+- `src/settings.py` — Benutzereinstellungen mit Defaults. `country`, `region`, `language` und `region_migrated` sind gerätelokal (nicht in `SYNCED_SETTING_KEYS`); `state` bleibt als Spiegel von `region` für Downgrades
 - `src/report.py` — HTML-Mail und PDF (dark/light Theme), gruppiert pro ISO-Kalenderwoche; `xhtml2pdf`-Import ist **lazy** in `generate_pdf` (siehe Tests/CI)
 - `src/mail.py` — Gmail-API-Wrapper (OAuth2, `token.json` / `credentials.json`)
 - `src/drive.py` — Google-Drive-API-Wrapper für den Multi-Device-Sync (`appDataFolder`, Scope `drive.appdata`)
@@ -1613,7 +1618,9 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
 - `src/category_defaults.py` — pure Logik der Per-Kategorie-Standardzeiten (`category_times`: ein Satz für alle Wochentage oder `mode: per_day`; fehlende Felder fallen je Feld auf den globalen Standard zurück). Tk-frei
 - `src/desktop_entry.py` — Freedesktop-`.desktop`-Dateien: schreibt den Menüeintrag (`write_menu_entry`, `ensure_icon`) und besitzt die `Exec=`-Quoting-Regel (`exec_line`), die auch `autostart.py` benutzt. Tk-frei, stdlib-only
 - `src/ui_queue.py` — Tk-freie, thread-sichere Übergabe von Callbacks aus Worker-Threads an den UI-Thread (`UiQueue`, Poll alle 50 ms per `root.after`); `App._marshal_to_ui` läuft darüber, weil `root.after` vor der Mainloop nicht aus Workern kommen darf (Xveyn#244; s. `src/CLAUDE.md`, „Threading-Modell“)
-- `src/holidays_region.py` — Feiertags-Lookup nach Land und Region (über `holidays`-Lib)
+- `src/holidays_region.py` — Feiertags-Lookup nach Land und Region (über `holidays`-Lib): `COUNTRIES`/`REGIONS` (Codes mit Anzeigenamen; der Eintrag mit leerem Code heißt „keine Region“ und liefert keine Feiertage), `normalize_region`, `region_label`, `get_holidays(country, region, year, language)`
+- `src/region.py` — Land und Region aus den Einstellungen als Codes: `country_region(settings)`, `normalize_country`/`normalize_language` (Fremddaten, werfen nie, Fallback `DE`/`de`) und die einmalige Übernahme des alten `state` als `region` (`migrate_state`, Marker `region_migrated`). Beim Speichern der Einstellungen bleibt `state` für Deutschland als Spiegel von `region` stehen (Downgrade-Kompatibilität), sonst `""`. Tk-frei
+- `src/locale_format.py` — Locale aus `language` und `country` (`locale_for`, Standard `de-DE`), die **eine** Tabelle der Datumsmuster und Wochentagsnamen je Locale und das aktive Locale der App; dahinter hängen `time_utils.format_iso_date`/`format_iso_datetime`. Tk-frei
 - `src/paths.py` — `get_base_path()` dispatched über `platform.system()` und Frozen- vs. Repo-Modus; `relaunch_command()` baut das Neustart-Kommando (Exe im Frozen-Build, `python -m src.main` im Repo)
 - `src/dpi.py` — Systemfaktor der UI-Skalierung: Windows-DPI-Awareness (#157)
   und Linux-`Xft.dpi` samt einmaliger `ui_scale`-Umrechnung (Xveyn#167; s.
@@ -1668,7 +1675,7 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
 - `src/theme/` — Dark-Theme als Paket (R3): `palette` (Konstanten), `fonts` (benannte Tk-Fonts + Skalierung), `widgets` (Widget-Fabriken, ttk-Styles), `geometry` (Zentrierung + die Tk-freien Prädikate `_stray_click_suppressed`/`_should_show_delete_button`), `chrome` (Win32-Fensterchrome, `create_dialog`), `messagebox` (themed Drop-ins), `form` (Formular-Bausteine `Form`/`set_enabled`/`empty_state`, #132) mit der Tk-freien Logik in `form_logic`. `__init__.py` re-exportiert die Oberfläche — Aufrufer importieren unverändert `from src.theme import …`, nicht aus den Teilmodulen
 - `src/tooltip.py` — UI-Hilfe (`_hover`-Overlays)
 - `src/version.py` — Einzige Quelle für die App-Version (von Workflow & `installer.iss` gelesen); ordnet Release-Kennungen (`parse_release_id`, `X.Y.Z[-pre.N]`) und kennt die Build-Identität (`installed_release_id` aus dem `RELEASE_TAG`-Stempel)
-- `pwa/` — die Handy-PWA der Handy-Erfassung (#221), reines JavaScript ohne Build, wird **nicht** in die App gebündelt und von keinem Python-Modul importiert. Module (u. a. Kategorien-Verwaltung `categories.js`), Vertrag gegen Drift (Fixtures), Verschlüsselung, Veröffentlichung über Pages und Dev-Server stehen in **`pwa/CLAUDE.md`**; die Serverseite in `src/CLAUDE.md`. Den Vertrag gegen die PWA hält `tests/test_mobile_contract.py`.
+- `pwa/` — die Handy-PWA der Handy-Erfassung (#221), reines JavaScript ohne Build, wird **nicht** in die App gebündelt und von keinem Python-Modul importiert. Alle Nutzertexte der PWA laufen über eine Textschicht (`pwa/i18n.js`, Katalog `pwa/i18n/de.js`, Ratsche gegen Literale im Quelltext; Abschnitt „Textschicht und Sprache“ in `pwa/CLAUDE.md`). Module (u. a. Kategorien-Verwaltung `categories.js`), Vertrag gegen Drift (Fixtures), Verschlüsselung, Veröffentlichung über Pages und Dev-Server stehen in **`pwa/CLAUDE.md`**; die Serverseite in `src/CLAUDE.md`. Den Vertrag gegen die PWA hält `tests/test_mobile_contract.py`.
 - `pwa/relay-frame.js` — Gegenstück der PWA zu `src/mobile_relay_codec.py` (Rahmen, Nutzlast, `isCurrentResponse` über die Nonce `n`); Fixture `pwa/test/fixtures/relay-frames.json`, vom Relay-Test ebenfalls gelesen.
 - `relay/` — der Push-Relay (#331): ein Cloudflare Worker mit einem Durable Object je Handy, der Erinnerungen zur Fälligkeit als Web-Push an die PWA sendet, auch wenn der Desktop aus ist. Reines JavaScript, wird **nicht** in die App gebündelt und von keinem Python-Modul importiert. Modell, Regeln (kein Logging, Abo-Ziel nur bei bekannten Push-Diensten) und Einrichtung stehen in **`relay/CLAUDE.md`** und `relay/README.md`; das Design in `docs/superpowers/specs/2026-10-21-pwa-push-erinnerungen-design.md`.
 - `installer.iss` — Inno Setup Script, Version wird per `/DAppVer=...` vom Workflow übergeben.
