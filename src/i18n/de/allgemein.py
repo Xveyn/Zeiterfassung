@@ -11,4 +11,16 @@ TEXTS: dict[str, str] = {
     "zeit.minuten": "{m} min",
     "zeit.stunden_minuten": "{h} h {m} min",
     "zeit.kw_label": "KW {kw} · {von} – {bis}",
+    # Standardbeschriftungen der Knöpfe (themed Meldungsdialoge u. a.).
+    "knopf.ok": "OK",
+    "knopf.ja": "Ja",
+    "knopf.nein": "Nein",
+    "knopf.loeschen": "Löschen",
+    "knopf.abbrechen": "Abbrechen",
+    "knopf.speichern": "Speichern",
+    "knopf.verwerfen": "Verwerfen",
+    "knopf.zurueck": "Zurück",
+    "knopf.kopieren": "Kopieren",
+    # Freedesktop-Menüeintrag (`desktop_entry.write_menu_entry`, `Comment=` im Systemmenü).
+    "desktop.kommentar": "Arbeitszeiten erfassen, berichten und versenden",
 }

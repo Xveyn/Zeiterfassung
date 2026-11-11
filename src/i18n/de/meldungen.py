@@ -36,4 +36,33 @@ TEXTS: dict[str, str] = {
     "urlaub.ueberschneidung": "Der Zeitraum überschneidet sich mit dem Urlaub „{name}“. Bearbeite stattdessen diesen Urlaub, wenn du ihn verlängern willst.",
     "version.dev_ohne_updates": "Dev-Builds (Test-Builds aus der CI und Start aus dem Quellcode) erhalten keine Updates.",
     "changelog.keine_aenderungen": "Keine Änderungen seit dem letzten Release.",
+    # Themed Meldungsdialoge (`theme/messagebox.py`).
+    "messagebox.ungespeichert_titel": "Ungespeicherte Änderungen",
+    "messagebox.ungespeichert_text": "Im Tab „{tab}“ gibt es ungespeicherte Änderungen.\nSollen sie gespeichert werden?",
+    "messagebox.kopiert": "In die Zwischenablage kopiert",
+    "messagebox.befehl_kopieren": "Befehl kopieren",
+    # Banner über dem Kalender (Update, Skalierung).
+    "update_banner.installieren": "Update installieren",
+    "update_banner.download": "Download",
+    "update_banner.bereit": "Update bereit — wird beim Beenden installiert",
+    "update_banner.vorabversion": "Vorabversion",
+    "update_banner.version": "Version",
+    "update_banner.verfuegbar": "{art} {version} verfügbar",
+    "update_banner.ausblenden": "Diese Version ausblenden",
+    "skalierung.banner": "Skalierung passt nicht zum Monitor",
+    "skalierung.neu_starten": "Neu starten",
+    # Hinweis, wenn sich ein Handy selbst getrennt hat (`unpair_notice`).
+    "handy_getrennt.fallback_name": "Ein Handy",
+    "handy_getrennt.titel": "Handy getrennt",
+    "handy_getrennt.text": "{name} hat sich vom Desktop getrennt. Das Gerät wurde widerrufen; zum erneuten Verbinden muss es neu gekoppelt werden.",
+    "handy_getrennt.toast": "{name} hat sich vom Desktop getrennt.",
+    # Nativer Fehlerdialog bei einer unbehandelten Tk-Ausnahme (`logging_setup`).
+    "logging.fehler_titel": "Unerwarteter Fehler",
+    "logging.fehler_text": "{art}: {fehler}\n\nDetails im Logfile.",
+    # Start ohne Tk (`main._create_root`): stderr ist der einzige Kanal.
+    "main.kein_display": "Kein Display gefunden — Zeiterfassung braucht eine grafische Sitzung. Bitte aus einem Terminal im Desktop starten (per SSH fehlt das Display; `ssh -X` zeigt das Fenster, das Tray-Icon aber nicht).",
+    "main.tk_start_fehler": "Tk konnte nicht gestartet werden: {fehler}",
+    # Plattform-Fehler, die ein Dialog über `str(e)` zeigen kann (Autostart, Ordner öffnen).
+    "autostart.nicht_unterstuetzt": "Autostart not supported on {system}",
+    "platform_open.nicht_unterstuetzt": "Unsupported platform: {system}",
 }

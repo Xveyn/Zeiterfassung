@@ -10,15 +10,20 @@ import sys
 import tkinter as tk
 import webbrowser
 
+from src.i18n import t
 from src.self_update import supports_self_update
 from src.theme import ACCENT, ACCENT_HOVER, FONT_BOLD, label_button
 from src.tooltip import attach_tooltip
 from src.updater import pick_asset_url
 
-# Beschriftung wie im Updates-Tab (tab_updates.py, Task 7): "Update
-# installieren" nur dort, wo die App das Update auch selbst laden kann.
-_LABEL_INSTALL = "Update installieren"
-_LABEL_DOWNLOAD = "Download"
+
+
+def _label_install():
+    return t("update_banner.installieren")
+
+
+def _label_download():
+    return t("update_banner.download")
 
 
 class UpdateBanner:
@@ -94,10 +99,11 @@ class UpdateBanner:
         )
 
         if ready_to_install:
-            text = "Update bereit — wird beim Beenden installiert"
+            text = t("update_banner.bereit")
         else:
-            kind = "Vorabversion" if release.is_prerelease else "Version"
-            text = f"{kind} {release.release_id} verfügbar"
+            kind = (t("update_banner.vorabversion") if release.is_prerelease
+                    else t("update_banner.version"))
+            text = t("update_banner.verfuegbar", art=kind, version=release.release_id)
         tk.Label(
             self._banner, text=text,
             bg=ACCENT, fg="#ffffff", font=FONT_BOLD,
@@ -112,7 +118,7 @@ class UpdateBanner:
             label_padx=8,
         )
         dismiss_btn.pack(side=tk.RIGHT, padx=(0, 4), pady=6)
-        attach_tooltip(dismiss_btn, "Diese Version ausblenden")
+        attach_tooltip(dismiss_btn, t("update_banner.ausblenden"))
 
         if not ready_to_install:
             # Im Ready-Zustand gibt es nichts mehr zu klicken — das Update
@@ -120,7 +126,7 @@ class UpdateBanner:
             # wäre hier fehl am Platz (dieselbe Regel wie in
             # _install_or_download unten).
             label_button(
-                self._banner, _LABEL_INSTALL if self._can_self_update else _LABEL_DOWNLOAD,
+                self._banner, _label_install() if self._can_self_update else _label_download(),
                 lambda: self._install_or_download(release),
                 bg="#ffffff", fg=ACCENT,
                 hover_bg="#f0f0f0", hover_fg=ACCENT_HOVER,

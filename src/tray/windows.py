@@ -13,6 +13,8 @@ import logging
 import os
 import threading
 
+from src.i18n import t
+
 
 class _PystrayBackend:
     """pystray-Backend (Windows). Tk-freundliche Lifecycle-API.
@@ -80,7 +82,7 @@ class _PystrayBackend:
 
         image = self._load_image()
         items = [
-            pystray.MenuItem("Anzeigen", _on_show_click, default=True),
+            pystray.MenuItem(t("tray.anzeigen"), _on_show_click, default=True),
             pystray.Menu.SEPARATOR,
         ]
         for label, callback, visible in self._actions:
@@ -92,7 +94,7 @@ class _PystrayBackend:
             ))
         if self._actions:
             items.append(pystray.Menu.SEPARATOR)
-        items.append(pystray.MenuItem("Beenden", _on_quit_click))
+        items.append(pystray.MenuItem(t("tray.beenden"), _on_quit_click))
         menu = pystray.Menu(*items)
         icon = pystray.Icon(
             "zeiterfassung",

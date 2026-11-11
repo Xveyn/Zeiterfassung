@@ -27,6 +27,7 @@ from src.conflicts_store import ConflictsStore
 from src.desktop_entry import ensure_icon, write_menu_entry
 from src.device_id import derive_device_id
 from src.devices import default_device_name
+from src.i18n import t
 from src.logging_setup import setup_logging
 from src.paths import get_base_path, get_resource_path
 from src.reservations import ReservationStore, migrate_reservations_enabled
@@ -148,12 +149,6 @@ def _sweep_orphan_tombstones(storage, reservation_store, settings, base) -> int:
     return dropped
 
 
-NO_DISPLAY_MSG = (
-    "Kein Display gefunden — Zeiterfassung braucht eine grafische Sitzung. "
-    "Bitte aus einem Terminal im Desktop starten (per SSH fehlt das Display; "
-    "`ssh -X` zeigt das Fenster, das Tray-Icon aber nicht).")
-
-
 def _create_root(tk_factory=None):
     """Erzeugt den Tk-Root — oder beendet mit einer verständlichen Meldung.
 
@@ -169,8 +164,8 @@ def _create_root(tk_factory=None):
         return factory()
     except tk.TclError as exc:
         text = str(exc)
-        message = (NO_DISPLAY_MSG if "display" in text.lower()
-                   else f"Tk konnte nicht gestartet werden: {text}")
+        message = (t("main.kein_display") if "display" in text.lower()
+                   else t("main.tk_start_fehler", fehler=text))
         logging.getLogger(__name__).error(message)
         # --noconsole (Windows): sys.stderr ist None. Der Fall ist dort
         # praktisch ausgeschlossen, darf aber nicht selbst zum Absturz werden.

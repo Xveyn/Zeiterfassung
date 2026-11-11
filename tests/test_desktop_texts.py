@@ -78,6 +78,8 @@ _CALENDAR = "Ausgabe/Teil 3: Text des Google-Kalendertermins"
 _MAIL_TEMPLATE = "Ausgabe/Teil 3: Default der Mail-Vorlage, gespeichert als Einstellungswert"
 _QUARANTINE = "Grund im Log der Quarantäne (`_quarantine_corrupt`), nie angezeigt"
 _LOCALE_TABLE = "Locale-Tabelle: die eine Stelle für Namen und Muster je Locale, kein Katalogtext"
+_TECH_DESKTOP = "Dateiinhalt einer Freedesktop-`.desktop`-Datei, gelesen vom Desktop"
+
 ALLOWED: dict[str, dict[str, str]] = {
     "src/locale_format.py": {
         "{weekday} - {date}": _LOCALE_TABLE,
@@ -118,6 +120,39 @@ ALLOWED: dict[str, dict[str, str]] = {
             "(`api_entry_write._NO_CATEGORY_LABEL` spiegelt ihn, `test_api_entry_write` pinnt die "
             "Gleichheit); angezeigt wird `no_category_label()`"),
     },
+    "src/desktop_entry.py": {
+        "[Desktop Entry]": _TECH_DESKTOP,
+    },
+    "src/autostart.py": {
+        "{} --minimized": "Kommandozeile des Autostart-Eintrags (`resolve_autostart_target`), Argument für das Betriebssystem",
+        "Label": "plist-Schlüssel des macOS-LaunchAgents, gelesen von launchd",
+        "Interactive": "plist-Wert `ProcessType`, gelesen von launchd",
+        "[Desktop Entry]\nType=Application\nName=Zeiterfassung\nExec={}\nHidden=false\nX-GNOME-Autostart-enabled=true\n":
+            _TECH_DESKTOP,
+    },
+    "src/theme/fonts.py": {
+        "Helvetica Neue": "Schriftfamilie, gelesen von Tk",
+        "DejaVu Sans": "Schriftfamilie, gelesen von Tk",
+        "Segoe UI": "Schriftfamilie, gelesen von Tk",
+    },
+    "src/theme/form.py": {
+        "grab current": "Tcl-Befehl (`tk.eval`), kein Nutzertext",
+    },
+    "src/theme/form_logic.py": {
+        "Text": "Tk-Widgetklasse (`winfo_class`), kein Nutzertext",
+        "Listbox": "Tk-Widgetklasse (`winfo_class`), kein Nutzertext",
+        "Spinbox": "Tk-Widgetklasse (`winfo_class`), kein Nutzertext",
+        "Zyklus in den Abhängigkeiten bei {}": (
+            "Programmierfehler beim Bau eines Formulars (`depends_on`-Zyklus); "
+            "endet als Traceback im Log bzw. im nativen Fehlerdialog, nie als kuratierte Meldung"),
+    },
+    "src/theme/widgets.py": {
+        n: "Tk-Widgetklasse (Bindings/Styles), kein Nutzertext"
+        for n in ("Checkbutton", "Radiobutton", "Entry", "Text", "Spinbox", "Listbox")
+    },
+    "src/tray/linux.py": {
+        "Active": "Wert der StatusNotifierItem-Eigenschaft `Status`, gelesen vom Panel (D-Bus)",
+    },
     "src/gcal.py": {
         "Arbeitszeit (reserviert)": _CALENDAR,
         "Von der Zeiterfassung verwaltete Reservierung.": _CALENDAR,
@@ -139,23 +174,6 @@ ALLOWED: dict[str, dict[str, str]] = {
 # nimmt ihre Dateien heraus; eine Datei hier ohne verbleibende Fundstelle macht den Test rot.
 PENDING: list[str] = [
     # Task 3
-    "src/theme/messagebox.py",
-    "src/update_banner.py",
-    "src/scale_banner.py",
-    "src/unpair_notice.py",
-    "src/tray/model.py",
-    "src/tray/windows.py",
-    "src/logging_setup.py",
-    "src/main.py",
-    "src/desktop_entry.py",
-    "src/theme/fonts.py",
-    "src/theme/form.py",
-    "src/theme/form_logic.py",
-    "src/theme/widgets.py",
-    "src/tray/__init__.py",
-    "src/tray/linux.py",
-    "src/autostart.py",
-    "src/platform_open.py",
     # Task 4
     "src/conflict_view.py",
     "src/storage.py",

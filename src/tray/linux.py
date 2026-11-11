@@ -24,6 +24,7 @@ import threading
 from collections import namedtuple
 from typing import Annotated
 
+from src.i18n import t
 from src.tray.model import build_menu_model
 
 logger = logging.getLogger(__name__)
@@ -468,8 +469,7 @@ class LinuxTrayBackend:
             ready.result(timeout=self.START_TIMEOUT_S)
         except concurrent.futures.TimeoutError as exc:
             raise RuntimeError(
-                f"Kein StatusNotifierWatcher hat innerhalb von {self.START_TIMEOUT_S}s "
-                "geantwortet — läuft ein SNI-fähiger Desktop (KDE Plasma)?") from exc
+                t("tray.kein_watcher", sekunden=self.START_TIMEOUT_S)) from exc
 
     def _run(self, ready):
         loop = asyncio.new_event_loop()
@@ -556,9 +556,7 @@ class LinuxTrayBackend:
 
         reply = await bus.request_name(name)
         if reply is not RequestNameReply.PRIMARY_OWNER:
-            raise RuntimeError(
-                f"Busname {name} ist bereits belegt (Antwort: {reply}) — "
-                "läuft die Zeiterfassung doppelt?")
+            raise RuntimeError(t("tray.busname_belegt", name=name, antwort=reply))
 
     async def _register(self, bus, name):
         from dbus_fast import Message, MessageType  # pyright: ignore[reportMissingImports]  # dbus-fast: nur auf Linux installiert
@@ -568,8 +566,8 @@ class LinuxTrayBackend:
             member="RegisterStatusNotifierItem", signature="s", body=[name],
         ))
         if reply is None or reply.message_type is MessageType.ERROR:
-            detail = reply.body[0] if reply is not None and reply.body else "keine Antwort"
-            raise RuntimeError(f"StatusNotifierWatcher lehnte die Registrierung ab: {detail}")
+            detail = reply.body[0] if reply is not None and reply.body else t("tray.keine_antwort")
+            raise RuntimeError(t("tray.registrierung_abgelehnt", detail=detail))
 
     async def _watch_watcher(self, bus, name):
         """Nach einem Neustart des WATCHERS neu anmelden — sonst ist das Icon

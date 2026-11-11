@@ -21,6 +21,7 @@ sein, ohne PyObjC oder dbus_fast zu ziehen.
 import os
 import platform
 
+from src.i18n import t
 from src.tray.model import MenuEntry, build_menu_model  # noqa: F401  (Re-Export)
 from src.tray.windows import _PystrayBackend  # noqa: F401  (Re-Export für Tests)
 
@@ -97,7 +98,7 @@ class TrayIcon:
         Tray-Verzicht zurück."""
         backend_cls = _select_backend(platform.system())
         if backend_cls is None:
-            raise RuntimeError("Tray auf dieser Plattform nicht unterstützt")
+            raise RuntimeError(t("tray.nicht_unterstuetzt"))
         backend = backend_cls(
             self.resource_path, self._on_show, self._on_quit, self._actions)
         backend.start()

@@ -173,8 +173,8 @@ def test_show_button_label_reflects_self_update_capability(monkeypatch):
                      get_anchor=lambda: object())
     b._can_self_update = True
     b._show(_release(), ready_to_install=False)
-    assert ub._LABEL_INSTALL in captured
-    assert ub._LABEL_DOWNLOAD not in captured
+    assert ub._label_install() in captured
+    assert ub._label_download() not in captured
 
 
 # --- show_ready_to_install (Task 9, Nachtrag: Automatik-Pfad) -------------

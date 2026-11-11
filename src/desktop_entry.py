@@ -20,6 +20,8 @@ import os
 import shlex
 import shutil
 
+from src.i18n import t
+
 logger = logging.getLogger(__name__)
 
 ICON_FILENAME = "icon.png"
@@ -128,7 +130,7 @@ def write_menu_entry(target: str, icon_path: str | None) -> None:
         "[Desktop Entry]",
         "Type=Application",
         "Name=Zeiterfassung",
-        "Comment=Arbeitszeiten erfassen, berichten und versenden",
+        f"Comment={t('desktop.kommentar')}",
         f"Exec={exec_line(target, '')}",
     ]
     if icon_path:

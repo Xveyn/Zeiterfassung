@@ -13,6 +13,8 @@ import sys
 import tkinter as tk
 from logging.handlers import RotatingFileHandler
 
+from src.i18n import t
+
 
 LOGFILE_NAME = "zeiterfassung.log"
 LOG_SUBDIR = "logs"
@@ -122,8 +124,8 @@ def _install_excepthooks() -> None:
         try:
             from tkinter import messagebox
             messagebox.showerror(
-                "Unerwarteter Fehler",
-                f"{exc_type.__name__}: {exc}\n\nDetails im Logfile.",
+                t("logging.fehler_titel"),
+                t("logging.fehler_text", art=exc_type.__name__, fehler=exc),
             )
         except Exception:
             log.exception(
