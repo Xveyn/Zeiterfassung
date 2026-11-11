@@ -29,12 +29,9 @@ const PENDING = new Set([
   'push-blob.js',      // 3
   'push-message.js',   // 22
   'push-policy.js',    // 5
-  'relay-client.js',   // 13
-  'relay-transport.js', // 8
   'scanner.js',        // 2
   'shift-policy.js',   // 3
   'sw-repair.js',      // 7
-  'sync.js',           // 25
   'unpair.js',         // 6
   'vault.js',          // 4
 ]);
@@ -54,6 +51,43 @@ const ALLOWED = {
     'Failed to update a ServiceWorker: '],               // Chromes englischer Fehlertext, wird nur abgeschnitten
   'view-model.js': ['Bestehende Einträge behalten den alten Namen.'], // exportierte Konstante, von view-model.test.js als String geprüft; mit views.js umstellen (Funktion + Schlüssel)
   'views.js': ['Enter', 'Escape'],                       // KeyboardEvent.key-Werte
+  'relay-client.js': ['BMZUZQIW3QNwt2vJp3q47zAAx4lLADWA0_r3kQQeyMT3d_GXsyyTjNlgBd1fOMtuZvlJhsLu1QRbHsT0hQHzC20', // öffentlicher VAPID-Schlüssel
+    'Bearer ${}'],                                      // HTTP-Kopfzeile
+  'relay-transport.js': ['Error', // Name der Abbruch-Ausnahme
+    // Meldungen der Transportfehler: nie angezeigt, `describeError` wählt den Text nach `kind`/`code`; sie landen nur im Debug-Protokoll
+    'Der Relay ist nicht erreichbar.',
+    'Der Desktop antwortet nicht.',
+    'Zu viele Anfragen an den Relay.',
+    'Eine zweite Verbindung dieser Web-App hat übernommen.',
+    'Der Relay hat die Verbindung abgelehnt.',
+    'Die Anfrage ist für den Relay zu groß.',
+    'Der Relay kennt nur POST-Anfragen.'],
+  'sync.js': [
+    // `SyncError`-Meldungen von Protokoll-/Krypto-/Zustandsfehlern: nie angezeigt (`describeError` wählt den Text nach `kind`),
+    // nur im Debug-Protokoll; wie die Fehlertexte in crypto.js technisch und deutsch
+    'Ungültiger Tag in der Antwort: ${}',
+    'Ungültiger Eintrag in der Antwort: ${}',
+    'Unbekanntes Protokoll des Desktops.',
+    'Antwort ohne gültiges Token.',
+    'Antwort ohne Ablauf.',
+    'Antwort ohne Serverzeit.',
+    'Antwort ohne last_pull_at.',
+    'Antwort ohne excluded.',
+    'Antwort mit ungültigem Lesefenster.',
+    'Antwort ohne Einträge.',
+    'Antwort mit ungültigen Kategorien.',
+    'Antwort ohne Konfliktliste.',
+    'Ungültiger Konflikt in der Antwort.',
+    'Die Antwort des Desktops ließ sich nicht entschlüsseln.',
+    'Unerwartete, nicht verschlüsselte Fehlerantwort.',
+    'Die Antwort des Desktops ist nicht verschlüsselt.',
+    'Der Code hat nicht das richtige Format.',
+    'Die Adresse muss im privaten Netz liegen.',
+    'Der Koppel-Link ist ungültig.',
+    'Ungültige Antwort beim Koppeln.',
+    'Noch nicht gekoppelt.',
+    'Ungültige Antwort auf die Erreichbarkeitsprüfung.',
+    'Diese Kopplung ist noch nicht verschlüsselt. Bitte neu koppeln.'],
   'transport.js': ['Bearer ${}', 'Content-Type'],        // HTTP-Kopfzeilen
 };
 

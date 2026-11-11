@@ -349,5 +349,16 @@ export default {
   'slots.fehler.ueberlappung': 'Zeitslots dürfen sich zeitlich nicht überlappen.',
   'fehler.ungueltiges_datum': 'Ungültiges Datum: {datum}',
   'fehler.kategorien_nicht_unterstuetzt': 'Der Desktop unterstützt das Bearbeiten der Kategorien nicht. Bitte die Desktop-App aktualisieren.',
-  'fehler.reservierung_zu_weit': 'Reservierungen sind nur für heute und höchstens {tage} Tage im Voraus möglich (365 Tage).'
+  'fehler.reservierung_zu_weit': 'Reservierungen sind nur für heute und höchstens {tage} Tage im Voraus möglich (365 Tage).',
+  'push.relay.unauthorized': 'Der Relay hat das Gerät nicht erkannt.',
+  'push.relay.no_subscription': 'Der Relay kennt dieses Abo nicht mehr.',
+  'push.relay.too_large': 'Der Zeitplan ist für den Relay zu groß.',
+  'push.relay.rate_limited': 'Zu viele Anfragen an den Relay, später wieder.',
+  'push.relay.invalid': 'Der Relay hat den Zeitplan abgelehnt.',
+  'push.relay.server': 'Der Relay antwortet gerade nicht.',
+  'push.relay.offline': 'Der Relay ist nicht erreichbar.',
+  'push.relay.gone': 'Das Abo dieses Geräts ist abgelaufen.',
+  'push.relay.too_soon': 'Bitte einen Moment warten.',
+  'push.relay.unknown_route': 'Der Relay kennt diese Funktion noch nicht.',
+  'push.relay.push_failed': 'Der Push-Dienst hat die Nachricht nicht angenommen.'
 };

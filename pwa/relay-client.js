@@ -2,6 +2,8 @@
 // Gespräch mit dem Push-Relay (`relay/`, ein Cloudflare Worker): Gerät anmelden, Zeitplan
 // ersetzen, alles löschen. Das Geheimnis dieses Handys ist Identität und Bearer zugleich; es
 // kommt in keinen Fehlertext. Fehler bleiben lokal: der Relay ist nie Voraussetzung.
+import { t } from './i18n.js';
+
 export const RELAY_URL = 'https://zeiterfassung-push.svenbirkendahl.workers.dev';
 // Die Datenschutzhinweise zum Relay: eigene Seite der Web-App (`datenschutz.html`, Inhalt aus `docs/datenschutz.md`)
 // und das Dokument im Projekt (dieselbe Adresse wie `PRIVACY_DOC_URL` am Desktop) als Ersatz, wenn die Seite es nicht laden kann.
@@ -15,23 +17,37 @@ const TIMEOUT_MS = 15000;
 // ab; ein großer Plan geht deshalb ohne hinaus.
 const KEEPALIVE_MAX_BYTES = 60000;
 
-const MESSAGES = {
-  unauthorized: 'Der Relay hat das Gerät nicht erkannt.',
-  no_subscription: 'Der Relay kennt dieses Abo nicht mehr.',
-  too_large: 'Der Zeitplan ist für den Relay zu groß.',
-  rate_limited: 'Zu viele Anfragen an den Relay, später wieder.',
-  invalid: 'Der Relay hat den Zeitplan abgelehnt.',
-  server: 'Der Relay antwortet gerade nicht.',
-  offline: 'Der Relay ist nicht erreichbar.',
-  gone: 'Das Abo dieses Geräts ist abgelaufen.',
-  too_soon: 'Bitte einen Moment warten.',
-  unknown_route: 'Der Relay kennt diese Funktion noch nicht.',
-  push_failed: 'Der Push-Dienst hat die Nachricht nicht angenommen.',
-};
+/** Der Text zur Fehlerart; eine unbekannte Art meldet wie `server`. */
+function messageFor(kind) {
+  switch (kind) {
+    case 'unauthorized':
+      return t('push.relay.unauthorized');
+    case 'no_subscription':
+      return t('push.relay.no_subscription');
+    case 'too_large':
+      return t('push.relay.too_large');
+    case 'rate_limited':
+      return t('push.relay.rate_limited');
+    case 'invalid':
+      return t('push.relay.invalid');
+    case 'offline':
+      return t('push.relay.offline');
+    case 'gone':
+      return t('push.relay.gone');
+    case 'too_soon':
+      return t('push.relay.too_soon');
+    case 'unknown_route':
+      return t('push.relay.unknown_route');
+    case 'push_failed':
+      return t('push.relay.push_failed');
+    default:
+      return t('push.relay.server');
+  }
+}
 
 export class RelayError extends Error {
   constructor(kind, status, cause) {
-    super(MESSAGES[kind] ?? MESSAGES.server);
+    super(messageFor(kind));
     this.name = 'RelayError';
     this.kind = kind;
     this.status = status;       // HTTP-Status der Antwort; fehlt bei `offline`
