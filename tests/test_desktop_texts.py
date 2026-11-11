@@ -11,12 +11,10 @@ technische Aufrufe …), steht in `scripts/desktop_text_check.py`; der Test läd
 `raise`-Argumente sind bewusst **keine** Ausnahme: ein Text in einer Exception steht im
 Katalog oder in `ALLOWED` mit dem Nachweis, dass er den Nutzer nie erreicht.
 
-Drei Listen, je mit Grund:
+Geprüft wird **jede** Datei unter `src/`, außer den ganzen Dateien in `FILE_EXEMPT`.
+Zwei Listen, je mit Grund:
 - `FILE_EXEMPT` — ganze Dateien, deren Texte Ausgabe oder Protokoll sind (Teil 3).
 - `ALLOWED` — einzelne technische oder nie angezeigte Literale einer sonst geprüften Datei.
-- `PENDING` — noch nicht umgestellte Dateien; jede Umstellung nimmt ihre Dateien heraus.
-  Die Gruppen-Kommentare („Task 3“ …) sind Markierungen für die Dauer der Umstellung und
-  fallen mit der leeren Liste weg.
 
 Inventur: `python scripts/desktop_text_check.py --list`.
 """
@@ -316,21 +314,6 @@ ALLOWED: dict[str, dict[str, str]] = {
     },
 }
 
-# Noch nicht umgestellte Dateien, nach dem Task der Umstellung gruppiert. Jede Umstellung
-# nimmt ihre Dateien heraus; eine Datei hier ohne verbleibende Fundstelle macht den Test rot.
-PENDING: list[str] = [
-    # Task 3
-    # Task 4
-    # Task 6b
-    # Task 7
-    # Task 8 (category_dialog: auch „variabel“ (≈183 f.), ein einzelnes kleines Wort über
-    # eine Variable — die Regel sieht es nicht, die Umstellung muss es von Hand mitnehmen)
-    # Task 9
-    # Task 10
-    # Task 11
-    # (leer: Task 12 stellt auf „alle Dateien geprüft“ um)
-]
-
 # Bereiche, die nur Oberfläche bauen: dort ist eine ganze Datei nie ausgenommen.
 _UI_FOLDERS = ("src/dialogs/", "src/theme/", "src/tray/")
 
@@ -473,16 +456,11 @@ def test_key_literals_and_dynamic_keys():
 
 # --- Die Ratsche -----------------------------------------------------------------------
 
-@pytest.mark.parametrize("rel", [s for s in SOURCES if s not in PENDING and s not in FILE_EXEMPT])
-def test_converted_files_have_no_user_texts(rel):
+@pytest.mark.parametrize("rel", [s for s in SOURCES if s not in FILE_EXEMPT])
+def test_files_have_no_user_texts(rel):
     assert _open_findings(rel) == [], (
         "Text gehört in den Katalog (src/i18n/de/) und über t(\"…\") in den Code; "
         "ist er technisch oder nie angezeigt, nach ALLOWED mit Grund")
-
-
-@pytest.mark.parametrize("rel", PENDING)
-def test_pending_files_still_have_texts(rel):
-    assert _open_findings(rel), f"{rel} hat keine Texte mehr: aus PENDING streichen"
 
 
 @pytest.mark.parametrize("rel", sorted(FILE_EXEMPT))
@@ -491,11 +469,9 @@ def test_exempt_files_still_have_texts(rel):
 
 
 def test_lists_name_existing_disjoint_files():
-    for rel in [*FILE_EXEMPT, *ALLOWED, *PENDING]:
+    for rel in [*FILE_EXEMPT, *ALLOWED]:
         assert (REPO / rel).is_file(), rel
         assert rel in SOURCES, rel
-    assert len(PENDING) == len(set(PENDING))
-    assert not set(PENDING) & set(FILE_EXEMPT)
     assert not set(ALLOWED) & set(FILE_EXEMPT)
     assert all(reason.strip() for reason in FILE_EXEMPT.values())
 

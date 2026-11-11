@@ -1120,6 +1120,48 @@ Logik, nicht UI") — das Verhältnis aus Risiko und Gewinn stimmt nicht. Seit d
 Windows-Awareness gilt das auch für die Systemskalierung: bei 150 % sind diese
 Abstände physisch kleiner als früher, als Windows sie mitstreckte.
 
+## Textschicht (Desktop): Texte im Katalog, nicht im Quelltext
+
+Jeder Text, den der Nutzer in einem Fenster, Dialog, Toast, Tooltip, Tray-Menü, Banner
+oder Systemmenü liest, steht im Katalog unter `src/i18n/de/` und kommt über
+`t("bereich.schluessel", name=wert)` in die Oberfläche. Maßgeblich ist der **Verbraucher**,
+nicht der Dateiname: ein Fehlertext in `share.py` oder `time_utils.py`, den ein Dialog zeigt,
+ist Oberfläche. Heute gibt es nur Deutsch; die Schicht ist die Voraussetzung dafür, dass eine
+zweite Sprache ein Katalog wird und kein Umbau.
+
+- **Wohin ein neuer Text gehört:** in das Bereichsmodul seines Verbrauchers (`einstellungen` für
+  die Tabs, `dialoge` für Dialoge, `meldungen` für Fehler- und Hinweistexte aus Tk-freien
+  Modulen, `hauptfenster`, sonst `allgemein`). Ein Satz ist **ein** Schlüssel mit
+  `{param}`-Platzhaltern, keine Fragmentkette; Plural sind zwei Schlüssel (`….eins`/`….viele`).
+  Wortlaut, Anrede und Glyphen (`✓ ✗ ⚠ ● ＋`) gehören zum Text.
+- **Schlüssel nur als Literal** im `t(`-Aufruf. Tabellen Code → Text tragen den Marker
+  `N_("schluessel")` (Identität) und lösen beim Aufruf mit `t(TABELLE[code])` auf; die Ratsche
+  liest `N_` als Schlüsselliteral.
+- **Aufgelöst wird beim Aufruf**, nie bei der Modul-Initialisierung (Tabellen, Default-Argumente,
+  Klassenattribute, `Form`-Deklarationen). Label↔Code-Umkehrtabellen entstehen deshalb ebenfalls
+  beim Aufruf; gespeichert werden Codes, der Katalog ändert nie einen gespeicherten Wert.
+- **Sentinels sind keine Texte.** Wo ein Text zugleich Erkennungsmerkmal im Programmfluss ist,
+  bleibt er eine Konstante (`ALLOWED` in der Ratsche, Grund „Erkennungsmerkmal“) und bekommt
+  einen **getrennten** Anzeigetext im Katalog — Erzeuger (Worker) und Vergleicher (UI) lösten
+  sonst zu verschiedenen Zeitpunkten auf.
+- **Was deutsch bleibt:** Log-Texte (`log.*`-Argumente und die Log-Helfer), Inhalte der Ausgabe
+  (PDF-Bericht, Mail-, Teilen- und Webhook-Inhalte, Mail-Vorlagen-Defaults, Kalendertermine),
+  API-Antworttexte, die nie in der Oberfläche erscheinen, und die Protokolltexte von
+  Handy-Abgleich und Relay. Das ist Teil 3; die Liste steht in `docs/known-limitations.md`,
+  „Desktop-Textschicht“.
+- **Durchgesetzt** von `tests/test_desktop_texts.py`: **jede** Datei unter `src/` hat keine
+  Text-Literale außerhalb von `t(`/`N_(`, außer den ganzen Dateien in `FILE_EXEMPT` (Ausgabe,
+  API, Protokoll; nie unter `dialogs/`, `theme/`, `tray/`) und den einzelnen Literalen in
+  `ALLOWED` (je mit Grund und Verbraucher). Dazu: jeder Schlüssel im Quelltext steht im Katalog,
+  jeder Katalogschlüssel wird benutzt, kein Schlüssel ist berechnet, kein Schlüssel kommt in
+  zwei Bereichsmodulen vor, und veraltete Ausnahmen machen den Test rot. `raise`-Argumente sind
+  **keine** Ausnahme: ein Text in einer Exception steht im Katalog oder in `ALLOWED` mit dem
+  Nachweis, dass er den Nutzer nie erreicht.
+- **Werkzeug:** `python scripts/desktop_text_check.py --list` zeigt, was die Ratsche als Text
+  zählt; `--base <ref> --files …` prüft bei einer Umstellung, dass kein Wortlaut verloren ging.
+- Die Verträge (Sprache setzen, Threads, Sentinel-Tabelle) stehen in `src/CLAUDE.md`,
+  „Textschicht (Desktop)“.
+
 ## Dialog-Styling: ein gemeinsames Theme
 
 Alle Dialoge (modal wie nicht-modal) teilen sich dasselbe Dark-Theme aus
@@ -1128,7 +1170,7 @@ Alle Dialoge (modal wie nicht-modal) teilen sich dasselbe Dark-Theme aus
 `themed_askyesno`, `themed_ask_delete_choice`) sowie die Fenster-Chrome-
 Helfer (`apply_dark_titlebar`, `disable_min_max`, `apply_app_icon`,
 `center_dialog_on_parent`). Neue Dialoge nutzen diese Helfer statt
-`tkinter.messagebox`/eigenem Ad-hoc-Styling, und bekommen **keine**
+`tkinter.messagebox`/eigenem Ad-hoc-Styling, und **alle ihre Texte kommen über `t()`** (s. „Textschicht (Desktop)“), und bekommen **keine**
 dialogspezifischen Stil-Extras (Farbakzente, abweichende Fonts o.ä.) ohne
 Rücksprache — das Theme bleibt bewusst einheitlich über alle Dialoge hinweg,
 nicht pro Dialog individualisiert.
@@ -1613,7 +1655,7 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
 - `src/tray/mac.py` — natives macOS-Tray (NSStatusItem, Main-Thread); dormant bis zum Mac-Gate (Opt-in `ZEIT_MACOS_TRAY=1`, margenheld/Zeiterfassung#88)
 - `src/tray/linux.py` — Linux-Tray über StatusNotifierItem + `com.canonical.dbusmenu` (D-Bus via `dbus-fast`, kein GTK/GI); seit 1.23.2 an, sobald die Sitzung einen StatusNotifierWatcher hat (`watcher_available`, Plasma-Gate bestanden, margenheld/Zeiterfassung#42). Menü-Logik D-Bus-frei in `MenuState`
 - `src/time_utils.py` — Stundenberechnung, KW-Labels
-- `src/conflict_view.py` — Anzeige-Modell des Konfliktdialogs (`dialogs/conflicts_dialog.py`), Tk-frei: `build_cards` macht aus einem Konflikt zwei Karten („Dieses Gerät“ zuerst, das andere Gerät mit seinem Namen aus der Registry, sonst „Anderes Gerät“ plus gekürzte ID; „● neuer“ am jüngeren Stand), markiert je Feld, was sich unterscheidet, und trägt den Kandidaten-`index` mit — gewählt wird über ihn, nicht über die Kartenposition. Dazu Titel mit Wochentag, die gruppierte Liste (`group_conflicts`: Zeiten nach Datum, Einstellungen nach Beschriftung) und `SETTING_LABELS` (Klartext statt Schlüssel; ein Test verlangt einen Eintrag für jeden `SYNCED_SETTING_KEYS`-Schlüssel). Alle Eingaben sind Fremddaten und ergeben bei Unlesbarem einen Platzhalter, nie eine Ausnahme. Der Dialog nutzt nur Palette-Farben (`STATUS_WARN` für Unterschiede, `STATUS_OK` für „neuer“, `TODAY_ACCENT` als Rahmen des eigenen Geräts) und springt nach dem Auflösen zum nächsten Konflikt
+- `src/conflict_view.py` — Anzeige-Modell des Konfliktdialogs (`dialogs/conflicts_dialog.py`), Tk-frei: `build_cards` macht aus einem Konflikt zwei Karten („Dieses Gerät“ zuerst, das andere Gerät mit seinem Namen aus der Registry, sonst „Anderes Gerät“ plus gekürzte ID; „● neuer“ am jüngeren Stand), markiert je Feld, was sich unterscheidet, und trägt den Kandidaten-`index` mit — gewählt wird über ihn, nicht über die Kartenposition. Dazu Titel mit Wochentag, die gruppierte Liste (`group_conflicts`: Zeiten nach Datum, Einstellungen nach Beschriftung) und `SETTING_LABELS` (Tabelle Einstellungsschlüssel → Katalogschlüssel per `N_`, aufgelöst über `setting_label` beim Aufruf: Klartext statt Schlüssel; ein Test verlangt einen Eintrag für jeden `SYNCED_SETTING_KEYS`-Schlüssel). Alle Eingaben sind Fremddaten und ergeben bei Unlesbarem einen Platzhalter, nie eine Ausnahme. Der Dialog nutzt nur Palette-Farben (`STATUS_WARN` für Unterschiede, `STATUS_OK` für „neuer“, `TODAY_ACCENT` als Rahmen des eigenen Geräts) und springt nach dem Auflösen zum nächsten Konflikt
 - `src/default_times.py` — pure Logik der Darstellung der globalen Standardzeiten (Einstellungen → Arbeitszeit): „Allgemein“ (ein Start–Ende-Paar) oder „Tageweise“ (Raster Mo–So), Moduswahl und die Werte-Übernahme beim Umschalten. **Gespeichert werden in beiden Modi die 14 Schlüssel `default_start_<tag>`/`default_end_<tag>`** — „Allgemein“ schreibt dasselbe Paar in alle sieben Tage, `default_times_mode` (`general`/`per_day`, gerätelokal wie die Zeiten, nicht in `SYNCED_SETTING_KEYS`) merkt sich nur die Darstellung; leer = aus den Zeiten abgeleitet (alle gleich → Allgemein). Leser (Tages-Dialog, Handy-Abgleich, Kategorien-Referenzzeile) bleiben dadurch unberührt. Der Rückwechsel von Tageweise nach Allgemein fragt beim Speichern nach, wenn Tage abweichen (wie im Kategorien-Dialog). Tk-frei
 - `src/category_defaults.py` — pure Logik der Per-Kategorie-Standardzeiten (`category_times`: ein Satz für alle Wochentage oder `mode: per_day`; fehlende Felder fallen je Feld auf den globalen Standard zurück). Tk-frei
 - `src/desktop_entry.py` — Freedesktop-`.desktop`-Dateien: schreibt den Menüeintrag (`write_menu_entry`, `ensure_icon`) und besitzt die `Exec=`-Quoting-Regel (`exec_line`), die auch `autostart.py` benutzt. Tk-frei, stdlib-only
@@ -1621,6 +1663,7 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
 - `src/holidays_region.py` — Feiertags-Lookup nach Land und Region (über `holidays`-Lib): `COUNTRIES`/`REGIONS` (Codes mit Anzeigenamen; der Eintrag mit leerem Code heißt „keine Region“ und liefert keine Feiertage), `normalize_region`, `region_label`, `get_holidays(country, region, year, language)`
 - `src/region.py` — Land und Region aus den Einstellungen als Codes: `country_region(settings)`, `normalize_country`/`normalize_language` (Fremddaten, werfen nie, Fallback `DE`/`de`) und die Übernahme des alten `state` als `region` (`migrate_state`, Marker `region_migrated`; mit Marker folgt `region` einem abweichenden, lesbaren `state` — das kann nur eine ältere Version geändert haben). Beim Speichern der Einstellungen bleibt `state` für Deutschland als Spiegel von `region` stehen (Downgrade-Kompatibilität), sonst `""`. Tk-frei
 - `src/locale_format.py` — Locale aus `language` und `country` (`locale_for`, Standard `de-DE`), die **eine** Tabelle der Datumsmuster und Wochentagsnamen je Locale und das aktive Locale der App; dahinter hängen `time_utils.format_iso_date`/`format_iso_datetime`. Tk-frei
+- `src/i18n/` — die **Textschicht des Desktops** (s. „Textschicht (Desktop)“): `t(key, /, **params)` liest den Text zur gewählten Sprache, `N_(key)` markiert einen Schlüssel in einer Tabelle, `set_language`/`get_language`/`normalize_language`, `LANGUAGES`. Die Texte stehen je Bereich in `src/i18n/de/` (`allgemein`, `meldungen`, `einstellungen`, `dialoge`, `hauptfenster`; `de/__init__.py` vereinigt sie). Importiert aus `src` nichts außer den eigenen Katalogen; PyInstaller findet die Module über statische Importe
 - `src/paths.py` — `get_base_path()` dispatched über `platform.system()` und Frozen- vs. Repo-Modus; `relaunch_command()` baut das Neustart-Kommando (Exe im Frozen-Build, `python -m src.main` im Repo)
 - `src/dpi.py` — Systemfaktor der UI-Skalierung: Windows-DPI-Awareness (#157)
   und Linux-`Xft.dpi` samt einmaliger `ui_scale`-Umrechnung (Xveyn#167; s.
@@ -1654,7 +1697,7 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
 - `src/single_instance.py` — Tk-freier Single-Instance-Guard (pro-Nutzer-Localhost-Port, `acquire`/`serve`/`release`); verhindert parallele Instanzen und holt bei manuellem Zweitstart das vorhandene Fenster nach vorn (SHOW), beim Autostart-Doppelfeuer ohne Fenster-Pop (PING)
 - `src/devices.py` — lesbare **Gerätenamen** für die Sync-Anzeige (Konfliktdialog): Ableitung aus dem Hostnamen, Sanitizing (Fremddaten!) und die Registry `{device_id: {name, updated_at}}`, die im Sync-Doc unter `devices` mitreist. Bewusst **ohne** Schema-Bump additiv — `SCHEMA_VERSION` bleibt 4, sonst pausierte `remote_is_newer` den Sync jedes älteren Geräts wegen eines Anzeigefelds. Fehlt oder bricht die Registry, zeigt der Dialog die gekürzte ID wie zuvor. Der eigene Name ist **kein** synchronisierter Setting-Key (der wäre ein einziger globaler Wert, die Geräte würden ihn sich gegenseitig überschreiben) — er lebt gerätelokal in `device_name`, der Spiegel der anderen in `known_devices`
 - `src/device_id.py` — stabile, hardware-abgeleitete Geräte-ID für den Sync (Windows `MachineGuid` / macOS `IOPlatformUUID` / Linux `/etc/machine-id`, SHA-256-gehasht); nur für installierte Builds (`main.py::_ensure_device_id`, gated auf `sys.frozen`) — Repo-/Skript-Modus bleibt bei der alten, in `settings.json` persistierten Zufalls-UUID, damit eine parallel laufende Dev-Instanz nie dieselbe device_id wie eine echte Installation auf demselben Rechner bekommt
-- `src/updater.py` — GitHub-Releases-Check (stdlib-only, Check-Häufigkeit über `update_check_frequency` konfigurierbar, Default 1×/Tag; Pre-Releases optional über `prerelease_updates_enabled`, s. Release-Prozess). Ein gescheiterter Abruf trägt seine Art (`CheckOutcome.failure`: offline/rate_limited/server/other); Updates-Tab und Tray-Toast zeigen dafür den Nutzertext aus `FAILURE_TEXTS` (ohne Statuscode), das Log die technische Zeile; `src/changelog.py` — lädt und parst den Changelog-Abschnitt einer Release-Version vom GitHub-Tag (stdlib-only)
+- `src/updater.py` — GitHub-Releases-Check (stdlib-only, Check-Häufigkeit über `update_check_frequency` konfigurierbar, Default 1×/Tag; Pre-Releases optional über `prerelease_updates_enabled`, s. Release-Prozess). Ein gescheiterter Abruf trägt seine Art (`CheckOutcome.failure`: offline/rate_limited/server/other); Updates-Tab und Tray-Toast zeigen dafür den Nutzertext aus `failure_text` (Tabelle `FAILURE_TEXTS`: Fehlerart → Katalogschlüssel, ohne Statuscode), das Log die technische Zeile; `src/changelog.py` — lädt und parst den Changelog-Abschnitt einer Release-Version vom GitHub-Tag (stdlib-only)
 - `src/auto_update.py` — die Auto-Update-**Policy**, genau einmal (R9,
   Xveyn#123): `AutoUpdater.maybe_start` entscheidet (Häkchen, Plattform,
   vorbereitete Datei, Guard, `plan_update`), lädt still und merkt das Update
@@ -1730,6 +1773,7 @@ seinen Pfad, nicht per Import.
   hält die Datei gegen `src.qr.qr_matrix` und gegen das Skript.
 - `scripts/pwa_devserver.py` — Dev-Server für die Handy-PWA: startet die echte Handy-Instanz (`MobileService`) auf einer temporären Datenablage und serviert `pwa/` unter `http://localhost:8099/` (Option `--address`); druckt Adresse, einen Koppel-Link mit frischem Code und den Ordner der Desktop-Daten. Auch für Browser-Tests; Details in `pwa/CLAUDE.md`, „Entwickeln und prüfen“. Reine stdlib plus App-Module.
 - `scripts/pwa_icons.py` — erzeugt `pwa/icons/` (`icon-192.png`, `icon-512.png`, `icon-maskable-512.png`) aus dem Markenbild `assets/margenheld-icon.png` (Pillow). Das Quellbild ist klein (300 × 297), die 512er sind hochskaliert.
+- `scripts/desktop_text_check.py` — Inventur und Äquivalenzprüfung der Desktop-Texte (s. „Textschicht (Desktop)“): `--list` zeigt je Datei unter `src/` die Literale, die als Nutzertext gelten (die Regel, die auch die Ratsche `tests/test_desktop_texts.py` liest), `--base <ref|ordner> --files …` vergleicht die Texte einer Umstellung mit dem Stand `<ref>`. Reine stdlib plus `src.i18n`, Root-Bootstrap wie die anderen Skripte mit Root-Bezug
 - `scripts/webhook_testserver.py` — lokaler Test-Empfänger für den
   Webhook-Versand: zeigt Content-Type, Auth-Header, HMAC-Prüfung und den Body
   (JSON/PDF/multipart aufgetrennt), und kann Fehlerfälle simulieren
