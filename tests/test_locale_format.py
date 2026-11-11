@@ -4,7 +4,7 @@ import pytest
 
 from src import locale_format
 from src.time_utils import (
-    format_date, format_iso_date, format_iso_datetime, format_iso_weekday_date,
+    format_date, format_day_month, format_iso_date, format_short_date, format_iso_datetime, format_iso_weekday_date,
     get_week_label,
 )
 
@@ -19,7 +19,8 @@ def _reset_locale():
 @pytest.fixture
 def slash_locale(monkeypatch):
     monkeypatch.setitem(locale_format._PATTERNS, "xx-YY", {
-        "date": "%Y/%m/%d", "short": "%m/%d", "weekday_date": "{date} ({weekday})"})
+        "date": "%Y/%m/%d", "short": "%m/%d", "day_month": "{month}/{day}",
+        "weekday_date": "{date} ({weekday})"})
     monkeypatch.setitem(locale_format._WEEKDAYS, "xx-YY", ["A", "B", "C", "D", "E", "F", "G"])
     return "xx-YY"
 
@@ -52,3 +53,17 @@ def test_default_output_unchanged():
     assert format_iso_datetime("2026-06-02T14:30:00Z") == "02.06.2026 14:30"
     assert format_iso_weekday_date("2026-06-02") == "Dienstag - 02.06.2026"
     assert get_week_label(2026, 14) == "KW 14 · 30.03. – 05.04.2026"
+
+
+def test_day_month_is_unpadded_and_short_date_stays_padded():
+    assert format_day_month(datetime.date(2026, 3, 30), locale="de-DE") == "30.3."
+    assert format_day_month(datetime.date(2026, 4, 1), locale="de-DE") == "1.4."
+    assert format_short_date(datetime.date(2026, 3, 30), locale="de-DE") == "30.03."
+    assert format_short_date(datetime.date(2026, 4, 1), locale="de-DE") == "01.04."
+
+
+def test_day_month_follows_locale_and_unknown_falls_back(slash_locale):
+    assert format_day_month(datetime.date(2026, 4, 1), locale=slash_locale) == "4/1"
+    assert format_day_month(datetime.date(2026, 4, 1), locale="zz-ZZ") == "1.4."
+    locale_format.set_active("de-DE")
+    assert format_day_month(datetime.date(2026, 4, 1)) == "1.4."

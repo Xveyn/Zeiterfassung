@@ -19,7 +19,6 @@ Slot = dict[str, Any]
 _DateLike = TypeVar("_DateLike", datetime.date, str)
 
 DAYS_DE = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
-WEEKDAYS_DE_FULL = locale_format.weekday_names("de-DE")
 MONTHS_DE = [
     "", "Januar", "Februar", "März", "April", "Mai", "Juni",
     "Juli", "August", "September", "Oktober", "November", "Dezember",
@@ -167,6 +166,12 @@ def format_date(d: datetime.date, locale: str | None = None) -> str:
 def format_short_date(d: datetime.date, locale: str | None = None) -> str:
     """Tag und Monat ohne Jahr (de-DE: '30.03.')."""
     return d.strftime(locale_format.short_date_pattern(locale or locale_format.active()))
+
+
+def format_day_month(d: datetime.date, locale: str | None = None) -> str:
+    """Tag und Monat ohne Jahr und ohne führende Nullen (de-DE: '1.4.')."""
+    pattern = locale_format.day_month_pattern(locale or locale_format.active())
+    return pattern.format(day=d.day, month=d.month)
 
 
 def weekday_name(d: datetime.date, locale: str | None = None) -> str:

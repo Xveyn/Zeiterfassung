@@ -12,7 +12,8 @@ DEFAULT_LOCALE = "de-DE"
 # Je Locale: Datum mit Jahr, Kurzform ohne Jahr und das Muster
 # "Wochentag - Datum"; die Wochentagsnamen stehen daneben (Montag zuerst).
 _PATTERNS: dict[str, dict[str, str]] = {
-    "de-DE": {"date": "%d.%m.%Y", "short": "%d.%m.", "weekday_date": "{weekday} - {date}"},
+    "de-DE": {"date": "%d.%m.%Y", "short": "%d.%m.", "day_month": "{day}.{month}.",
+              "weekday_date": "{weekday} - {date}"},
 }
 _WEEKDAYS: dict[str, list[str]] = {
     "de-DE": ["Montag", "Dienstag", "Mittwoch", "Donnerstag",
@@ -40,6 +41,12 @@ def date_pattern(locale: str) -> str:
 def short_date_pattern(locale: str) -> str:
     """strftime-Muster für Tag und Monat ohne Jahr."""
     return _entry(locale)["short"]
+
+
+def day_month_pattern(locale: str) -> str:
+    """Muster mit den Platzhaltern {day} und {month}, ohne führende Nullen
+    (`%-d` ginge unter Windows nicht)."""
+    return _entry(locale)["day_month"]
 
 
 def weekday_date_pattern(locale: str) -> str:

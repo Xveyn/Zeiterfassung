@@ -343,7 +343,7 @@ def _open_edit_dialog(parent, vacation_store, settings, period_id, on_saved,
 
     # Ohne gesetztes Bundesland kennt holidays_region keine Feiertage — dann
     # tragen der 25./26.12. volle Stunden und landen in „Zu vergüten gesamt".
-    # Das ist der DEFAULT-Zustand eines frischen Nutzers (settings["state"]
+    # Das ist der DEFAULT-Zustand eines frischen Nutzers (settings["region"]
     # ist ""), also gehört ein Hinweis in den Dialog statt einer stillen
     # Falschrechnung.
     if not region:

@@ -11,7 +11,7 @@ import platform
 import tkinter as tk
 
 from src.time_utils import (
-    DAYS_DE, MONTHS_DE, format_short_date,
+    DAYS_DE, MONTHS_DE, format_day_month,
     calculate_hours, format_hours_colon, format_iso_date, format_minutes_hm,
     get_week_dates, get_week_label, hours_to_minutes, week_spans_months,
 )
@@ -888,7 +888,7 @@ class GridRenderer:
             entry = entries.get(date_str)
             if entry:
                 total_minutes += self._display_minutes(entry)
-            day_text = format_short_date(day_date) if spans else str(day_date.day)
+            day_text = format_day_month(day_date) if spans else str(day_date.day)
 
             cell = self._build_day_cell(
                 new_frame, date_str, day_text, day_date,
