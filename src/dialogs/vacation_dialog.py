@@ -25,6 +25,7 @@ from src.time_utils import (
 )
 from src.dialogs.date_row import build_date_row
 from src.reservations import reservations_active
+from src.sync_orchestrator import error_display_text
 from src.vacation_plan import (
     blocking_days, format_day_list as _format_day_list,
     hours_to_minutes_exact as _hours_to_minutes_exact, plan_vacation_save,
@@ -253,7 +254,7 @@ def open_vacation_dialog(parent, vacation_store, settings, on_change=None,
                 themed_showerror(
                     target, t("urlaub_dialog.termine_fehler_titel"),
                     t("urlaub_dialog.termine_fehler",
-                      fehler=result.get("error", "")))
+                      fehler=error_display_text(result.get("error", ""))))
 
         runner.purge_vacations(_on_purged)
 

@@ -68,7 +68,7 @@ def should_check(last_check: str | None, frequency: str, today: date | None = No
     """True, wenn laut `frequency` ein Update-Check fällig ist.
 
     `frequency` in {"daily","weekly","monthly","never"} (siehe
-    FREQUENCY_OPTIONS). "never" -> immer False. Sonst True, wenn
+    `frequency_options`). "never" -> immer False. Sonst True, wenn
     `last_check` leer/ungültig ist ODER seit `last_check` mindestens das
     Intervall in Tagen vergangen ist (lokale Kalendertage).
     """

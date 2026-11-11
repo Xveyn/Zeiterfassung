@@ -3,8 +3,6 @@ from __future__ import annotations
 
 import re
 
-from src.i18n import t
-
 VERSION = "1.28.0"
 
 # Kennung eines Releases: "1.19.0" (echtes Release) oder "1.19.0-pre.2"
@@ -115,6 +113,9 @@ def build_channel() -> str:
 
 def updates_unsupported_hint() -> str:
     """Hinweis für Dev-Builds, die nie auf Updates prüfen."""
+    # Lokal importiert: Release-Skripte und -Workflows importieren dieses
+    # Modul nur für `VERSION`; ein Katalogfehler darf sie nicht brechen.
+    from src.i18n import t
     return t("version.dev_ohne_updates")
 
 

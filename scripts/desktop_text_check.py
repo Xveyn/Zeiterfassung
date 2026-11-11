@@ -48,6 +48,8 @@ _ACRONYM_CLASS = re.compile(r"^[A-Z]{2,}[a-z]{2,}\w*$")
 _ABBREVIATION = re.compile(r"^(?:[^\W\d_]{1,3}\.)+$")
 # Satzzeichen am Ende (`Speichern...`, `Fertig.`, `Bis:`) machen ein Wort nicht technisch.
 _TRAILING_PUNCT = re.compile(r"[.!?:…]+$")
+# Ein in Klammern gesetztes Wort (`[Hinweis]`, `(Standard)`): Text, kein Index `[0]`.
+_BRACKETED_WORD = re.compile(r"^[(\[][^\W\d_]{2,}[)\]]$")
 _LEADING_SYMBOLS = re.compile(r"^[^\w\s]+")
 _WORD = re.compile(r"[^\W\d_]+")
 
@@ -55,7 +57,7 @@ _WORD = re.compile(r"[^\W\d_]+")
 def _technical_token(token: str) -> bool:
     """Ein einzelnes Token ohne Leerraum, das Technik ist (Pfad, Format, Punktname,
     CamelCase, Bezeichner)."""
-    if _ABBREVIATION.match(token):
+    if _ABBREVIATION.match(token) or _BRACKETED_WORD.match(token):
         return False
     core = _TRAILING_PUNCT.sub("", token) or token
     return bool(_TECH_TOKEN.match(core) or _CAMEL.match(core)

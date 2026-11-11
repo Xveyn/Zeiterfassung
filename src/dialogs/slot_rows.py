@@ -41,14 +41,15 @@ NO_CATEGORY_LABEL = "(ohne Kategorie)"
 # reine Anzeige, s. slot_category_display/category_from_display.
 OVERRIDE_MARKER = "*"
 
-# Letzter Eintrag im Kategorie-Dropdown (nur wenn der Dialog einen Weg zum
-# Anlegen anbietet): kein Wert, sondern eine Aktion — die Auswahl öffnet den
-# Kategorien-Dialog und springt auf den vorherigen Wert zurück.
+
 def no_category_label():
     """Anzeigetext des Eintrags „keine Kategorie“ (Dropdown, Zusammenfassungen)."""
     return t("kategorie.ohne")
 
 
+# Letzter Eintrag im Kategorie-Dropdown (nur wenn der Dialog einen Weg zum
+# Anlegen anbietet): kein Wert, sondern eine Aktion — die Auswahl öffnet den
+# Kategorien-Dialog und springt auf den vorherigen Wert zurück.
 def new_category_label():
     """Anzeigetext der Aktion „neue Kategorie anlegen“ (letzter Dropdown-Eintrag)."""
     return t("kategorie.neu")

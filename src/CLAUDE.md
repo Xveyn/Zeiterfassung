@@ -1187,7 +1187,7 @@ Regeln und Begründung: `CLAUDE.md`, „Textschicht (Desktop)“. Hier die Vertr
   Durchlauf per Regex ersetzt (kein `str.format`, Werte dürfen `{…}` enthalten), unbekannte
   Platzhalter bleiben stehen, ein unbekannter Schlüssel liefert den Schlüssel selbst und
   loggt einmal je Schlüssel, die Lücke einer Fremdsprache fällt auf den deutschen Text. Ein
-  Parameter heißt nie `key`.
+  Parameter darf `key` heißen: der Schlüssel ist positionsgebunden und kollidiert nicht damit.
 - **Verbraucher-Regel:** Die Ratsche gilt für jede Datei unter `src/`, auch für Tk-freie
   Module. Ein Text aus `time_utils`, `share`, `webhook`, `smtp`, `mail`, `vacations` …, der
   in einem Dialog erscheint (auch über `str(e)`, `result["detail"]`,
@@ -1206,12 +1206,13 @@ Regeln und Begründung: `CLAUDE.md`, „Textschicht (Desktop)“. Hier die Vertr
   | `oauth_utils.REAUTH_REQUIRED_MSG` | drive/gcal → `classify_sync_error` | `sync.reauth_anzeige` über `sync_orchestrator.error_display_text` |
   | `sync_runtime.SYNC_TIMEOUT_MSG` | `run_push_blocking`/`run_compaction_blocking` → `classify_sync_error` | `sync.timeout_*`, `sync.toast_timeout` |
   | `sync.NEWER_REMOTE_VERSION_MSG` | `sync_runtime` → `_friendly_sync_message`/`error_display_text` | `sync.neuere_version` (gleichlautend) |
-  | `slot_rows.NO_CATEGORY_LABEL` | in der API verbotener Kategoriename (`api_entry_write` spiegelt ihn) | `slot_rows.no_category_label()` (`kategorie.ohne`) |
+  | `slot_rows.NO_CATEGORY_LABEL` | nur Definition des in der API verbotenen Namens, ohne Leser in `src/` (`api_entry_write._NO_CATEGORY_LABEL` hält einen eigenen Spiegel) | `slot_rows.no_category_label()` (`kategorie.ohne`) |
   | `category_dialog.STANDARD` | `_value_or_none`/`collect_categories` | **keiner**: die Konstante ist zugleich Combo-Wert (s. `docs/known-limitations.md`) |
 
   `error_display_text(error)` ersetzt einen Fehlertext, der **genau** einem Erkennungstext
-  entspricht, durch den Anzeigetext; jede Stelle, die einen rohen Fehlertext in eine Meldung
-  setzt, geht darüber.
+  entspricht, durch den Anzeigetext; jede Stelle, die einen rohen Sync- oder Kalender-Fehlertext
+  in eine Meldung setzt, geht darüber (`tab_google`, `vacation_dialog`, `_friendly_sync_message`).
+  Mail-, Export- und Teilen-Fehler tragen keinen Erkennungstext und gehen roh durch.
 - **Plural:** zwei Schlüssel (`….eins`/`….viele`), gewählt im Aufrufer; keine
   Suffix-Bastelei. Wo der Altbestand keinen Plural hatte, bleibt der Wortlaut 1:1.
 - **Ausgabe ist nicht Oberfläche:** `report.py`, `share_message.py`, Payload-Texte, `gcal.py`
