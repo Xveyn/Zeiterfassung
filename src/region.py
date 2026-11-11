@@ -11,7 +11,9 @@ LANGUAGES = ("de",)
 
 
 class _Readable(Protocol):
-    def get(self, key: str, default: Any = None) -> Any: ...
+    # Wie `settings.SettingsLike`: `key` positionsgebunden, sonst ist ein `dict`
+    # nicht zuweisbar.
+    def get(self, key: str, /) -> Any: ...
 
 
 class _Writable(_Readable, Protocol):
