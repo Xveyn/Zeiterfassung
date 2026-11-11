@@ -134,3 +134,15 @@ def test_main_sets_the_language_right_after_the_settings():
     language_at = source.index('i18n.set_language(settings.get("language"))')
     storage_at = source.index("storage = Storage(")
     assert settings_at < language_at < storage_at
+
+
+def test_version_module_does_not_import_the_text_layer():
+    """Release-Skripte importieren `src.version` nur für `VERSION`; ein
+    Katalogfehler darf sie nicht brechen."""
+    import subprocess
+    import sys
+    code = ("import sys, src.version; "
+            "sys.exit(1 if any(m == 'src.i18n' or m.startswith('src.i18n.') "
+            "for m in sys.modules) else 0)")
+    result = subprocess.run([sys.executable, "-c", code], cwd=REPO)
+    assert result.returncode == 0

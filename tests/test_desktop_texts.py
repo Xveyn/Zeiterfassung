@@ -19,6 +19,7 @@ Zwei Listen, je mit Grund:
 Inventur: `python scripts/desktop_text_check.py --list`.
 """
 
+import ast
 import importlib.util
 import pathlib
 import subprocess
@@ -57,7 +58,6 @@ FILE_EXEMPT: dict[str, str] = {
     "src/mobile_box_store.py": _PROTOCOL,
     "src/mobile_crypto.py": _PROTOCOL,
     "src/mobile_keys.py": _PROTOCOL,
-    "src/mobile_pairing.py": _PROTOCOL,
     "src/mobile_relay_codec.py": _PROTOCOL,
     "src/mobile_relay_store.py": _PROTOCOL,
     "src/mobile_reservations.py": _PROTOCOL,
@@ -89,6 +89,12 @@ _WIRE = "Ausgabe/Teil 3: Request-Header bzw. Multipart-Teil des Webhook-Versands
 _TECH_DESKTOP = "Dateiinhalt einer Freedesktop-`.desktop`-Datei, gelesen vom Desktop"
 
 ALLOWED: dict[str, dict[str, str]] = {
+    "src/mobile_pairing.py": {
+        "Handy": (
+            "`DEFAULT_DEVICE_NAME`: gespeicherter Datenwert (Name eines Geräts ohne eigenen Namen), "
+            "wird im Gerätebestand gespeichert und in Geräteliste und Kopplungsmeldung angezeigt; "
+            "ein Katalogtext änderte den gespeicherten Wert je Sprache (s. known-limitations)"),
+    },
     "src/dialogs/settings_dialog/tab_rules.py": {
         "reminders_updates ohne vorheriges validate_reminders":
             "Programmfehler-Text (ValueError): `reminders_updates` wird nur nach bestandenem "
@@ -144,8 +150,9 @@ ALLOWED: dict[str, dict[str, str]] = {
         "apply_reconciled: entry {} missing keys {}": (
             "Invariante: die Eingabe stammt aus `store.get_all_raw()` (vacations_sync.py); ein "
             "Verstoß erreicht den Nutzer roh über `run_vacation_purge` -> `vacation_dialog` "
-            "(`themed_showerror`) und den nativen Fehlerdialog in `ui.py`, der Kalender-Push "
-            "loggt ihn nur — nie als kuratierte Meldung"),
+            "(`themed_showerror`) und den nativen Fehlerdialog in `ui.py`; im Reconcile "
+            "(`vacations_sync` über `run_calendar_reconcile`) landet er in der Fehlerliste des "
+            "Abgleichs und im Log, nie als kuratierte Meldung"),
     },
     "src/oauth_utils.py": {
         "Kein gültiger Google-Token — Anmeldung erforderlich.": (
@@ -207,9 +214,8 @@ ALLOWED: dict[str, dict[str, str]] = {
     "src/reservations.py": {
         "apply_reconciled: entry {} missing keys {}": (
             "Invariante: die Eingabe stammt aus dem Abgleich (`reservations_sync`); ein Verstoß "
-            "erreicht den Nutzer roh über `run_vacation_purge` -> `vacation_dialog` "
-            "(`themed_showerror`) und den nativen Fehlerdialog in `ui.py`, der Kalender-Push "
-            "loggt ihn nur — nie als kuratierte Meldung"),
+            "erreicht den Nutzer roh über `run_calendar_reconcile` -> `ui._on_reconcile_done` "
+            "(nativer `showerror` mit Traceback), nie als kuratierte Meldung"),
     },
     "src/json_store.py": {
         "JSON nicht parsebar": "Default-Grund der Logzeile von `quarantine_corrupt`, nie angezeigt",
@@ -481,6 +487,20 @@ def test_ui_folders_are_never_exempt_as_a_whole():
     assert "src/dialogs/mobile_pair_dialog.py" not in FILE_EXEMPT
 
 
+def _imports_tkinter(rel: str) -> bool:
+    for node in ast.walk(ast.parse(_read(rel))):
+        if isinstance(node, ast.Import) and any(a.name.split(".")[0] == "tkinter" for a in node.names):
+            return True
+        if isinstance(node, ast.ImportFrom) and (node.module or "").split(".")[0] == "tkinter":
+            return True
+    return False
+
+
+def test_no_tk_file_is_exempt():
+    """Eine Datei mit Tk-Code zeigt Oberfläche (ui, grid_renderer, Banner, Tooltip …)."""
+    assert [rel for rel in FILE_EXEMPT if _imports_tkinter(rel)] == []
+
+
 def test_every_allowed_text_has_a_reason():
     missing = [f"{rel}: {text!r}" for rel, texts in ALLOWED.items()
                for text, reason in texts.items() if not reason.strip()]
@@ -608,3 +628,71 @@ def test_the_send_tab_placeholder_hint_is_called_without_parameters():
     expected = "Platzhalter in allen Vorlagen-Feldern: {zeitraum}, {gesamt}"
     assert TEXTS["tab_versand.platzhalter"] == expected
     assert t("tab_versand.platzhalter") == expected
+
+
+# --- Wie die Textschicht aufgerufen wird -----------------------------------------------
+
+def _python_sources():
+    for rel in SOURCES:
+        yield rel, ast.parse(_read(rel))
+
+
+def test_text_layer_imports_keep_their_names():
+    """Schlüsselprüfung und Ratsche erkennen nur `t(`/`N_(` (und `i18n.t`): ein Alias
+    oder ein anderer Modulname machte den Aufruf unsichtbar."""
+    bad = []
+    for rel, tree in _python_sources():
+        if rel.startswith("src/i18n/"):
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module == "src.i18n":
+                bad += [f"{rel}:{node.lineno} {a.name} as {a.asname}" for a in node.names if a.asname]
+            if isinstance(node, ast.ImportFrom) and node.module == "src" and node.level == 0:
+                bad += [f"{rel}:{node.lineno} i18n as {a.asname}" for a in node.names
+                        if a.name == "i18n" and a.asname]
+            if isinstance(node, ast.Import):
+                bad += [f"{rel}:{node.lineno} import {a.name} as {a.asname}" for a in node.names
+                        if a.name.startswith("src.i18n") and a.asname]
+    assert bad == []
+
+
+def test_text_calls_are_never_resolved_at_import_time():
+    """`t(…)` gehört in den Funktionskörper: auf Modul- oder Klassenebene und in Default-
+    Argumenten bliebe der Text in der Startsprache. `N_` ist Identität und darf überall stehen."""
+    def is_t(node):
+        return (isinstance(node, ast.Call)
+                and ((isinstance(node.func, ast.Name) and node.func.id == "t")
+                     or (isinstance(node.func, ast.Attribute) and node.func.attr == "t"
+                         and isinstance(node.func.value, ast.Name) and node.func.value.id == "i18n")))
+
+    def walk(node, rel, inside_function, found):
+        if is_t(node) and not inside_function:
+            found.append(f"{rel}:{node.lineno}")
+        for child in ast.iter_child_nodes(node):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+                args = node.args
+                defaults = [*args.defaults, *[d for d in args.kw_defaults if d is not None]]
+                in_body = child not in defaults and child is not args
+                if not in_body:
+                    walk(child, rel, inside_function, found)
+                    continue
+                if child is not args:
+                    walk(child, rel, True, found)
+                continue
+            walk(child, rel, inside_function, found)
+
+    found: list[str] = []
+    for rel, tree in _python_sources():
+        if not rel.startswith("src/i18n/"):
+            walk(tree, rel, False, found)
+    assert found == []
+
+
+@pytest.mark.parametrize("text", ["(Standard)", "[Hinweis]", "+ Slot", "▶ Weiter"])
+def test_leading_symbols_do_not_hide_a_text(text):
+    assert check.text_reason(text) is not None
+
+
+@pytest.mark.parametrize("text", ["(x)", "(1)", "[0]"])
+def test_bracketed_technical_cases_stay_technical(text):
+    assert check.text_reason(text) is None
