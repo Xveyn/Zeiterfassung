@@ -19,6 +19,7 @@ from src.version import VERSION, installed_release_id, version_label
 from src.background_tasks import BackgroundTaskRunner
 from src.api_routes import ApiContext
 from src.api_service import ApiService, RefreshCoalescer
+from src.i18n import t
 from src.devices import default_device_name
 from src.mobile_pairing import PairingSession
 from src.mobile_reminders import phone_covers
@@ -103,7 +104,7 @@ class App:
         # Gerätelokale SMTP-Konten; None bedeutet ebenso „Feature nicht
         # verfügbar" (wie beim webhook_store).
         self._smtp_store = smtp_store
-        self.root.title(f"Zeiterfassung v{version_label()}")
+        self.root.title(t("fenster.titel", version=version_label()))
         self.root.configure(bg=BG)
         apply_dark_titlebar(self.root)
 
@@ -269,10 +270,8 @@ class App:
             # Dialog baut selbst Tk-Widgets auf und ist im gestörten Zustand
             # die unzuverlässigere Schicht.
             on_error=lambda tb: messagebox.showerror(
-                "Gmail-Anmeldung konnte nicht erneuert werden",
-                "Beim Erneuern der Gmail-Anmeldung ist ein unerwarteter "
-                f"Fehler aufgetreten:\n\n{tb}\n\n"
-                "Beim nächsten Senden fragt die App nach einer neuen Freigabe.",
+                t("gmail_erneuern.titel"),
+                t("gmail_erneuern.text", fehler=tb),
             ),
             # Erst NACH dem Start-Refresh: beide schreiben token.json (#101).
             on_finished=lambda: self._bg.migrate_secrets(
@@ -312,7 +311,7 @@ class App:
             ) as _aumid_key:
                 winreg.SetValueEx(
                     _aumid_key, "DisplayName", 0, winreg.REG_SZ,
-                    f"Zeiterfassung v{VERSION}",
+                    t("fenster.titel", version=VERSION),
                 )
         except Exception:
             # Best-Effort (s. Docstring): ohne DisplayName zeigt der Toast
@@ -386,30 +385,20 @@ class App:
             if classify_sync_error(error) == "auth":
                 themed_showinfo(
                     self.root,
-                    "Google-Verbindung abgelaufen",
-                    "Die Änderung wurde lokal gespeichert. Der "
-                    "Kalender-Abgleich ist fehlgeschlagen, weil die Verbindung "
-                    "zu Google abgelaufen oder widerrufen wurde.\n\nBitte "
-                    "verbinde die App in den Einstellungen neu (Google-Kalender "
-                    "aus- und wieder einschalten). Der Abgleich wird danach "
-                    "automatisch nachgeholt.",
+                    t("abgleich.auth_titel"),
+                    t("abgleich.auth_text"),
                 )
             elif classify_sync_error(error) == "keyring":
                 themed_showinfo(
                     self.root,
-                    "Schlüsselbund nicht erreichbar",
-                    "Die Änderung wurde lokal gespeichert. Der Kalender-Abgleich "
-                    "ist fehlgeschlagen, weil der Schlüsselbund des "
-                    "Betriebssystems gerade nicht antwortet.\n\nEr wird beim "
-                    "nächsten Abgleich automatisch nachgeholt.",
+                    t("abgleich.keyring_titel"),
+                    t("abgleich.keyring_text"),
                 )
             else:
                 messagebox.showerror(
-                    "Google-Kalender-Abgleich fehlgeschlagen",
-                    f"Die Änderung wurde lokal gespeichert, der Kalender-Abgleich "
-                    f"ist aber fehlgeschlagen:\n\n{error}\n\n"
-                    f"{result.get('tb', '')}\n\n"
-                    "Der Abgleich wird beim nächsten Start erneut versucht.",
+                    t("abgleich.fehler_titel"),
+                    t("abgleich.fehler_text", fehler=error,
+                      detail=result.get('tb', '')),
                 )
         self._refresh()
         self._show_limit_warnings(result.get("limit_warnings"))
@@ -478,10 +467,8 @@ class App:
         if not warnings:
             return
         themed_showwarning(
-            self.root, "Wochenlimit überschritten",
-            "Der Kalender-Import betrifft Wochen über dem konfigurierten "
-            f"Werkstudenten-Limit:\n\n{format_limit_warnings(warnings)}\n\n"
-            "Grobe Näherung, keine rechtliche Bewertung.",
+            self.root, t("limit.titel"),
+            t("limit.text", warnungen=format_limit_warnings(warnings)),
         )
 
     def _build_header(self):
@@ -503,20 +490,20 @@ class App:
         # daher erst beim Hovern.
         attach_tooltip(
             prev_button,
-            lambda: "Vorheriger Monat" if self.view_mode == "month"
-            else "Vorherige Woche",
+            lambda: t("kopf.vorheriger_monat") if self.view_mode == "month"
+            else t("kopf.vorherige_woche"),
         )
 
         toggle_frame = tk.Frame(frame, bg=BG)
         toggle_frame.pack(side=tk.LEFT, padx=10)
 
         self.btn_month = toggle_button(
-            toggle_frame, "Monat", lambda: self._set_view("month"), active=True,
+            toggle_frame, t("kopf.monat"), lambda: self._set_view("month"), active=True,
         )
         self.btn_month.pack(side=tk.LEFT, padx=(0, 1))
 
         self.btn_week = toggle_button(
-            toggle_frame, "Woche", lambda: self._set_view("week"), active=False,
+            toggle_frame, t("kopf.woche"), lambda: self._set_view("week"), active=False,
         )
         self.btn_week.pack(side=tk.LEFT)
 
@@ -543,21 +530,21 @@ class App:
             fg=TEXT_MUTED, hover_fg=TEXT,
         )
         settings_button.pack(side=tk.RIGHT)
-        attach_tooltip(settings_button, "Einstellungen")
+        attach_tooltip(settings_button, t("kopf.einstellungen"))
 
         self._next_button = icon_button(frame, "\u203a", lambda: self._navigate(+1))
         self._next_button.pack(side=tk.RIGHT, padx=(0, 5))
         attach_tooltip(
             self._next_button,
-            lambda: "Nächster Monat" if self.view_mode == "month"
-            else "Nächste Woche",
+            lambda: t("kopf.naechster_monat") if self.view_mode == "month"
+            else t("kopf.naechste_woche"),
         )
 
         # --- Sync-Button und Status (Multi-Device-Sync) ---
         # Widgets werden erzeugt, aber nur gepackt wenn sync_enabled. Sync
         # ist opt-in; bei deaktiviertem Sync soll der Header unver\u00e4ndert wirken.
         self.sync_button = icon_button(frame, "\u27f3", self._sync.on_sync_clicked)
-        attach_tooltip(self.sync_button, "Jetzt mit Google Drive synchronisieren")
+        attach_tooltip(self.sync_button, t("kopf.sync_jetzt"))
         # Feste Breite (längster Text „⚠ 10 Konflikte"): sonst wandert der
         # mittige Header-Titel, wenn der Status-Text wechselt.
         self.sync_status_label = tk.Label(
@@ -572,37 +559,36 @@ class App:
         # abhängig vom Stundenlohn (16 ohne, 40 mit — Details dort). Der
         # Startwert 16 gilt bis zum ersten refresh (Vorab-Messung vor mainloop).
         self.footer_label = tk.Label(
-            footer_frame, text="Gesamt: 0.0h", font=FONT_FOOTER,
+            footer_frame, text=t("fuss.gesamt_start"), font=FONT_FOOTER,
             bg=BG, fg=ACCENT, width=16,
         )
         self.footer_label.pack(side=tk.LEFT, expand=True)
 
         share_button = secondary_button(
-            footer_frame, "Teilen", self._share, padx=12,
+            footer_frame, t("fuss.teilen"), self._share, padx=12,
         )
         share_button.pack(side=tk.RIGHT, padx=(0, 4))
         attach_tooltip(
             share_button,
-            "Arbeitszeiten und Reservierungen als Datei per Mail schicken, "
-            "zum Import in eine andere Zeiterfassung",
+            t("fuss.teilen_tooltip"),
         )
 
         export_button = secondary_button(
-            footer_frame, "Export", self._export, padx=12,
+            footer_frame, t("fuss.export"), self._export, padx=12,
         )
         export_button.pack(side=tk.RIGHT, padx=(0, 4))
         attach_tooltip(
             export_button,
-            "Bericht für einen Zeitraum als PDF-Datei speichern",
+            t("fuss.export_tooltip"),
         )
 
         send_button = secondary_button(
-            footer_frame, "Arbeitszeiten senden", self._send, padx=12,
+            footer_frame, t("fuss.senden"), self._send, padx=12,
         )
         send_button.pack(side=tk.RIGHT, padx=(0, 4))
         attach_tooltip(
             send_button,
-            "Bericht für einen Zeitraum per Mail oder Webhook versenden",
+            t("fuss.senden_tooltip"),
         )
 
     def _navigate(self, direction):
@@ -743,17 +729,13 @@ class App:
         if want_tray and self._tray is None:
             if not is_supported():
                 if platform.system() == "Linux":
-                    reason = ("Diese Desktop-Sitzung hat keinen Infobereich für "
-                              "App-Icons (StatusNotifier). Unter GNOME stellt ihn "
-                              "die Erweiterung „AppIndicator and KStatusNotifierItem "
-                              "Support“ bereit; KDE Plasma und XFCE bringen ihn mit.")
+                    reason = t("tray.kein_infobereich")
                 else:
-                    reason = ("Infobereich-Icon und Toast-Benachrichtigungen sind "
-                              "auf dieser Plattform noch nicht freigeschaltet.")
+                    reason = t("tray.nicht_freigeschaltet")
                 themed_showinfo(
                     self.root,
-                    "Infobereich-Icon / Benachrichtigungen",
-                    f"{reason}\n\nDie Optionen wurden wieder deaktiviert.",
+                    t("tray.dialog_titel"),
+                    t("tray.dialog_text", grund=reason),
                 )
                 self.settings.set("minimize_to_tray", False)
                 self.settings.set("reminders_enabled", False)
@@ -771,8 +753,8 @@ class App:
                 logging.getLogger(__name__).exception("Tray-Start fehlgeschlagen")
                 themed_showerror(
                     self.root,
-                    "Infobereich-Icon",
-                    f"Tray-Icon konnte nicht gestartet werden:\n\n{e}",
+                    t("tray.start_fehler_titel"),
+                    t("tray.start_fehler", fehler=e),
                 )
                 self.settings.set("minimize_to_tray", False)
                 self.settings.set("reminders_enabled", False)
@@ -795,16 +777,16 @@ class App:
         per `root.after(0, …)` auf den Tk-Thread.
         """
         return [
-            ("Arbeitszeiten senden",
+            (t("fuss.senden"),
              lambda: self.root.after(0, self._send), None),
-            ("Teilen",
+            (t("fuss.teilen"),
              lambda: self.root.after(0, self._share), None),
-            ("Export",
+            (t("fuss.export"),
              lambda: self.root.after(0, self._export), None),
-            ("Mit Google Drive synchronisieren",
+            (t("tray.sync"),
              lambda: self.root.after(0, self._sync.tray_sync),
              lambda: bool(self.settings.get("sync_enabled"))),
-            ("Nach Updates suchen",
+            (t("tray.updates"),
              lambda: self.root.after(0, self._updates.tray_check), None),
         ]
 
@@ -926,16 +908,18 @@ class App:
         options = []
         if entry_slots:
             if len(entry_slots) == 1:
-                options.append(("entry:all", "Arbeitszeit"))
+                options.append(("entry:all", t("loeschen.arbeitszeit")))
             else:
                 for i, s in enumerate(entry_slots):
-                    options.append((f"entry:{i}", f"Arbeitszeit  {GridRenderer._fmt_slot_line(s)}"))
+                    options.append((f"entry:{i}", t("loeschen.arbeitszeit_slot",
+                                                       zeile=GridRenderer._fmt_slot_line(s))))
         if res_slots:
             if len(res_slots) == 1:
-                options.append(("reservation:all", "Reservierung"))
+                options.append(("reservation:all", t("loeschen.reservierung")))
             else:
                 for i, s in enumerate(res_slots):
-                    options.append((f"reservation:{i}", f"Reservierung  {GridRenderer._fmt_slot_line(s, with_pause=True)}"))
+                    options.append((f"reservation:{i}", t("loeschen.reservierung_slot",
+                                                           zeile=GridRenderer._fmt_slot_line(s, with_pause=True))))
         if vacation is not None:
             # Gelöscht wird IMMER die ganze Periode. Einzelne Tage aus der
             # Mitte herauszubrechen würde den Zeitraum zerreißen und die
@@ -945,15 +929,17 @@ class App:
                       f"{format_iso_date(vacation['to'])}")
             options.append((
                 f"vacation:{vacation['id']}",
-                f"Urlaub „{vacation['name']}“ ({spanne})",
+                t("loeschen.urlaub_option", name=vacation['name'], spanne=spanne),
             ))
 
         if len(options) == 1:
             key = options[0][0]
             if key.startswith("entry"):
-                kind, frage = "Arbeitszeit", f"Arbeitszeit für {date_de} löschen?"
+                kind = t("loeschen.arbeitszeit")
+                frage = t("loeschen.frage_arbeitszeit", datum=date_de)
             elif key.startswith("reservation"):
-                kind, frage = "Reservierung", f"Reservierung für {date_de} löschen?"
+                kind = t("loeschen.reservierung")
+                frage = t("loeschen.frage_reservierung", datum=date_de)
             else:
                 # Bei genau einer Option, die weder "entry" noch "reservation"
                 # ist, muss es die (einzige weitere Quelle von) options der
@@ -961,16 +947,17 @@ class App:
                 # assert statt weiterer Verzweigung: narrowed für pyright,
                 # ohne das Verhalten zu ändern.
                 assert vacation is not None
-                kind = "Urlaub"
-                frage = (f"Urlaub „{vacation['name']}“ "
-                         f"({format_iso_date(vacation['from'])} – "
-                         f"{format_iso_date(vacation['to'])}) komplett löschen?")
-            if not themed_askyesno(self.root, f"{kind} löschen", frage, lock_ms=600):
+                kind = t("loeschen.urlaub")
+                frage = t("loeschen.frage_urlaub", name=vacation['name'],
+                          von=format_iso_date(vacation['from']),
+                          bis=format_iso_date(vacation['to']))
+            if not themed_askyesno(self.root, t("loeschen.titel", art=kind), frage, lock_ms=600):
                 return
             selected = {key}
         else:
             selected = themed_ask_delete_choice(
-                self.root, "Löschen", f"Was für den {date_de} löschen?",
+                self.root, t("knopf.loeschen"),
+                t("loeschen.auswahl", datum=date_de),
                 options, lock_ms=600,
             )
             if not selected:
@@ -1036,12 +1023,9 @@ class App:
                     if self.vacation_store is not None else None)
         if vacation is not None and vacation.get("days", {}).get(date_str, 0):
             themed_showinfo(
-                self.root, "Urlaub an diesem Tag",
-                f"Für den {format_iso_date(date_str)} ist Urlaub eingetragen "
-                f"(„{vacation.get('name', '')}“). An einem Urlaubstag lässt "
-                f"sich keine Arbeitszeit erfassen.\n\nSoll hier doch "
-                f"gearbeitet werden, lösche den Urlaub zuerst per Rechtsklick "
-                f"auf den Tag.")
+                self.root, t("urlaub_tag.titel"),
+                t("urlaub_tag.text", datum=format_iso_date(date_str),
+                  name=vacation.get('name', '')))
             return
         # Bei ausgeschalteten Reservierungen KEIN reservation_store an den Dialog
         # geben — dann wird der Reservierungs-Block nicht angezeigt und ist per
@@ -1186,7 +1170,7 @@ class App:
 
         def _done(results):
             try:
-                themed_showinfo(self.root, "Zeiterfassung entfernt",
+                themed_showinfo(self.root, t("entfernt.titel"),
                                 removal.format_summary(results, app_file, had_token,
                                                        command, translocated),
                                 copyable=True, copy_text=command)
@@ -1319,8 +1303,8 @@ class App:
                 self._relay.apply()
             themed_showinfo(
                 self.root,
-                "Neustart nötig",
-                "Die Skalierung wird beim nächsten Start der App wirksam.",
+                t("neustart.titel"),
+                t("neustart.text"),
             )
             return
         if self._tray is not None:

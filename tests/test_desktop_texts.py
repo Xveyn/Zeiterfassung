@@ -315,8 +315,7 @@ PENDING: list[str] = [
     # Task 9
     # Task 10
     # Task 11
-    "src/ui.py",
-    "src/grid_renderer.py",
+    # (leer: Task 12 stellt auf „alle Dateien geprüft“ um)
 ]
 
 # Bereiche, die nur Oberfläche bauen: dort ist eine ganze Datei nie ausgenommen.
