@@ -1,12 +1,12 @@
 import datetime
 
 from src.dialogs.entry_dialog import (
-    NO_CATEGORY_LABEL, RESERVATION_CALENDAR_NOTE, category_choices,
+    RESERVATION_CALENDAR_NOTE, category_choices,
     category_from_display, category_to_display, ist_prefill_pause,
     plan_entry_save, reservation_block_visible, reservation_note_visible,
     slot_category_display, suggest_ist_category,
 )
-from src.dialogs.slot_rows import marker_pause, pause_choices
+from src.dialogs.slot_rows import marker_pause, no_category_label, pause_choices
 from src.theme import PAUSE_VALUES
 
 
@@ -32,8 +32,8 @@ def test_reservation_block_visible_future():
 def test_category_empty_maps_to_no_category_label_and_back():
     # "" (keine Kategorie) ↔ Anzeige-Label, damit der Platzhalter nie als echte
     # Kategorie gespeichert wird.
-    assert category_to_display("") == NO_CATEGORY_LABEL
-    assert category_from_display(NO_CATEGORY_LABEL) == ""
+    assert category_to_display("") == no_category_label()
+    assert category_from_display(no_category_label()) == ""
 
 
 def test_category_real_value_round_trips_unchanged():
@@ -43,15 +43,15 @@ def test_category_real_value_round_trips_unchanged():
 
 def test_category_choices_puts_no_category_first():
     assert category_choices(["Office", "Homeoffice"]) == [
-        NO_CATEGORY_LABEL, "Office", "Homeoffice"]
+        no_category_label(), "Office", "Homeoffice"]
     # Keine Kategorien in den Einstellungen → nur der Platzhalter.
-    assert category_choices([]) == [NO_CATEGORY_LABEL]
+    assert category_choices([]) == [no_category_label()]
 
 
 def test_category_from_display_strips_trailing_override_marker():
     assert category_from_display("Office*") == "Office"
     assert category_from_display("Office") == "Office"
-    assert category_from_display(NO_CATEGORY_LABEL) == ""
+    assert category_from_display(no_category_label()) == ""
 
 
 class TestSuggestIstCategory:
@@ -96,7 +96,7 @@ class TestSlotCategoryDisplay:
             "", "08:00", "16:00", 30, self.CATEGORY_TIMES, "mon",
             "08:00", "16:00", 30,
         )
-        assert result == NO_CATEGORY_LABEL
+        assert result == no_category_label()
 
     def test_matching_times_show_plain_category_name(self):
         result = slot_category_display(

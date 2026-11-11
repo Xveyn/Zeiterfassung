@@ -127,7 +127,7 @@ def test_shift_labels_are_distinct_and_mapped():
 def test_keyring_failure_is_a_themed_message_without_traceback(monkeypatch):
     """Schlüsselbund gesperrt ist ein bekannter Fehler (#101): themed, kurz,
     kein Traceback — nicht der native Catch-all-Dialog."""
-    from src.oauth_utils import KEYRING_UNAVAILABLE_TITLE, TokenKeyringUnavailable
+    from src.oauth_utils import keyring_unavailable_title, TokenKeyringUnavailable
     native, themed = [], []
     monkeypatch.setattr(sd.messagebox, "showerror", lambda *a, **k: native.append(a))
     monkeypatch.setattr(sd, "themed_showerror", lambda *a: themed.append(a))
@@ -144,7 +144,7 @@ def test_keyring_failure_is_a_themed_message_without_traceback(monkeypatch):
 
     assert native == []
     assert len(themed) == 1 and themed[0][0] == "dlg"
-    assert themed[0][1] == KEYRING_UNAVAILABLE_TITLE
+    assert themed[0][1] == keyring_unavailable_title()
     assert "Traceback" not in themed[0][2]
     assert var.value is False
 

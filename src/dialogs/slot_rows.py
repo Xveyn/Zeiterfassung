@@ -23,14 +23,17 @@ Sie sind Tk-frei und in `tests/test_entry_dialog.py` getestet.
 import tkinter as tk
 
 from src.category_defaults import resolve_slot_defaults
+from src.i18n import t
 from src.theme import (
     BG, FONT, PAUSE_VALUES, TEXT_MUTED, TIME_VALUES, dark_combo, secondary_button,
 )
 
 # Kategorie am Slot: "" = keine Kategorie. Das Dropdown ist readonly (Anlegen/
 # Bearbeiten von Kategorien läuft über die Einstellungen, nicht per Freitext),
-# darum wird "" als eigener Eintrag "(ohne Kategorie)" gezeigt und beim Speichern
-# wieder auf "" abgebildet. Label konsistent mit report.py/period_picker/share.
+# darum wird "" als eigener Eintrag (`no_category_label()`) gezeigt und beim
+# Speichern wieder auf "" abgebildet. Die Konstante bleibt der verbotene
+# Kategoriename der API (`api_entry_write._NO_CATEGORY_LABEL` spiegelt sie);
+# angezeigt wird der Katalogtext.
 NO_CATEGORY_LABEL = "(ohne Kategorie)"
 
 # Angehängt ans Kategorie-Label, wenn die Slot-Zeiten manuell von den für
@@ -41,18 +44,25 @@ OVERRIDE_MARKER = "*"
 # Letzter Eintrag im Kategorie-Dropdown (nur wenn der Dialog einen Weg zum
 # Anlegen anbietet): kein Wert, sondern eine Aktion — die Auswahl öffnet den
 # Kategorien-Dialog und springt auf den vorherigen Wert zurück.
-NEW_CATEGORY_LABEL = "＋ Neue Kategorie"
+def no_category_label():
+    """Anzeigetext des Eintrags „keine Kategorie“ (Dropdown, Zusammenfassungen)."""
+    return t("kategorie.ohne")
+
+
+def new_category_label():
+    """Anzeigetext der Aktion „neue Kategorie anlegen“ (letzter Dropdown-Eintrag)."""
+    return t("kategorie.neu")
 
 
 def category_choices(categories):
     """Werte fürs readonly-Kategorie-Dropdown: '(ohne Kategorie)' zuerst, dann
     die in den Einstellungen gepflegten Kategorien."""
-    return [NO_CATEGORY_LABEL, *categories]
+    return [no_category_label(), *categories]
 
 
 def category_to_display(value):
     """Gespeicherter Kategoriewert ('' = keine) → Dropdown-Anzeige."""
-    return value if value else NO_CATEGORY_LABEL
+    return value if value else no_category_label()
 
 
 def category_from_display(display):
@@ -60,7 +70,7 @@ def category_from_display(display):
     ein angehängtes Override-Sternchen ('Office*' → 'Office') wird mit
     gestrippt — es ist reine Anzeige (s. slot_category_display) und darf nie
     im persistierten Kategoriewert landen."""
-    if display == NO_CATEGORY_LABEL:
+    if display == no_category_label():
         return ""
     if display.endswith(OVERRIDE_MARKER):
         return display[:-len(OVERRIDE_MARKER)]
@@ -95,7 +105,7 @@ def slot_category_display(kategorie, start, end, pause, category_times, weekday_
     Anzeige: der persistierte Kategoriewert bleibt der Klarname, ohne
     Sternchen (s. category_from_display). Tk-frei, daher ohne UI testbar."""
     if not kategorie:
-        return NO_CATEGORY_LABEL
+        return no_category_label()
     t_start, t_end, t_pause = resolve_slot_defaults(
         category_times, kategorie, weekday_key,
         default_start, default_end, default_pause,
@@ -152,7 +162,7 @@ class SlotRowList:
     def _choices(self):
         choices = category_choices(self._categories)
         if self._on_new_category is not None:
-            choices.append(NEW_CATEGORY_LABEL)
+            choices.append(new_category_label())
         return choices
 
     def add(self, start, end, kategorie, *, pause=None, removable=True,
@@ -195,7 +205,7 @@ class SlotRowList:
 
         def on_pick(_e=None):
             open_new = self._on_new_category
-            if kv.get() != NEW_CATEGORY_LABEL or open_new is None:
+            if kv.get() != new_category_label() or open_new is None:
                 last_value["v"] = kv.get()
                 return
             kv.set(last_value["v"])

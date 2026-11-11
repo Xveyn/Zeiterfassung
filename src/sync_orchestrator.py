@@ -15,7 +15,7 @@ from tkinter import messagebox
 
 from src.drive import DriveAuthError, DriveNetworkError
 from src.oauth_utils import (
-    KEYRING_UNAVAILABLE_HINT, KEYRING_UNAVAILABLE_TITLE, REAUTH_REQUIRED_MSG,
+    keyring_unavailable_hint, keyring_unavailable_title, REAUTH_REQUIRED_MSG,
     is_keyring_unavailable,
 )
 from src.sync_runtime import SYNC_TIMEOUT_MSG, run_push_blocking
@@ -75,7 +75,7 @@ def _friendly_sync_message(error, tb=""):
             True,
         )
     if kind == "keyring":
-        return (KEYRING_UNAVAILABLE_TITLE, KEYRING_UNAVAILABLE_HINT, True)
+        return (keyring_unavailable_title(), keyring_unavailable_hint(), True)
     if kind == "network":
         return (
             "Keine Internetverbindung",

@@ -99,6 +99,25 @@ ALLOWED: dict[str, dict[str, str]] = {
             "Invariante: die Eingabe stammt aus `store.get_all_raw()` (vacations_sync.py), "
             "ein Verstoß endet als Worker-Traceback im nativen Fehlerdialog, nie als Meldung"),
     },
+    "src/oauth_utils.py": {
+        "Kein gültiger Google-Token — Anmeldung erforderlich.": (
+            "Erkennungsmerkmal: `REAUTH_REQUIRED_MSG` wird von drive/gcal geworfen und in "
+            "`sync_orchestrator.classify_sync_error` per `in str(e)` erkannt; angezeigt wird der "
+            "kuratierte Auth-Text dort"),
+        "Der Schlüsselbund des Betriebssystems ist nicht erreichbar — dort liegt die Google-Anmeldung.": (
+            "Erkennungsmerkmal: `KEYRING_UNAVAILABLE_MSG` wird in `TokenKeyringUnavailable` "
+            "gesetzt und in `is_keyring_unavailable` per `in str(e)` verglichen; die Anzeige "
+            "(`mail_task`-Detail) ist `keyring_unavailable_detail()`"),
+    },
+    "src/mail.py": {
+        "expired or revoked": "Google-Fehlertext, nur verglichen (`friendly_token_message`), nie angezeigt",
+    },
+    "src/dialogs/slot_rows.py": {
+        "(ohne Kategorie)": (
+            "Erkennungsmerkmal: `NO_CATEGORY_LABEL` ist der in der API verbotene Kategoriename "
+            "(`api_entry_write._NO_CATEGORY_LABEL` spiegelt ihn, `test_api_entry_write` pinnt die "
+            "Gleichheit); angezeigt wird `no_category_label()`"),
+    },
     "src/gcal.py": {
         "Arbeitszeit (reserviert)": _CALENDAR,
         "Von der Zeiterfassung verwaltete Reservierung.": _CALENDAR,
@@ -119,10 +138,6 @@ ALLOWED: dict[str, dict[str, str]] = {
 # Noch nicht umgestellte Dateien, nach dem Task der Umstellung gruppiert. Jede Umstellung
 # nimmt ihre Dateien heraus; eine Datei hier ohne verbleibende Fundstelle macht den Test rot.
 PENDING: list[str] = [
-    # Task 2
-    "src/oauth_utils.py",
-    "src/mail.py",
-    "src/dialogs/slot_rows.py",
     # Task 3
     "src/theme/messagebox.py",
     "src/update_banner.py",

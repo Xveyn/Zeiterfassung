@@ -7,7 +7,7 @@ ein Result-Dict. Export nutzt sie NICHT (kein Netz-Pfad).
 import traceback
 
 from src.mail import is_offline_error
-from src.oauth_utils import KEYRING_UNAVAILABLE_MSG, TokenKeyringUnavailable
+from src.oauth_utils import TokenKeyringUnavailable, keyring_unavailable_detail
 
 
 def classify_mail_error(e):
@@ -25,7 +25,7 @@ def classify_mail_error(e):
     liest den aktuellen Traceback über traceback.format_exc()."""
     if isinstance(e, TokenKeyringUnavailable):
         return {"ok": False, "kind": "keyring", "error": e, "tb": None,
-                "detail": KEYRING_UNAVAILABLE_MSG}
+                "detail": keyring_unavailable_detail()}
     if isinstance(e, FileNotFoundError):
         return {"ok": False, "kind": "filenotfound", "error": e, "tb": None}
     if is_offline_error(e):

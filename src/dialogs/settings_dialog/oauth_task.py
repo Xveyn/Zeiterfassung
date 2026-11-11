@@ -9,7 +9,7 @@ from tkinter import messagebox
 
 from src.mail import is_offline_error
 from src.oauth_utils import (
-    KEYRING_UNAVAILABLE_HINT, KEYRING_UNAVAILABLE_TITLE, is_keyring_unavailable,
+    keyring_unavailable_hint, keyring_unavailable_title, is_keyring_unavailable,
 )
 from src.theme import themed_showerror
 
@@ -34,7 +34,7 @@ def show_known_google_failure(dialog, error, base_path, action):
     Internetverbindung. `action` nennt,
     was gerade scheiterte („Google Kalender aktivieren")."""
     if is_keyring_unavailable(error):
-        themed_showerror(dialog, KEYRING_UNAVAILABLE_TITLE, KEYRING_UNAVAILABLE_HINT)
+        themed_showerror(dialog, keyring_unavailable_title(), keyring_unavailable_hint())
         return True
     if isinstance(error, FileNotFoundError) and base_path is not None:
         _show_missing_credentials(dialog, base_path, action)

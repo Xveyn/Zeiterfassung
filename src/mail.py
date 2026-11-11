@@ -4,6 +4,7 @@ import os
 import socket
 from collections import namedtuple
 
+from src.i18n import N_, t
 from src.mime_message import build_message
 from src.oauth_utils import TokenKeyringUnavailable, discard_token_for_scope_upgrade
 from src.token_store import load_credentials, save_credentials
@@ -40,11 +41,11 @@ ScopeSummary = namedtuple("ScopeSummary", ["text", "status"])
 _CORE_SCOPES = frozenset({GMAIL_SEND_SCOPE, USERINFO_EMAIL_SCOPE})
 
 SCOPE_LABELS = {
-    GMAIL_SEND_SCOPE: "E-Mail senden",
-    USERINFO_EMAIL_SCOPE: "Eigene E-Mail-Adresse lesen",
-    DRIVE_APPDATA_SCOPE: "Google Drive: App-Datenordner",
-    CALENDAR_EVENTS_SCOPE: "Google Kalender: Termine lesen und schreiben",
-    CALENDAR_LIST_SCOPE: "Google Kalender: Kalenderliste lesen",
+    GMAIL_SEND_SCOPE: N_("berechtigung.gmail_senden"),
+    USERINFO_EMAIL_SCOPE: N_("berechtigung.adresse_lesen"),
+    DRIVE_APPDATA_SCOPE: N_("berechtigung.drive_appdata"),
+    CALENDAR_EVENTS_SCOPE: N_("berechtigung.kalender_termine"),
+    CALENDAR_LIST_SCOPE: N_("berechtigung.kalender_liste"),
 }
 
 # Anzeigereihenfolge: erst der Kern, dann die zuschaltbaren Features.
@@ -85,7 +86,7 @@ def scope_overview(granted, sync_enabled, gcal_enabled):
             status = "unused"
         else:
             status = "missing"
-        entries.append(ScopeStatus(scope, SCOPE_LABELS[scope], status))
+        entries.append(ScopeStatus(scope, t(SCOPE_LABELS[scope]), status))
     return entries, sorted(granted_set - set(_SCOPE_ORDER))
 
 
@@ -110,7 +111,7 @@ def scope_summary(granted, sync_enabled, gcal_enabled):
     entries, _extras = scope_overview(granted, sync_enabled, gcal_enabled)
     needed = [e for e in entries if e.status in ("active", "missing")]
     have = [e for e in needed if e.status == "active"]
-    text = f"{len(have)} von {len(needed)} Berechtigungen"
+    text = t("berechtigung.zusammenfassung", n=len(have), m=len(needed))
     if any(e.status == "missing" for e in needed if e.scope in _CORE_SCOPES):
         return ScopeSummary(text, "core_missing")
     if len(have) < len(needed):
@@ -286,16 +287,13 @@ def refresh_token_if_needed(token_path="token.json", sync_enabled=False,
     creds = load_credentials(token_path, scopes, Credentials)
 
     if creds is None:
-        raise TokenAuthError(
-            "Der Refresh-Token fehlt im Schlüsselbund des Betriebssystems.")
+        raise TokenAuthError(t("meldungen.refresh_token_fehlt"))
 
     if creds.valid:
         return "valid"
 
     if not creds.expired or not creds.refresh_token:
-        raise TokenAuthError(
-            "Token ist ungültig und enthält kein Refresh-Token."
-        )
+        raise TokenAuthError(t("meldungen.token_ungueltig"))
 
     _refresh_and_persist(creds, token_path)
     return "refreshed"
@@ -319,17 +317,12 @@ def friendly_token_message(message):
     text = str(message)
     if "invalid_grant" in text or "expired or revoked" in text:
         return (
-            "Gmail-Anmeldung abgelaufen",
-            "Die Anmeldung bei Gmail ist abgelaufen oder wurde widerrufen. "
-            "Das passiert nach längerer Zeit ohne Nutzung von selbst.\n\n"
-            "Es geht nichts verloren: Beim nächsten Senden fragt die App "
-            "automatisch nach einer neuen Freigabe.",
+            t("meldungen.gmail_abgelaufen_titel"),
+            t("meldungen.gmail_abgelaufen_text"),
         )
     return (
-        "Gmail-Anmeldung erneuern",
-        "Die Gmail-Anmeldung konnte nicht automatisch erneuert werden:\n\n"
-        f"{text}\n\n"
-        "Beim nächsten Senden fragt die App nach einer neuen Freigabe.",
+        t("meldungen.gmail_erneuern_titel"),
+        t("meldungen.gmail_erneuern_text", text=text),
     )
 
 
@@ -364,9 +357,8 @@ def get_gmail_service(credentials_path="credentials.json", token_path="token.jso
     if not creds or not creds.valid:
         if not os.path.exists(credentials_path):
             raise FileNotFoundError(
-                f"credentials.json nicht gefunden unter:\n{credentials_path}\n\n"
-                "Bitte erstelle ein Google Cloud Projekt mit Gmail API "
-                "und lade die OAuth2 Client-ID dort ab."
+                t("meldungen.credentials_fehlen", pfad=credentials_path)
+                + t("meldungen.credentials_gmail_anleitung")
             )
         flow = InstalledAppFlow.from_client_secrets_file(credentials_path, scopes)
         creds = flow.run_local_server(port=0)

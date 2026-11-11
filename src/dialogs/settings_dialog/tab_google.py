@@ -21,7 +21,7 @@ from src.dialogs.settings_dialog.oauth_task import (
 )
 from src.dialogs.settings_dialog.tab_rules import calendar_update, google_updates
 from src.oauth_utils import (
-    KEYRING_UNAVAILABLE_HINT, KEYRING_UNAVAILABLE_TITLE, is_keyring_unavailable,
+    keyring_unavailable_hint, keyring_unavailable_title, is_keyring_unavailable,
 )
 from src.sync_runtime import run_compaction_blocking
 from src.theme import (
@@ -202,8 +202,8 @@ class GoogleTab:
         Catch-all-Dialoge daneben."""
         if not is_keyring_unavailable(error):
             return False
-        themed_showerror(self._dialog, KEYRING_UNAVAILABLE_TITLE,
-                         KEYRING_UNAVAILABLE_HINT)
+        themed_showerror(self._dialog, keyring_unavailable_title(),
+                         keyring_unavailable_hint())
         return True
 
     def _refresh_status(self):

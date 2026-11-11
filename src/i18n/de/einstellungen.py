@@ -2,6 +2,13 @@
 """Bereich „einstellungen“: der Einstellungen-Dialog und seine Reiter."""
 
 TEXTS: dict[str, str] = {
+    # Berechtigungen-Dialog (`mail.scope_overview`/`scope_summary`).
+    "berechtigung.gmail_senden": "E-Mail senden",
+    "berechtigung.adresse_lesen": "Eigene E-Mail-Adresse lesen",
+    "berechtigung.drive_appdata": "Google Drive: App-Datenordner",
+    "berechtigung.kalender_termine": "Google Kalender: Termine lesen und schreiben",
+    "berechtigung.kalender_liste": "Google Kalender: Kalenderliste lesen",
+    "berechtigung.zusammenfassung": "{n} von {m} Berechtigungen",
     "standardzeiten.modus_allgemein": "Allgemein",
     "standardzeiten.modus_tageweise": "Tageweise",
     "erinnerung.verschiebung_keine": "nicht verschieben",

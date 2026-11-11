@@ -4,6 +4,18 @@
 TEXTS: dict[str, str] = {
     # Fehlende OAuth-Client-Datei; der Text reist über `str(e)` in Dialog und Statuszeile.
     "meldungen.credentials_fehlen": "credentials.json nicht gefunden unter:\n{pfad}",
+    # Zusatz der Gmail-Fehlermeldung (Basis ist `meldungen.credentials_fehlen`).
+    "meldungen.credentials_gmail_anleitung": "\n\nBitte erstelle ein Google Cloud Projekt mit Gmail API und lade die OAuth2 Client-ID dort ab.",
+    "meldungen.schluesselbund_titel": "Schlüsselbund nicht erreichbar",
+    "meldungen.schluesselbund_detail": "Der Schlüsselbund des Betriebssystems ist nicht erreichbar — dort liegt die Google-Anmeldung.",
+    "meldungen.schluesselbund_hinweis": "Die Google-Anmeldung liegt im Schlüsselbund des Betriebssystems, und der antwortet gerade nicht (gesperrt oder nicht gestartet).\n\nBitte entsperre ihn und versuche es erneut.",
+    # `TokenAuthError`-Texte (Start-Dialog über `friendly_token_message`).
+    "meldungen.refresh_token_fehlt": "Der Refresh-Token fehlt im Schlüsselbund des Betriebssystems.",
+    "meldungen.token_ungueltig": "Token ist ungültig und enthält kein Refresh-Token.",
+    "meldungen.gmail_abgelaufen_titel": "Gmail-Anmeldung abgelaufen",
+    "meldungen.gmail_abgelaufen_text": "Die Anmeldung bei Gmail ist abgelaufen oder wurde widerrufen. Das passiert nach längerer Zeit ohne Nutzung von selbst.\n\nEs geht nichts verloren: Beim nächsten Senden fragt die App automatisch nach einer neuen Freigabe.",
+    "meldungen.gmail_erneuern_titel": "Gmail-Anmeldung erneuern",
+    "meldungen.gmail_erneuern_text": "Die Gmail-Anmeldung konnte nicht automatisch erneuert werden:\n\n{text}\n\nBeim nächsten Senden fragt die App nach einer neuen Freigabe.",
     # Validierung (`time_utils`): Dialoge zeigen sie, die lokale API gibt sie unverändert zurück.
     "zeit.startzeit_ungueltig": "Startzeit ungültig (Format: HH:MM)",
     "zeit.endzeit_ungueltig": "Endzeit ungültig (Format: HH:MM)",
