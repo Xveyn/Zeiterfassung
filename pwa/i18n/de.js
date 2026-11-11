@@ -432,5 +432,9 @@ export default {
   'verschieben.schritt': '{value} Minuten je Schritt',
   'verschieben.null': '±0 min',
   'verschieben.plus': '+{value} min',
-  'verschieben.minus': '−{value} min'
+  'verschieben.minus': '−{value} min',
+  'vault.fehler.neueres_format': 'Gespeichert in einem neueren Format.',
+  'vault.fehler.schluessel_fehlt': 'Der Schlüssel für die lokalen Daten fehlt.',
+  'vault.fehler.beschaedigt': 'Ein lokaler Datensatz ist beschädigt.',
+  'vault.fehler.transaktion_abgebrochen': 'Transaktion abgebrochen'
 };
