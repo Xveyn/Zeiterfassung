@@ -25,6 +25,7 @@ from src.api_service import (
     ApiStatus, parse_port,
 )
 from src.holidays_de import code_for_state_label
+from src.slot_order import mode_for_label
 from src.mobile_service import (
     DEFAULT_PORT as MOBILE_DEFAULT_PORT, REASON_ADDRESS_GONE, REASON_NO_ADDRESS,
     REASON_INVALID_PORT as MOBILE_INVALID_PORT, REASON_PORT_IN_USE as MOBILE_PORT_IN_USE,
@@ -111,6 +112,7 @@ def work_updates(raw: Mapping[str, Any],
                                   or old["werkstudent_limit_end"]),
         "werkstudent_limit_max_hours": max_hours,
         "workweek_only": bool(raw["workweek_only"]),
+        "slot_order_mode": mode_for_label(raw["slot_order_mode"]),
         "state": code_for_state_label(raw["state"]),
         "show_weekend": bool(raw["show_weekend"]),
     }

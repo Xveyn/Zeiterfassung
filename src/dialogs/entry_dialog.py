@@ -9,7 +9,7 @@ from src.dialogs.slot_rows import (
 )
 from src.holidays_de import get_holidays
 from src.settings import WEEKDAY_KEYS, parse_reminder_minutes
-from src.slot_order import sorted_slots
+from src.slot_order import normalize_mode, sorted_slots
 from src.theme import (
     BG, CELL_BG, FONT, FONT_BOLD, FONT_SMALL,
     STRAY_CLICK_GUARD_S, TEXT, TEXT_MUTED, px,
@@ -210,6 +210,7 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
 
     categories = settings.get("categories") or []
     category_times = settings.get("category_times") or {}
+    slot_order = normalize_mode(settings.get("slot_order_mode"))
     default_start = settings.get(f"default_start_{weekday_key}")
     default_end = settings.get(f"default_end_{weekday_key}")
     default_pause = settings.get("default_pause")
@@ -276,6 +277,7 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
         default_start=default_start, default_end=default_end,
         default_pause=default_pause,
         on_rows_changed=refresh_save_state,
+        movable=slot_order == "custom",
     )
     ist_rows = ist_list.rows  # Liste von {frame, start, end, pause, kategorie}
 
@@ -289,7 +291,7 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
     # Zeit). Gibt es weder Ist-Zeit noch Reservierung, bleibt der Block leer —
     # nur der „+ Slot"-Button erscheint, keine Default-Zeile.
     if entry and entry["slots"]:
-        for s in sorted_slots(entry["slots"]):
+        for s in sorted_slots(entry["slots"], slot_order):
             add_ist_row(s["start"], s["end"], s.get("pause", 0),
                         s.get("kategorie", ""), removable=False)
     elif existing_reservation and existing_reservation["slots"]:
@@ -472,8 +474,9 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
         # Ohne Inhalt deaktiviert; während Cooldown/Speichern geblockt.
         if save_locked["value"]:
             return
-        # Chronologisch gespeichert (#520): ein später angelegter früherer Slot
-        # landet nicht hinter den vorhandenen. Reservierungen bleiben in
+        # Nach dem Modus gespeichert (#520; „Eigene Reihenfolge" = Zeilenreihenfolge):
+        # ein später angelegter früherer Slot landet nicht hinter den
+        # vorhandenen. Reservierungen bleiben in
         # Zeilenreihenfolge — `ReservationStore.save` übernimmt die
         # `gcal_event_id` positionsweise.
         ist_slots = sorted_slots([{
@@ -481,7 +484,7 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
             "end": r["end"].get(),
             "pause": int(r["pause"].get() or 0),
             "kategorie": category_from_display(r["kategorie"].get()),
-        } for r in ist_rows])
+        } for r in ist_rows], slot_order)
         res_slots = [{
             "start": r["start"].get(),
             "end": r["end"].get(),

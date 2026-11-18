@@ -661,3 +661,13 @@ def test_payload_slots_stehen_chronologisch():
     entries = {"2026-07-01": {"slots": [_slot("11:00", "13:00"), _slot("09:00", "11:00")]}}
     slots = _payload(entries=entries)["entries"]["2026-07-01"]["slots"]
     assert [s["start"] for s in slots] == ["09:00", "11:00"]
+
+
+def test_payload_slots_folgen_dem_modus():
+    entries = {"2026-07-01": {"slots": [_slot("09:00", "10:00", kategorie="Zeta"),
+                                        _slot("13:00", "14:00", kategorie="Alpha")]}}
+    def starts(mode):
+        return [s["start"] for s in _payload(entries=entries, slot_order=mode)["entries"]["2026-07-01"]["slots"]]
+    assert starts("chrono") == ["09:00", "13:00"]
+    assert starts("category") == ["13:00", "09:00"]
+    assert starts("custom") == ["09:00", "13:00"]

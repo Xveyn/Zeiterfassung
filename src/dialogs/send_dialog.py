@@ -9,6 +9,7 @@ from src import workweek
 from src.dialogs.period_picker import build_period_picker
 from src.dialogs.send_task import format_result_summary, perform_send
 from src.platform_open import open_folder
+from src.slot_order import normalize_mode
 from src.report import (
     default_pdf_filename, filter_categories, filter_period, generate_report,
 )
@@ -384,6 +385,7 @@ def open_send_dialog(parent, storage, settings, base_path, runner,
                 categories=categories,
                 category_breakdown=category_breakdown,
                 vacation_days=vacation_days,
+                slot_order=normalize_mode(settings.get("slot_order_mode")),
             )
             if html is None:
                 # Sicherheitsnetz — (b) sollte das schon abgefangen haben.

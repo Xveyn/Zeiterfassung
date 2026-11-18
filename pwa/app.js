@@ -602,6 +602,7 @@ class App {
       getDay: (date) => this.store.getDay(date), anchor: this.anchor, today: localIsoDate(new Date()),
       conflictDates: conflicts.map((conflict) => conflict.date), windowDays: meta.window_days, aheadDays: aheadDays(meta.window_ahead),
       getReservation: (date) => this.store.getReservation(date), reservationsEnabled: meta.reservations_enabled,
+      slotOrder: meta.slot_order,
     });
     model.older = olderModel(olderState({
       firstDay: model.days[0].date, today: localIsoDate(new Date()), windowDays: meta.window_days,
@@ -915,7 +916,7 @@ class App {
     const startWith = reservationOn && date > today ? 'reservation' : 'work';
     const dialog = editorDialog({
       title: dayTitle(date),
-      rows: editorRows(day, meta.defaults, weekdayKey(date), reservation),
+      rows: editorRows(day, meta.defaults, weekdayKey(date), reservation, { order: meta.slot_order }),
       categories: meta.categories,
       defaults: meta.defaults,
       weekday: weekdayKey(date),

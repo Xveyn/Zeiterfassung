@@ -409,3 +409,15 @@ def test_zellenzeile_zeigt_den_fruehesten_slot_und_die_restzahl():
     slots = [{"start": "11:00", "end": "13:00"}, {"start": "09:00", "end": "11:00"}]
     assert GridRenderer._cell_time_text(slots) == "09:00-11:00  +1"
     assert GridRenderer._cell_time_text([]) == ""
+
+
+def test_tooltip_und_zelle_folgen_dem_slot_modus():
+    entry = {"slots": [{"start": "09:00", "end": "10:00", "pause": 0, "kategorie": "Zeta"},
+                       {"start": "13:00", "end": "14:00", "pause": 0, "kategorie": "Alpha"}]}
+    by_category = GridRenderer._build_tooltip_text(entry, None, None, slot_order="category")
+    assert by_category.index("Alpha") < by_category.index("Zeta")
+    custom_entry = {"slots": list(reversed(entry["slots"]))}
+    custom = GridRenderer._build_tooltip_text(custom_entry, None, None, slot_order="custom")
+    assert custom.index("13:00") < custom.index("09:00")
+    assert GridRenderer._cell_time_text(entry["slots"], "category") == "13:00-14:00  +1"
+    assert GridRenderer._cell_time_text(custom_entry["slots"], "custom") == "13:00-14:00  +1"

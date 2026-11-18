@@ -85,6 +85,18 @@ def marker_pause(pause_text, in_marker):
     return pause_text
 
 
+def move_item(items, index, delta):
+    """Neue Liste, in der das Element an `index` um `delta` Plätze verschoben ist
+    (Tausch mit dem Nachbarn). Außerhalb der Liste oder über den Rand: unverändert.
+    Tk-frei."""
+    target = index + delta
+    result = list(items)
+    if not (0 <= index < len(result) and 0 <= target < len(result)):
+        return result
+    result[index], result[target] = result[target], result[index]
+    return result
+
+
 def slot_category_display(kategorie, start, end, pause, category_times, weekday_key,
                           default_start, default_end, default_pause):
     """Anzeige-Label fürs Kategorie-Dropdown eines Slots: Kategorie-Name, mit
@@ -123,8 +135,12 @@ class SlotRowList:
     def __init__(self, frame, *, with_pause, categories, category_times,
                  weekday_key, default_start, default_end, default_pause,
                  on_rows_changed, on_value_changed=None, on_new_category=None,
-                 pause_in_marker=True):
+                 pause_in_marker=True, movable=False):
         self.rows = []
+        # movable: ▲/▼ je Zeile (Modus „Eigene Reihenfolge", #520). Verschieben
+        # ändert nur die Reihenfolge der Zeilen, nie ihren Inhalt — gespeicherte
+        # Slots bleiben also unlöschbar, wie `removable` es verlangt.
+        self._movable = movable
         # on_new_category(on_saved): öffnet den Kategorien-Dialog; on_saved
         # wird nach dem Speichern gerufen. None = kein „Neue Kategorie"-Eintrag.
         self._on_new_category = on_new_category
@@ -154,6 +170,18 @@ class SlotRowList:
         if self._on_new_category is not None:
             choices.append(NEW_CATEGORY_LABEL)
         return choices
+
+    def move(self, record, delta):
+        """Verschiebt eine Zeile um `delta` Plätze und baut die Reihenfolge im
+        Frame neu auf; `rows` ist danach die Speicherreihenfolge."""
+        before = list(self.rows)
+        self.rows[:] = move_item(before, before.index(record), delta)
+        if self.rows == before:
+            return
+        for r in self.rows:
+            r["frame"].pack_forget()
+            r["frame"].pack(fill="x", pady=3)
+        self._on_rows_changed()
 
     def add(self, start, end, kategorie, *, pause=None, removable=True,
             parent=None, extra=None):
@@ -314,6 +342,11 @@ class SlotRowList:
         if removable:
             secondary_button(row, "×", remove, padx=8, pady=0).pack(
                 side=tk.LEFT, padx=6)
+        if self._movable:
+            secondary_button(row, "▲", lambda: self.move(record, -1),
+                             padx=6, pady=0).pack(side=tk.LEFT, padx=(6, 0))
+            secondary_button(row, "▼", lambda: self.move(record, 1),
+                             padx=6, pady=0).pack(side=tk.LEFT, padx=(2, 0))
 
         self.rows.append(record)
         self._on_rows_changed()

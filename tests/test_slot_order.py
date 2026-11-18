@@ -57,7 +57,52 @@ def test_gemeinsame_fixture_mit_der_pwa():
     import json
     import pathlib
     path = pathlib.Path(__file__).parent.parent / "pwa" / "test" / "fixtures" / "slot-order-cases.json"
-    cases = json.loads(path.read_text(encoding="utf-8"))["chrono"]
-    assert cases
-    for row in cases:
-        assert [i for i, _ in ordered(row["slots"])] == row["order"], row["name"]
+    cases = json.loads(path.read_text(encoding="utf-8"))
+    assert set(cases) == {"chrono", "category", "custom"}
+    for mode, rows in cases.items():
+        assert rows
+        for row in rows:
+            assert [i for i, _ in ordered(row["slots"], mode)] == row["order"], (mode, row["name"])
+
+
+# --- Modi (#520, PR 2) --------------------------------------------------------
+
+def test_modus_normalisieren():
+    from src.slot_order import DEFAULT_MODE, MODES, normalize_mode
+    assert MODES == ("chrono", "category", "custom")
+    assert DEFAULT_MODE == "chrono"
+    assert normalize_mode("category") == "category"
+    for unbrauchbar in (None, "", "alphabetisch", 3, ["custom"]):
+        assert normalize_mode(unbrauchbar) == "chrono", unbrauchbar
+
+
+def test_kategorie_alphabetisch_ohne_gross_klein_und_mit_umlautfaltung():
+    slots = [_slot("09:00", "10:00", "Zeta"), _slot("10:00", "11:00", "ärger"),
+             _slot("11:00", "12:00", "Alpha"), _slot("12:00", "13:00", "alpha")]
+    # ä sortiert wie a: „ärger“ steht zwischen „Alpha“/„alpha“ und „Zeta“, gleiche Namen nach Zeit.
+    assert [i for i, _ in ordered(slots, "category")] == [2, 3, 1, 0]
+
+
+def test_kategorie_ohne_name_zuletzt_dann_nach_zeit():
+    slots = [_slot("08:00", "09:00", ""), _slot("13:00", "14:00", "B"), _slot("09:00", "10:00", "B")]
+    assert [i for i, _ in ordered(slots, "category")] == [2, 1, 0]
+
+
+def test_eigene_reihenfolge_ist_die_listenreihenfolge():
+    slots = [_slot("11:00", "12:00", "B"), _slot("09:00", "10:00", "A")]
+    assert [i for i, _ in ordered(slots, "custom")] == [0, 1]
+    assert sorted_slots(slots, "custom") == slots
+
+
+def test_unbekannter_modus_sortiert_chronologisch():
+    slots = [_slot("11:00", "12:00"), _slot("09:00", "10:00")]
+    assert [i for i, _ in ordered(slots, "quatsch")] == [1, 0]
+
+
+def test_beschriftungen_der_modi_hin_und_zurueck():
+    from src.slot_order import MODE_LABELS, mode_for_label
+    assert [MODE_LABELS[m] for m in ("chrono", "category", "custom")] == [
+        "Nach Uhrzeit", "Nach Kategorie", "Eigene Reihenfolge"]
+    for mode, label in MODE_LABELS.items():
+        assert mode_for_label(label) == mode
+    assert mode_for_label("irgendwas") == "chrono"

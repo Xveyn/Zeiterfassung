@@ -183,7 +183,7 @@ def _apply_placeholders(text: str, label: str, total: float) -> str:
 # HTML einschleusen (Audit M7). Deshalb werden start/end defensiv _esc()-t,
 # genau wie `kategorie` (freier Nutzertext).
 def _week_block(iso_year: int, iso_week: int, week_entries: WeekEntries,
-                style: dict[str, Any]) -> tuple[str, int]:
+                style: dict[str, Any], slot_order: str = "chrono") -> tuple[str, int]:
     """Render einen Wochen-Block: KW-Header, je Slot eine Zeile, Tages-Subtotal
     bei >1 Slot, Wochensumme. Returns (rows_html, week_minutes).
 
@@ -206,7 +206,7 @@ def _week_block(iso_year: int, iso_week: int, week_entries: WeekEntries,
         day_fmt = format_date(dt)
         row_bg = s["row_a"] if idx % 2 == 0 else s["row_b"]
         td = s["td_base"]
-        slots = sorted_slots(entry["slots"])
+        slots = sorted_slots(entry["slots"], slot_order)
         day_minutes = 0
         for sidx, slot in enumerate(slots):
             hours = _slot_hours(slot)
@@ -242,13 +242,14 @@ def _week_block(iso_year: int, iso_week: int, week_entries: WeekEntries,
     return "\n".join(rows), week_minutes
 
 
-def _build_table(groups: WeekGroups, style: dict[str, Any]) -> tuple[str, int]:
+def _build_table(groups: WeekGroups, style: dict[str, Any],
+                 slot_order: str = "chrono") -> tuple[str, int]:
     """Bauen die komplette Stundentabelle. Returns (table_html, total_minutes)."""
     s = style
     week_blocks = []
     total_minutes = 0
     for (iso_year, iso_week), week_entries in groups.items():
-        block_html, week_minutes = _week_block(iso_year, iso_week, week_entries, s)
+        block_html, week_minutes = _week_block(iso_year, iso_week, week_entries, s, slot_order)
         week_blocks.append(block_html)
         total_minutes += week_minutes
 
@@ -465,7 +466,8 @@ def generate_report(date_from: datetime.date, date_to: datetime.date,
                     content: str = "", closing: str = "",
                     categories: Collection[str] | None = None,
                     category_breakdown: bool = True,
-                    vacation_days: dict[str, int] | None = None
+                    vacation_days: dict[str, int] | None = None,
+                    slot_order: str = "chrono"
                     ) -> tuple[str | None, float]:
     """Generate an HTML email report with greeting, content, table, category
     summary, and closing.
@@ -499,7 +501,7 @@ def generate_report(date_from: datetime.date, date_to: datetime.date,
     label = f"{format_date(date_from)} – {format_date(date_to)}"
     if range_entries:
         groups = _group_by_week(range_entries)
-        table, total_minutes = _build_table(groups, HTML_STYLE)
+        table, total_minutes = _build_table(groups, HTML_STYLE, slot_order)
         category_summary = (
             _build_category_summary(range_entries, HTML_STYLE)
             if category_breakdown else ""
@@ -540,7 +542,8 @@ def generate_pdf(date_from: datetime.date, date_to: datetime.date,
                  all_entries: dict[str, Any], name: str = "",
                  categories: Collection[str] | None = None,
                  category_breakdown: bool = True,
-                 vacation_days: dict[str, int] | None = None) -> bytes | None:
+                 vacation_days: dict[str, int] | None = None,
+                 slot_order: str = "chrono") -> bytes | None:
     """Generate a PDF of the time tracking table. Returns PDF bytes, or None if no entries.
 
     category_breakdown: True = "Summe je Kategorie"-Tabelle anhängen (Default);
@@ -571,7 +574,7 @@ def generate_pdf(date_from: datetime.date, date_to: datetime.date,
     label = f"{format_date(date_from)} – {format_date(date_to)}"
     if range_entries:
         groups = _group_by_week(range_entries)
-        table, total_minutes = _build_table(groups, PDF_STYLE)
+        table, total_minutes = _build_table(groups, PDF_STYLE, slot_order)
         category_summary = (
             _build_category_summary(range_entries, PDF_STYLE)
             if category_breakdown else ""

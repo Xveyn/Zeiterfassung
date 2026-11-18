@@ -57,3 +57,13 @@ def test_delete_options_ein_slot_ist_der_ganze_typ():
     assert _delete_options([{"start": "09:00"}], "entry", "Arbeitszeit", str) == [
         ("entry:all", "Arbeitszeit")]
     assert _delete_options([], "entry", "Arbeitszeit", str) == []
+
+
+def test_delete_options_folgen_dem_slot_modus_mit_gespeichertem_index():
+    from src.ui import _delete_options
+    slots = [{"start": "09:00", "kategorie": "Zeta"}, {"start": "13:00", "kategorie": "Alpha"}]
+    fmt = lambda s: s["kategorie"]  # noqa: E731
+    assert _delete_options(slots, "entry", "A", fmt, "category") == [
+        ("entry:1", "A  Alpha"), ("entry:0", "A  Zeta")]
+    assert _delete_options(slots[::-1], "entry", "A", fmt, "custom") == [
+        ("entry:0", "A  Alpha"), ("entry:1", "A  Zeta")]

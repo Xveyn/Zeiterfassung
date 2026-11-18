@@ -223,3 +223,9 @@ def test_slots_werden_nach_zeit_statt_nach_position_verglichen():
     own = cards[0]
     assert [s.start.text for s in own.slots] == ["09:00", "11:00"]
     assert not any(f.differs for s in own.slots for f in (s.start, s.end, s.category, s.pause))
+
+
+def test_slot_order_setting_is_shown_with_its_label():
+    assert cv.SETTING_LABELS["slot_order_mode"] == "Reihenfolge der Slots"
+    assert cv.format_setting_value("slot_order_mode", "category") == "Nach Kategorie"
+    assert cv.format_setting_value("slot_order_mode", "chrono") == "Nach Uhrzeit"

@@ -72,3 +72,17 @@ test('the response of a desktop before the reservation pause is still understood
     for (const slot of day.slots) assert.equal(slot.pause, 0);
   }
 });
+
+test('the response of a desktop before the slot order (#520) is still understood and sorts chronologically', () => {
+  const doc = frozen('sync-response-pre-slot-order.json');
+  assert.ok(!('slot_order' in doc));
+  assert.equal(parseSyncResponse(doc).slot_order, 'chrono');
+});
+
+test('the slot order of the response is read, anything unknown counts as chronological', () => {
+  const doc = frozen('sync-response-pre-slot-order.json');
+  for (const [raw, expected] of [['category', 'category'], ['custom', 'custom'], ['chrono', 'chrono'],
+    ['alphabetisch', 'chrono'], [3, 'chrono'], [null, 'chrono']]) {
+    assert.equal(parseSyncResponse({ ...doc, slot_order: raw }).slot_order, expected, String(raw));
+  }
+});

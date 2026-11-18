@@ -23,7 +23,7 @@ ES-Module flach im Ordner:
   Fehlt `defaults` in der Antwort (älterer Desktop), bleibt der Editor leer.
   Überschrieben werden nur Felder, die noch auf dem zuletzt vorbelegten Wert
   stehen, gespeicherte Slots nie.
-- `slot-order.js` — Reihenfolge der Slots eines Tages (#520), Gegenstück zu `src/slot_order.py`: `sortedSlots` sortiert chronologisch (Start, Ende, Kategorie, Position). Wochenliste, Tages-Editor und Konfliktversionen zeigen so, `Store.saveDay` speichert so; Reservierungen bleiben in Zeilenreihenfolge. Gleichlauf: `test/fixtures/slot-order-cases.json` (Python und JavaScript lesen dieselbe Datei).
+- `slot-order.js` — Reihenfolge der Slots eines Tages (#520), Gegenstück zu `src/slot_order.py`: `sortedSlots(slots, mode)` kennt `chrono` (Start, Ende, Kategorie, Position), `category` (Kategoriename gefaltet, ohne Kategorie zuletzt) und `custom` (gespeicherte Reihenfolge); den Modus liefert der Desktop als `slot_order` der Sync-Antwort (Meta `slot_order`, Feature-Erkennung nach Regel 2: fehlt das Feld, gilt `chrono`, eingefroren als `compat/sync-response-pre-slot-order.json`). Wochenliste und Tages-Editor zeigen nach dem Modus, `Store.saveDay` speichert so (`custom`: wie eingegeben); Konfliktversionen sind immer chronologisch. Die PWA ordnet nicht selbst um (das Handy liest den Modus nur, ein Schreiben ist ein eigener Schritt: der Desktop lehnt unbekannte Settings-Schlüssel mit 422 ab); Reservierungen bleiben in Zeilenreihenfolge. Gleichlauf: `test/fixtures/slot-order-cases.json` (Python und JavaScript lesen dieselbe Datei).
 - `reservations.js` — Reservierungen (zukünftige Soll-Zeiten) ohne DOM: wann der
   Block erscheint (`reservationBlockVisible`, Gleichlauf mit
   `reservation_block_visible` über `test/fixtures/reservation-visibility-cases.json`),
@@ -189,7 +189,7 @@ Desktop) ist seltener, kommt aber vor. Sieben Regeln:
    einem echten Release. Dazu kommt der Stand vor dem Lesefenster
    (`compat/*-pre-250.json`, ohne `window_days`/`window_max_days`) und der Stand vor den
    Reservierungen (`compat/*-pre-reservations.json`, ohne `reservations`) der Stand vor den
-   Einstellungen (`compat/*-pre-settings.json`, ohne `settings`) und der Stand vor dem Fenster nach
+   Einstellungen (`compat/*-pre-settings.json`, ohne `settings`) und der Stand vor der Slot-Reihenfolge (`compat/sync-response-pre-slot-order.json`, ohne `slot_order`) und der Stand vor dem Fenster nach
    vorn (`compat/sync-response-pre-ahead.json`, ohne `window_ahead_days`) und der Stand vor der Pause an
    Reservierungen (`compat/*-pre-pause.json`, ohne `reservation_pause` und ohne `pause` an Reservierungs-Slots;
    die PWA muss die Antwort verstehen, `test/compat.test.js`; dass ohne Flag keine `pause` auf den Draht geht, prüfen

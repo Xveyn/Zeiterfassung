@@ -342,3 +342,26 @@ class TestMarkerPauseWiring:
 
     def test_ist_row_pause_equal_not_marked(self):
         assert self._display("30", True) == "Office"
+
+
+# --- Zeilen verschieben (#520, eigene Reihenfolge) -------------------------------
+
+def test_move_item_tauscht_mit_dem_nachbarn():
+    from src.dialogs.slot_rows import move_item
+    assert move_item(["a", "b", "c"], 1, -1) == ["b", "a", "c"]
+    assert move_item(["a", "b", "c"], 1, 1) == ["a", "c", "b"]
+
+
+def test_move_item_ueber_den_rand_aendert_nichts():
+    from src.dialogs.slot_rows import move_item
+    assert move_item(["a", "b"], 0, -1) == ["a", "b"]
+    assert move_item(["a", "b"], 1, 1) == ["a", "b"]
+    assert move_item(["a", "b"], 5, -1) == ["a", "b"]
+    assert move_item([], 0, 1) == []
+
+
+def test_move_item_veraendert_die_eingabe_nicht():
+    from src.dialogs.slot_rows import move_item
+    items = ["a", "b"]
+    move_item(items, 0, 1)
+    assert items == ["a", "b"]

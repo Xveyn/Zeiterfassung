@@ -924,3 +924,8 @@ def test_mobile_push_keys_are_device_local():
     for key in ("mobile_push_enabled", "mobile_push_reservation", "mobile_push_send",
                 "mobile_push_suppress_toast"):
         assert key not in SYNCED_SETTING_KEYS
+
+
+def test_slot_order_mode_ist_synchronisiert_und_standardmaessig_chronologisch(tmp_path):
+    assert "slot_order_mode" in SYNCED_SETTING_KEYS
+    assert Settings(str(tmp_path / "s.json")).get("slot_order_mode") == "chrono"

@@ -8,6 +8,7 @@
 //
 // Die Fehlerarten stehen in `test/fixtures/errors.json`; `tests/test_mobile_contract.py`
 // verlangt dort jedes (Status, Code)-Paar, das der Server senden kann.
+import { normalizeSlotOrder } from './slot-order.js';
 import { CryptoFailure, b64d, deviceKeys, isEnvelope, openEnvelope, pairKeys, seal } from './crypto.js';
 import { parseDefaults, parseDesktopInfo } from './defaults.js';
 import { isIsoDate, localIsoDate, utcStamp } from './minutes.js';
@@ -138,6 +139,7 @@ export function parseSyncResponse(raw) {
     defaults: parseDefaults(raw.defaults), desktop: parseDesktopInfo(raw.desktop),
     reservations: parseReservations(raw.reservations), reservation_pause: raw.reservation_pause === true,
     unpair: raw.unpair === true,
+    slot_order: normalizeSlotOrder(raw.slot_order),      // fehlt bei älterem Desktop: chronologisch (#520)
     reminders: parseReminders(raw.reminders),
     writable_settings: Array.isArray(raw.writable_settings) ? raw.writable_settings.filter((key) => typeof key === 'string') : [],
   };

@@ -39,6 +39,7 @@ SYNCED_SETTING_KEYS = (
     "werkstudent_limit_end", "werkstudent_limit_max_hours",
     "pause_warning_enabled",
     "workweek_only",
+    "slot_order_mode",
 )
 
 DEFAULTS = {
@@ -113,6 +114,9 @@ DEFAULTS = {
     "default_times_mode": "",
     "show_weekend": True,
     "workweek_only": False,
+    # Reihenfolge der Slots eines Tages: "chrono", "category" oder "custom"
+    # (src/slot_order.py). Synchronisiert, damit Berichte überall gleich aussehen.
+    "slot_order_mode": "chrono",
     "always_on_top": False,
     # Linux: bei Monitorwechsel mit anderer Skalierung ohne Rückfrage neu
     # starten, sobald nichts offen ist (Xveyn#201). Gerätelokal.

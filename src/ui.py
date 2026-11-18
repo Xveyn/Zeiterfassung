@@ -30,7 +30,7 @@ from src.weekly_limit import format_limit_warnings
 from src.reservations import reservations_active
 from src.storage import repair_notice_text, repair_toast_text
 from src.grid_renderer import GridRenderer
-from src.slot_order import ordered
+from src.slot_order import normalize_mode, ordered
 from src.paths import get_resource_path, relaunch_command, relaunch_env
 from src.mail import friendly_token_message
 from src import dpi, keyring_store, removal, secret_migration
@@ -75,7 +75,7 @@ def _delete_action(slots, selected, prefix):
     return "save", keep
 
 
-def _delete_options(slots, prefix, label, fmt):
+def _delete_options(slots, prefix, label, fmt, slot_order="chrono"):
     """Löschbare Einheiten eines Typs: ein Slot = der Typ als Ganzes, sonst je
     Slot eine Zeile. Angezeigt wird chronologisch (#520), der Schlüssel trägt
     aber den Index in der **gespeicherten** Liste — darauf rechnet
@@ -84,7 +84,7 @@ def _delete_options(slots, prefix, label, fmt):
         return []
     if len(slots) == 1:
         return [(f"{prefix}:all", label)]
-    return [(f"{prefix}:{i}", f"{label}  {fmt(s)}") for i, s in ordered(slots)]
+    return [(f"{prefix}:{i}", f"{label}  {fmt(s)}") for i, s in ordered(slots, slot_order)]
 
 
 class App:
@@ -936,11 +936,12 @@ class App:
 
         # Löschbare Einheiten: bei genau einem Slot der Typ als Ganzes, bei
         # mehreren je Slot eine Checkbox.
+        slot_order = normalize_mode(self.settings.get("slot_order_mode"))
         options = _delete_options(entry_slots, "entry", "Arbeitszeit",
-                                  GridRenderer._fmt_slot_line)
+                                  GridRenderer._fmt_slot_line, slot_order)
         options += _delete_options(
             res_slots, "reservation", "Reservierung",
-            lambda s: GridRenderer._fmt_slot_line(s, with_pause=True))
+            lambda s: GridRenderer._fmt_slot_line(s, with_pause=True), slot_order)
         if vacation is not None:
             # Gelöscht wird IMMER die ganze Periode. Einzelne Tage aus der
             # Mitte herauszubrechen würde den Zeitraum zerreißen und die
