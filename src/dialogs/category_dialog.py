@@ -237,7 +237,7 @@ def open_category_dialog(parent, settings, on_change=None):
             std_row, "Pro Tag ▶", _toggle_daygrid, padx=8, pady=0)
         toggle_holder["btn"].pack(side=tk.LEFT, padx=2)
 
-    save_holder = {"btn": None, "baseline": None}
+    save_holder = {}  # "btn" (Speichern-Knopf) und "baseline", sobald sie existieren
 
     def read_rows():
         return [{
@@ -254,7 +254,7 @@ def open_category_dialog(parent, settings, on_change=None):
 
     def update_save_state(*_a):
         """„Speichern" ist erst aktiv, wenn sich etwas ändern würde."""
-        btn = save_holder["btn"]
+        btn = save_holder.get("btn")
         if btn is not None and btn.winfo_exists():
             set_primary_button_enabled(
                 btn, rows_changed(read_rows(), save_holder["baseline"]))
