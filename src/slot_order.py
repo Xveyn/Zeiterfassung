@@ -45,8 +45,10 @@ def _text(value: Any) -> str | None:
 
 def fold_name(name: str) -> str:
     """Kategoriename ohne Groß-/Kleinschreibung, ä/ö/ü wie a/o/u, ß wie ss.
-    Gleiche Regel in `pwa/slot-order.js`."""
-    return name.casefold().translate(_FOLD)
+    Gleiche Regel in `pwa/slot-order.js`: bewusst `lower()` statt `casefold()` —
+    `toLowerCase()` in JS folgt demselben Unicode-Lowercasing (samt Schluss-Sigma),
+    `casefold` faltet darüber hinaus (ſ, µ, Ligaturen) und liefe auseinander."""
+    return name.lower().replace("ß", "ss").translate(_FOLD)
 
 
 def _key(mode: str, index: int, slot: Any) -> tuple[Any, ...]:

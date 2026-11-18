@@ -77,7 +77,7 @@ def _delete_action(slots, selected, prefix):
 
 def _delete_options(slots, prefix, label, fmt, slot_order="chrono"):
     """Löschbare Einheiten eines Typs: ein Slot = der Typ als Ganzes, sonst je
-    Slot eine Zeile. Angezeigt wird chronologisch (#520), der Schlüssel trägt
+    Slot eine Zeile. Angezeigt wird im eingestellten Slot-Modus (#520), der Schlüssel trägt
     aber den Index in der **gespeicherten** Liste — darauf rechnet
     `_delete_action`."""
     if not slots:

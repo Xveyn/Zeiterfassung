@@ -31,6 +31,11 @@
       {"start": "09:00", "end": "10:00", "kategorie": "Straße"},
       {"start": "10:00", "end": "11:00", "kategorie": "Strasse"},
       {"start": "11:00", "end": "12:00", "kategorie": "Stran"}], "order": [2, 0, 1]},
+    {"name": "Schluss-Sigma und ſ falten in Python und JS gleich (lower, nicht casefold)", "slots": [
+      {"start": "08:00", "end": "09:00", "kategorie": "ΟΔΟΣ"},
+      {"start": "09:00", "end": "10:00", "kategorie": "οδος"},
+      {"start": "10:00", "end": "11:00", "kategorie": "ſ"},
+      {"start": "11:00", "end": "12:00", "kategorie": "s"}], "order": [3, 2, 0, 1]},
     {"name": "ohne Kategorie zuletzt, gleiche Kategorie nach Zeit", "slots": [
       {"start": "08:00", "end": "09:00", "kategorie": ""},
       {"start": "13:00", "end": "14:00", "kategorie": "B"},
