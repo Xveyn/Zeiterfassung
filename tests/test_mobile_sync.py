@@ -194,7 +194,7 @@ def test_the_response_carries_the_protocol_fields_and_no_token():
         "window_days": 90, "window_ahead_days": 14, "window_max_days": 365, "entries": {},
         "conflicts": [], "categories": ["Projekt"],
         "defaults": DEFAULTS, "desktop": DESKTOP,
-        "writable_settings": ["categories", "category_times"], "unpair": True,
+        "writable_settings": ["categories", "category_times", "slot_order_mode"], "unpair": True,
         "slot_order": "chrono"}
 
 
@@ -767,7 +767,7 @@ def run_settings(env, settings, *, last_pull_at="", **over):
 
 def test_the_response_names_the_settings_the_phone_may_write(env):
     response = run_settings(env, {})
-    assert response["writable_settings"] == ["categories", "category_times"]
+    assert response["writable_settings"] == ["categories", "category_times", "slot_order_mode"]
 
 
 def test_settings_are_parsed_next_to_the_entries():
@@ -934,3 +934,19 @@ def test_the_response_carries_the_configured_slot_order(env):
     assert run(env, {})["slot_order"] == "category"
     env.settings.set("slot_order_mode", "kaputt")          # Fremdwert aus dem Sync: gilt als chrono
     assert run(env, {})["slot_order"] == "chrono"
+
+
+def test_a_slot_order_from_the_phone_is_applied_and_named_in_the_response(env):
+    desktop_setting(env, "slot_order_mode", "chrono", "2026-10-01T10:00:00Z")
+
+    response = run_settings(env, {"slot_order_mode": setting("custom")}, last_pull_at="2026-10-05T00:00:00Z")
+
+    assert env.settings.get("slot_order_mode") == "custom"
+    assert response["slot_order"] == "custom"
+
+
+def test_an_invalid_slot_order_is_422_invalid_entry_and_changes_nothing(env):
+    error = rejected(body({}, settings={"slot_order_mode": setting("alphabetisch")}))
+    assert (error.status, error.code) == (422, "invalid_entry")
+    assert "slot_order_mode" in error.message
+    assert env.settings.get("slot_order_mode") == "chrono"

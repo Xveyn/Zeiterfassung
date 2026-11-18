@@ -127,7 +127,7 @@ def test_the_request_example_is_accepted_by_the_server_parser():
 
 def test_the_response_example_lists_the_writable_settings():
     example = load("sync-response.json")
-    assert example["writable_settings"] == ["categories", "category_times"]
+    assert example["writable_settings"] == ["categories", "category_times", "slot_order_mode"]
 
 
 def test_the_response_example_has_the_shape_the_server_really_sends(tmp_path):

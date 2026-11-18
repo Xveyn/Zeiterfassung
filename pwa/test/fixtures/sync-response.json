@@ -112,7 +112,7 @@
     "version": "1.24.0",
     "platform": "Linux"
   },
-  "writable_settings": ["categories", "category_times"],
+  "writable_settings": ["categories", "category_times", "slot_order_mode"],
   "reservation_pause": true,
   "unpair": true,
   "slot_order": "chrono",

@@ -17,8 +17,9 @@ from collections.abc import Callable, Iterable, Mapping
 from typing import Any
 
 from src.settings import WEEKDAY_KEYS
+from src.slot_order import MODES
 
-SETTING_KEYS = ("categories", "category_times")
+SETTING_KEYS = ("categories", "category_times", "slot_order_mode")
 MAX_CATEGORIES = 100
 MAX_CATEGORY_NAME = 100
 MAX_DEFAULT_PAUSE = 24 * 60
@@ -89,6 +90,13 @@ def _name(value: object, where: str) -> str:
     if any(unicodedata.category(ch) in ("Cc", "Cs") for ch in name):
         raise SettingsError(f"{where}: Namen dürfen keine Steuerzeichen oder ungültigen Unicode-Zeichen enthalten.")
     return name
+
+
+def _parse_slot_order(value: object) -> str:
+    """`slot_order_mode`: genau einer der Modi aus `slot_order.MODES`."""
+    if not isinstance(value, str) or value not in MODES:
+        raise SettingsError(f"Einstellung slot_order_mode: erwartet wird {', '.join(MODES)}.")
+    return value
 
 
 def _parse_categories(value: object) -> list[str]:
@@ -196,7 +204,13 @@ def parse_settings(raw: object, *, now_dt: datetime.datetime,
             raise SettingsError(f"Einstellung {key}: modified_at muss YYYY-MM-DDTHH:MM:SSZ sein.")
         if modified - now_dt > skew_limit:
             raise SettingsError(f"Einstellung {key}: modified_at liegt in der Zukunft.")
-        value = _parse_categories(payload["value"]) if key == "categories" else _parse_category_times(payload["value"])
+        value: Any
+        if key == "categories":
+            value = _parse_categories(payload["value"])
+        elif key == "slot_order_mode":
+            value = _parse_slot_order(payload["value"])
+        else:
+            value = _parse_category_times(payload["value"])
         out[key] = {"value": value, "modified_at": str(payload["modified_at"])}
     if "categories" in out and "category_times" in out:
         check_times_names(out["category_times"]["value"], out["categories"]["value"])

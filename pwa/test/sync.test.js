@@ -1027,7 +1027,7 @@ test('a work-day 422 still marks the work day', async () => {
 // --- Einstellungen ----------------------------------------------------------------------------------
 
 test('the response lists the writable settings; a response without the field gives an empty list', () => {
-  assert.deepEqual(parseSyncResponse(fixture('sync-response.json')).writable_settings, ['categories', 'category_times']);
+  assert.deepEqual(parseSyncResponse(fixture('sync-response.json')).writable_settings, ['categories', 'category_times', 'slot_order_mode']);
   assert.deepEqual(parseSyncResponse(fixture('compat/sync-response-pre-settings.json')).writable_settings, []);
   assert.deepEqual(parseSyncResponse({ ...fixture('sync-response.json'), writable_settings: ['x', 5] }).writable_settings, ['x']);
 });

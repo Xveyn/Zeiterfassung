@@ -154,3 +154,28 @@ def test_category_times_keys_that_collide_after_trimming_are_rejected():
 
 def test_a_whitespace_only_category_times_key_is_rejected():
     bad({"category_times": block({"   ": {"pause": 5}})})
+
+
+# --- Reihenfolge der Slots (#520) ------------------------------------------------
+
+def test_the_slot_order_may_be_written_by_the_phone():
+    assert "slot_order_mode" in ms.SETTING_KEYS
+    out = parse({"slot_order_mode": block("category")})
+    assert out == {"slot_order_mode": {"value": "category", "modified_at": STAMP}}
+
+
+@pytest.mark.parametrize("mode", ["chrono", "category", "custom"])
+def test_every_slot_order_mode_is_accepted(mode):
+    assert parse({"slot_order_mode": block(mode)})["slot_order_mode"]["value"] == mode
+
+
+@pytest.mark.parametrize("value", ["alphabetisch", "Chrono", "", None, 3, True, ["custom"], {"mode": "custom"}])
+def test_anything_but_the_three_modes_is_rejected_and_names_the_key(value):
+    message = bad({"slot_order_mode": block(value)})
+    assert "slot_order_mode" in message
+    assert "chrono" in message and "category" in message and "custom" in message
+
+
+def test_the_slot_order_travels_next_to_the_categories():
+    out = parse({"categories": block(["A"]), "slot_order_mode": block("custom")})
+    assert set(out) == {"categories", "slot_order_mode"}
