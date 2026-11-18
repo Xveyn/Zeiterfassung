@@ -435,8 +435,8 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
   Die PWA sendet und liest `reservations` seit PR 3 (`pwa/CLAUDE.md`, „Reservierungen“).
   `SyncReport.reservations_changed` löst nach Freigabe aller Sperren `MobileContext.on_reservations_change` aus (`App`
   stößt den Kalender-Abgleich an).
-  **Einstellungen reisen additiv mit** (`settings`, `PROTOCOL` bleibt 2): erlaubt sind nur `categories` und
-  `category_times` (je `{value, modified_at}`), jeder andere Schlüssel ist `422 invalid_entry` und lehnt die ganze
+  **Einstellungen reisen additiv mit** (`settings`, `PROTOCOL` bleibt 2): erlaubt sind nur `categories`,
+  `category_times` und `slot_order_mode` (der Modus der Slot-Reihenfolge, #520: `chrono`, `category` oder `custom`; je `{value, modified_at}`), jeder andere Schlüssel ist `422 invalid_entry` und lehnt die ganze
   Anfrage ab. Geprüft wird als Fremddaten in `mobile_settings.parse_settings` (Grenzen s. dort); `modified_at` gilt
   wie bei den Einträgen (höchstens 15 Minuten in der Zukunft). Gemergt wird über `sync.merge`, wie zwischen zwei
   Desktops: `_phone_doc` setzt `settings` mit der Geräte-ID aus dem Token und hebt die Stempel wie die der Tage auf
