@@ -1,12 +1,12 @@
 # pyright: reportOptionalMemberAccess=true
 """Reihenfolge der Slots eines Tages (#520).
 
-Pure Logik, Tk-frei. Gespeichert wird die Liste in der Reihenfolge, in der sie
-kommt; sortiert wird erst bei Anzeige und Ausgabe. Die Position im Speicher ist
-an anderer Stelle bedeutsam (bei Reservierungen hängen `gcal_event_id` und
-`send_reminder_minutes` positionsweise am Slot), deshalb liefert `ordered` den
-ursprünglichen Index mit: Löschen-Schlüssel (`entry:<index>`) beziehen sich auf
-die gespeicherte Liste, nicht auf die angezeigte.
+Pure Logik, Tk-frei. Ist-Zeiten werden bei Anzeige, Ausgabe und beim Speichern
+chronologisch sortiert; Reservierungen nur bei Anzeige und Ausgabe, im Speicher
+und im Editor bleiben sie in Listenreihenfolge (`gcal_event_id` und
+`send_reminder_minutes` hängen positionsweise am Slot). `ordered` liefert deshalb
+den Index der gespeicherten Liste mit: Löschen-Schlüssel (`entry:<index>`)
+beziehen sich auf sie, nicht auf die angezeigte Reihenfolge.
 """
 
 from __future__ import annotations
@@ -22,15 +22,13 @@ def _key(index: int, slot: Any) -> tuple[bool, str, str, str, int]:
     """Sortierschlüssel `chrono`: Start, Ende, Kategorie, Listenposition.
 
     `HH:MM` ist validiert, der Textvergleich entspricht dem Zeitvergleich. Ein
-    Slot ohne lesbare Startzeit kommt ans Ende — Sortieren darf nie Daten
+    Slot ohne lesbare Startzeit kommt ans Ende, in Listenreihenfolge — Sortieren darf nie Daten
     verschlucken oder werfen, die es nicht sicher zuordnen kann.
     """
-    if not isinstance(slot, dict):
+    start = _text(slot.get("start")) if isinstance(slot, dict) else None
+    if start is None:
         return (True, "", "", "", index)
-    start = _text(slot.get("start"))
-    end = _text(slot.get("end")) or ""
-    kategorie = _text(slot.get("kategorie")) or ""
-    return (start is None, start or "", end, kategorie, index)
+    return (False, start, _text(slot.get("end")) or "", _text(slot.get("kategorie")) or "", index)
 
 
 def ordered(slots: list[Any]) -> list[tuple[int, Any]]:

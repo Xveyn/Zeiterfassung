@@ -233,20 +233,21 @@ function suggestedRow(slots, defaults, weekday) {
 
 /** Zeilen des Ist-Zeit-Reiters. Ohne gespeicherte Ist-Zeit schlägt eine vorhandene Reservierung
  *  (`reservation`, nur wenn der Tag sie zeigt) die Zeile vor, sonst gilt die Standardzeile. */
-export function editorRows(day, defaults = null, weekday = '', reservation = null) {
+export function editorRows(day, defaults = null, weekday = '', reservation = null, { sort = true } = {}) {
   if (!day || day.deleted || day.slots.length === 0) {
     const planned = reservation && !reservation.deleted && reservation.slots.length > 0;
     return [planned ? suggestedRow(reservation.slots, defaults, weekday) : freshRow(defaults, weekday)];
   }
-  return sortedSlots(day.slots).map((slot) => ({
+  return (sort ? sortedSlots(day.slots) : day.slots).map((slot) => ({
     start: slot.start, end: slot.end, pause: String(slot.pause ?? 0), kategorie: slot.kategorie ?? '',
   }));
 }
 
-/** Zeilen der Reservierung: wie `editorRows`. Die Standardpause belegt eine neue Zeile nur mit dem Flag
+/** Zeilen der Reservierung: wie `editorRows`, aber in gespeicherter Reihenfolge — der Desktop übernimmt
+ *  Kalender-Id und Sende-Erinnerung positionsweise (#520). Die Standardpause belegt eine neue Zeile nur mit dem Flag
  *  (`pauseEnabled`, #455); ohne es steht die Pause auf 0 und geht nie in einen Slot. */
 export function reservationRows(reservation, defaults = null, weekday = '', { pauseEnabled = false } = {}) {
-  const rows = editorRows(reservation, defaults, weekday);
+  const rows = editorRows(reservation, defaults, weekday, null, { sort: false });
   if (pauseEnabled) return rows;
   return rows.map((row) => ({ ...row, pause: '0', base: row.base && { ...row.base, pause: '0' } }));
 }

@@ -1283,3 +1283,8 @@ test('a conflict version lists its slots in chronological order', () => {
   const model = conflictsModel([{ id: 'c', date: '2026-10-08', versions: [{ slots: [LATE, EARLY] }] }], 'UTC');
   assert.deepEqual(model[0].versions[0].slots, ['09:00–11:00', '11:00–13:00']);
 });
+
+test('reservation rows keep the stored order: the desktop hands over event ids and the reminder by position (#520)', () => {
+  const stored = { slots: [LATE, EARLY], deleted: false };
+  assert.deepEqual(reservationRows(stored, null, '', { pauseEnabled: true }).map(({ start }) => start), ['11:00', '09:00']);
+});

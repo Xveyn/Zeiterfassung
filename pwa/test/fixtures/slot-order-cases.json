@@ -13,6 +13,11 @@
       {"start": "09:00", "end": "10:00", "kategorie": "A", "pause": 5}], "order": [1, 2, 0]},
     {"name": "ohne lesbare Startzeit ans Ende, in Listenreihenfolge", "slots": [
       {"start": null, "end": "10:00"}, {"start": "08:00", "end": "09:00"}, {"end": "11:00"}],
-     "order": [1, 0, 2]}
+     "order": [1, 0, 2]},
+    {"name": "ohne Startzeit bleibt die Listenreihenfolge, auch wenn die Enden fallen", "slots": [
+      {"start": null, "end": "11:00"}, {"start": "", "end": "10:00"}], "order": [0, 1]},
+    {"name": "Kategorien nach Codepoint, nicht nach UTF-16-Einheit", "slots": [
+      {"start": "09:00", "end": "10:00", "kategorie": "😀"},
+      {"start": "09:00", "end": "10:00", "kategorie": "Ａ"}], "order": [1, 0]}
   ]
 }

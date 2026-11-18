@@ -8,17 +8,31 @@
 const text = (value) => (typeof value === 'string' && value !== '' ? value : null);
 
 /** Sortierschlüssel `chrono`: Start, Ende, Kategorie, Listenposition. `HH:MM` ist validiert, der
- *  Textvergleich entspricht dem Zeitvergleich. Ohne lesbare Startzeit: ans Ende. */
+ *  Textvergleich entspricht dem Zeitvergleich. Ohne lesbare Startzeit: ans Ende, in Listenreihenfolge. */
 function key(slot, index) {
-  if (slot === null || typeof slot !== 'object') return [1, '', '', '', index];
-  const start = text(slot.start);
-  return [start === null ? 1 : 0, start ?? '', text(slot.end) ?? '', text(slot.kategorie) ?? '', index];
+  const start = slot !== null && typeof slot === 'object' ? text(slot.start) : null;
+  if (start === null) return [1, '', '', '', index];
+  return [0, start, text(slot.end) ?? '', text(slot.kategorie) ?? '', index];
+}
+
+/** Wie Pythons Vergleich: nach Codepoints, nicht nach UTF-16-Einheiten (`<` auf Strings). */
+function compareText(a, b) {
+  const left = Array.from(a);
+  const right = Array.from(b);
+  const length = Math.min(left.length, right.length);
+  for (let i = 0; i < length; i += 1) {
+    const x = left[i].codePointAt(0);
+    const y = right[i].codePointAt(0);
+    if (x !== y) return x < y ? -1 : 1;
+  }
+  return left.length - right.length;
 }
 
 function compare(a, b) {
   for (let i = 0; i < a.length; i += 1) {
-    if (a[i] < b[i]) return -1;
-    if (a[i] > b[i]) return 1;
+    if (a[i] === b[i]) continue;
+    if (typeof a[i] === 'string') return compareText(a[i], b[i]);
+    return a[i] < b[i] ? -1 : 1;
   }
   return 0;
 }
