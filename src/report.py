@@ -7,6 +7,7 @@ import io
 from collections import OrderedDict
 from typing import Any, Collection
 
+from src.slot_order import sorted_slots
 from src.time_utils import DAYS_DE, calculate_hours, format_date, get_week_label, hours_to_minutes
 from src.vacations import CappedDay, cap_by_worktime, cap_notice
 
@@ -205,7 +206,7 @@ def _week_block(iso_year: int, iso_week: int, week_entries: WeekEntries,
         day_fmt = format_date(dt)
         row_bg = s["row_a"] if idx % 2 == 0 else s["row_b"]
         td = s["td_base"]
-        slots = entry["slots"]
+        slots = sorted_slots(entry["slots"])
         day_minutes = 0
         for sidx, slot in enumerate(slots):
             hours = _slot_hours(slot)

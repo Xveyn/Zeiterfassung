@@ -23,6 +23,7 @@ ES-Module flach im Ordner:
   Fehlt `defaults` in der Antwort (älterer Desktop), bleibt der Editor leer.
   Überschrieben werden nur Felder, die noch auf dem zuletzt vorbelegten Wert
   stehen, gespeicherte Slots nie.
+- `slot-order.js` — Reihenfolge der Slots eines Tages (#520), Gegenstück zu `src/slot_order.py`: `sortedSlots` sortiert chronologisch (Start, Ende, Kategorie, Position). Wochenliste, Tages-Editor und Konfliktversionen zeigen so, `Store.saveDay` speichert so; Reservierungen bleiben in Zeilenreihenfolge. Gleichlauf: `test/fixtures/slot-order-cases.json` (Python und JavaScript lesen dieselbe Datei).
 - `reservations.js` — Reservierungen (zukünftige Soll-Zeiten) ohne DOM: wann der
   Block erscheint (`reservationBlockVisible`, Gleichlauf mit
   `reservation_block_visible` über `test/fixtures/reservation-visibility-cases.json`),

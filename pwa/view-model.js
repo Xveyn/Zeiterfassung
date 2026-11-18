@@ -13,6 +13,7 @@ import { WEEKDAY_KEYS, resolveSlotDefaults, weekdayKey } from './defaults.js';
 import { describeError } from './messages.js';
 import { openReservationSlots, pendingReservationMinutes, reservationBlockVisible, validateReservationSlots } from './reservations.js';
 import { describeState } from './push-policy.js';
+import { sortedSlots } from './slot-order.js';
 import { LEGACY_AHEAD_DAYS, aheadDays, olderState } from './window-policy.js';
 
 export const WEEKDAYS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
@@ -97,7 +98,7 @@ export function weekModel({ getDay, anchor, today, conflictDates = [], windowDay
       // Außerhalb dessen, was das Handy vom Desktop kennt: ein leer wirkender Tag kann dort Einträge
       // haben, und Speichern ersetzt sie (der Handy-Stand gewinnt ohne Konflikt).
       outsideWindow: date > addDays(today, aheadDays) || (windowDays > 0 && date < addDays(today, -windowDays)),
-      slots: slots.map(slotText),
+      slots: sortedSlots(slots).map(slotText),
       minutes,
       minutesLabel: minutes > 0 ? formatMinutes(minutes) : '',
       // Ein Tombstone (am Desktop oder hier geleert) sieht aus wie ein leerer Tag (#353).
@@ -111,7 +112,7 @@ export function weekModel({ getDay, anchor, today, conflictDates = [], windowDay
       // Reservierungen zählen nicht in `minutes`/`totalMinutes`; vergangene Tage zeigen nie eine.
       reservationVisible: visible,
       reservation: reservation && {
-        slots: openReservationSlots(reservation.slots, slots, date === today).map(slotText), dirty: reservation.dirty, error: reservation.error },
+        slots: sortedSlots(openReservationSlots(reservation.slots, slots, date === today)).map(slotText), dirty: reservation.dirty, error: reservation.error },
       pendingMinutes: reservation ? pendingReservationMinutes(reservation.slots, slots, date === today) : 0,
     };
   });
@@ -196,7 +197,7 @@ export function conflictsModel(conflicts, timeZone) {
         return {
           who: version.name || String(version.device ?? '').slice(0, 8),
           when: stampLabel(String(version.modified_at ?? ''), timeZone),
-          slots: slots.map(slotText),
+          slots: sortedSlots(slots).map(slotText),
           minutesLabel: formatMinutes(dayMinutes(slots)),
         };
       }),
@@ -237,7 +238,7 @@ export function editorRows(day, defaults = null, weekday = '', reservation = nul
     const planned = reservation && !reservation.deleted && reservation.slots.length > 0;
     return [planned ? suggestedRow(reservation.slots, defaults, weekday) : freshRow(defaults, weekday)];
   }
-  return day.slots.map((slot) => ({
+  return sortedSlots(day.slots).map((slot) => ({
     start: slot.start, end: slot.end, pause: String(slot.pause ?? 0), kategorie: slot.kategorie ?? '',
   }));
 }

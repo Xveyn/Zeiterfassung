@@ -37,3 +37,23 @@ def test_delete_action_mixed_selection():
     selected = {"entry:0", "reservation:all"}
     assert _delete_action(entry_slots, selected, "entry") == ("save", [{"s": 1}])
     assert _delete_action(res_slots, selected, "reservation") == ("delete", None)
+
+
+def test_delete_options_chronologisch_mit_gespeichertem_index():
+    # #520: Anzeige sortiert, der Schlüssel zeigt aber auf die gespeicherte Position —
+    # sonst löschte ein Häkchen am 9–11-Slot den 11–13-Slot.
+    from src.ui import _delete_options
+    slots = [{"start": "11:00", "end": "13:00"}, {"start": "09:00", "end": "11:00"}]
+    options = _delete_options(slots, "entry", "Arbeitszeit", lambda s: f"{s['start']}-{s['end']}")
+    assert options == [("entry:1", "Arbeitszeit  09:00-11:00"),
+                       ("entry:0", "Arbeitszeit  11:00-13:00")]
+    # Und das Löschen des ersten angezeigten Slots lässt den anderen stehen.
+    action, keep = _delete_action(slots, {"entry:1"}, "entry")
+    assert (action, keep) == ("save", [{"start": "11:00", "end": "13:00"}])
+
+
+def test_delete_options_ein_slot_ist_der_ganze_typ():
+    from src.ui import _delete_options
+    assert _delete_options([{"start": "09:00"}], "entry", "Arbeitszeit", str) == [
+        ("entry:all", "Arbeitszeit")]
+    assert _delete_options([], "entry", "Arbeitszeit", str) == []

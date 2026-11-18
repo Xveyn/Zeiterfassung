@@ -1264,3 +1264,22 @@ test('no answer at all, or an answer that says the token is gone, is not reached
   assert.equal(reachedAfterSyncError(new TypeError('Failed to fetch')), false);
   assert.equal(reachedAfterSyncError(null), false);
 });
+
+// --- Reihenfolge der Slots (#520) --------------------------------------------------------------------
+
+const LATE = { start: '11:00', end: '13:00', pause: 0, kategorie: '' };
+const EARLY = { start: '09:00', end: '11:00', pause: 0, kategorie: '' };
+
+test('the week list shows the slots of a day in chronological order', () => {
+  const week = weekModel({ getDay: days({ '2026-10-08': live([LATE, EARLY]) }), anchor: '2026-10-08', today: '2026-10-08' });
+  assert.deepEqual(week.days[3].slots, ['09:00–11:00', '11:00–13:00']);
+});
+
+test('the editor opens the stored slots in chronological order', () => {
+  assert.deepEqual(editorRows(live([LATE, EARLY])).map(({ start }) => start), ['09:00', '11:00']);
+});
+
+test('a conflict version lists its slots in chronological order', () => {
+  const model = conflictsModel([{ id: 'c', date: '2026-10-08', versions: [{ slots: [LATE, EARLY] }] }], 'UTC');
+  assert.deepEqual(model[0].versions[0].slots, ['09:00–11:00', '11:00–13:00']);
+});

@@ -213,3 +213,13 @@ def test_setting_cards_carry_the_formatted_value():
     assert own.value == cv.Field("an", True)
     assert other.value == cv.Field("aus", True)
     assert own.slots == () and own.deleted is None
+
+
+def test_slots_werden_nach_zeit_statt_nach_position_verglichen():
+    # #520: dieselben zwei Slots, nur in anderer Listenreihenfolge, sind kein Unterschied.
+    a, b = _slot("09:00", "11:00"), _slot("11:00", "13:00")
+    c = _entry(_cand(OWN, "x", slots=[b, a]), _cand(OTHER, "y", slots=[a, b]))
+    cards = cv.build_cards(c, REGISTRY, OWN, "Sven-PC")
+    own = cards[0]
+    assert [s.start.text for s in own.slots] == ["09:00", "11:00"]
+    assert not any(f.differs for s in own.slots for f in (s.start, s.end, s.category, s.pause))

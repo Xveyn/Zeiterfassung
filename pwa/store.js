@@ -16,6 +16,7 @@
 // es nicht. Scheitert das Schreiben, wirft die Methode; der Cache ist dem Speicher dann
 // voraus, und die Oberfläche meldet den Fehler.
 import { addDays, isIsoDate, localIsoDate, normalizeSlots, utcStamp, validateSlots } from './minutes.js';
+import { sortedSlots } from './slot-order.js';
 import {
   RESERVATION_HORIZON_DAYS, normalizeReservationSlots, reservationEditable, reservationSignature,
   validateReservationSlots,
@@ -274,7 +275,8 @@ export class Store {
   /** Speichert einen Tag (geprüfte Slots). Wirft bei ungültigen Slots oder Datum. */
   async saveDay(date, slots) {
     if (!isIsoDate(date)) throw new Error(`Ungültiges Datum: ${date}`);
-    const normalized = normalizeSlots(slots);
+    // Chronologisch gespeichert (#520); Reservierungen (`saveReservation`) bleiben in Zeilenreihenfolge.
+    const normalized = sortedSlots(normalizeSlots(slots));
     const check = validateSlots(normalized);
     if (!check.ok) throw new Error(check.message);
     const old = this._days.get(date);
