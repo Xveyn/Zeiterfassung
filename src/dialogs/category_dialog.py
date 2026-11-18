@@ -16,7 +16,7 @@ from src.theme import (
     BG, FONT, FONT_BOLD, PAUSE_VALUES, TEXT, TEXT_MUTED, TIME_VALUES,
     attach_unfocus_on_click, center_dialog_on_parent, create_dialog,
     dark_combo, dark_entry, px, primary_button, secondary_button,
-    set_secondary_button_enabled, themed_askyesno,
+    set_primary_button_enabled, set_secondary_button_enabled, themed_askyesno,
 )
 from src.time_utils import DAYS_DE
 
@@ -81,6 +81,13 @@ def collect_categories(rows):
             if entry:
                 category_times[name] = entry
     return categories, category_times
+
+
+def rows_changed(rows, baseline):
+    """Würde Speichern etwas ändern? `baseline` ist das Ergebnis von
+    `collect_categories` beim Öffnen. Verglichen wird, was gespeichert würde:
+    eine leere Zeile oder ein ausgeklapptes Grid ohne Eingabe zählt nicht."""
+    return collect_categories(rows) != baseline
 
 
 def categories_losing_per_day(rows):
@@ -230,6 +237,28 @@ def open_category_dialog(parent, settings, on_change=None):
             std_row, "Pro Tag ▶", _toggle_daygrid, padx=8, pady=0)
         toggle_holder["btn"].pack(side=tk.LEFT, padx=2)
 
+    save_holder = {"btn": None, "baseline": None}
+
+    def read_rows():
+        return [{
+            "name": r["name"].get(),
+            "mode": "per_day" if r["mode"].get() == "Tageweise" else "general",
+            "start": r["start"].get(),
+            "end": r["end"].get(),
+            "pause": r["pause"].get(),
+            "days": {
+                tag: {"start": v["start"].get(), "end": v["end"].get()}
+                for tag, v in r["days"].items()
+            },
+        } for r in rows]
+
+    def update_save_state(*_a):
+        """„Speichern" ist erst aktiv, wenn sich etwas ändern würde."""
+        btn = save_holder["btn"]
+        if btn is not None and btn.winfo_exists():
+            set_primary_button_enabled(
+                btn, rows_changed(read_rows(), save_holder["baseline"]))
+
     def refresh_arrows():
         """Dämpft ▲ an der obersten und ▼ an der untersten Kategorie (nur die
         Optik, `move_row` ist dort ohnehin ein No-op)."""
@@ -249,6 +278,7 @@ def open_category_dialog(parent, settings, on_change=None):
             r["container"].pack_forget()
             r["container"].pack(fill="x", pady=4)
         refresh_arrows()
+        update_save_state()
 
     def add_row(name="", defaults=None):
         if defaults is None:
@@ -316,8 +346,21 @@ def open_category_dialog(parent, settings, on_change=None):
                 day_frame.pack(after=row, anchor="w", pady=(0, 4))
                 row_toggle_holder["btn"]._label.config(text="Pro Tag ▼")
 
+        # Platzhalter in der Breite von Start–Ende: in „Tageweise" ersetzt der
+        # kleine Knopf die beiden Zeitfelder, ohne ihn rückten Pause und die
+        # Knöpfe rechts je nach Modus an eine andere Stelle.
+        toggle_slot = tk.Frame(row, bg=BG)
         row_toggle_holder["btn"] = secondary_button(
-            row, "Pro Tag ▶", _toggle_day_row, padx=8, pady=0)
+            toggle_slot, "Pro Tag ▶", _toggle_day_row, padx=8, pady=0)
+        row_toggle_holder["btn"].pack(side=tk.LEFT)
+        general_frame.update_idletasks()
+        row_toggle_holder["btn"].update_idletasks()
+        slot_width = max(general_frame.winfo_reqwidth(),
+                         row_toggle_holder["btn"].winfo_reqwidth())
+        if slot_width > 1:
+            toggle_slot.configure(
+                width=slot_width, height=row_toggle_holder["btn"].winfo_reqheight())
+            toggle_slot.pack_propagate(False)
 
         def _apply_mode(*_a, expand=True):
             if mode_var.get() == "Tageweise":
@@ -327,7 +370,7 @@ def open_category_dialog(parent, settings, on_change=None):
                         day_vars[tag]["start"].set(start_var.get())
                         day_vars[tag]["end"].set(end_var.get())
                 general_frame.pack_forget()
-                row_toggle_holder["btn"].pack(side=tk.LEFT, padx=4, before=pause_combo)
+                toggle_slot.pack(side=tk.LEFT, padx=4, before=pause_combo)
                 if expand:
                     day_frame.pack(after=row, anchor="w", pady=(0, 4))
                     row_toggle_holder["btn"]._label.config(text="Pro Tag ▼")
@@ -343,7 +386,7 @@ def open_category_dialog(parent, settings, on_change=None):
                     if mon["end"].get() != STANDARD:
                         end_var.set(mon["end"].get())
                 day_frame.pack_forget()
-                row_toggle_holder["btn"].pack_forget()
+                toggle_slot.pack_forget()
                 general_frame.pack(in_=row, side=tk.LEFT,
                                    padx=4, before=pause_combo)
 
@@ -357,6 +400,7 @@ def open_category_dialog(parent, settings, on_change=None):
             container.destroy()
             rows.remove(record)
             refresh_arrows()
+            update_save_state()
 
         secondary_button(row, "×", remove, padx=8, pady=0).pack(side=tk.LEFT, padx=4)
         up = secondary_button(row, "▲", lambda: move_row(record, -1), padx=6, pady=0)
@@ -366,6 +410,10 @@ def open_category_dialog(parent, settings, on_change=None):
         record["arrows"] = (up, down)
         rows.append(record)
         refresh_arrows()
+        for var in (nv, mode_var, start_var, end_var, pause_var,
+                    *(v[k] for v in day_vars.values() for k in ("start", "end"))):
+            var.trace_add("write", update_save_state)
+        update_save_state()
 
         # Initialen Modus setzen + Sichtbarkeit herstellen.
         # <<ComboboxSelected>> feuert bei programmatischem .set() NICHT.
@@ -389,19 +437,9 @@ def open_category_dialog(parent, settings, on_change=None):
     ).pack(side=tk.LEFT, padx=2)
 
     def on_save():
-        raw = []
-        for r in rows:
-            raw.append({
-                "name": r["name"].get(),
-                "mode": "per_day" if r["mode"].get() == "Tageweise" else "general",
-                "start": r["start"].get(),
-                "end": r["end"].get(),
-                "pause": r["pause"].get(),
-                "days": {
-                    tag: {"start": v["start"].get(), "end": v["end"].get()}
-                    for tag, v in r["days"].items()
-                },
-            })
+        raw = read_rows()
+        if not rows_changed(raw, save_holder["baseline"]):
+            return  # nichts zu speichern (der Knopf ist dann gedämpft)
 
         losing = categories_losing_per_day(raw)
         if losing:
@@ -422,7 +460,11 @@ def open_category_dialog(parent, settings, on_change=None):
 
     save_row = tk.Frame(outer, bg=BG)
     save_row.pack(fill="x")
-    primary_button(save_row, "Speichern", on_save).pack(side=tk.LEFT, padx=2)
+    save_btn = primary_button(save_row, "Speichern", on_save)
+    save_btn.pack(side=tk.LEFT, padx=2)
+    save_holder["btn"] = save_btn
+    save_holder["baseline"] = collect_categories(read_rows())
+    update_save_state()
     secondary_button(save_row, "Abbrechen", dialog.destroy).pack(side=tk.LEFT, padx=2)
 
     center_dialog_on_parent(dialog, parent)
