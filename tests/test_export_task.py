@@ -60,3 +60,10 @@ def test_perform_export_without_vacation_passes_none(monkeypatch):
     monkeypatch.setattr(st, "generate_pdf", fake_generate_pdf)
     perform_export_pdf(**_kwargs())          # ohne vacation_days -> Default
     assert captured["vacation_days"] is None
+
+
+def test_perform_export_reicht_den_slot_modus_an_den_bericht(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(st, "generate_pdf", lambda *a, **k: seen.update(k) or b"PDF")
+    perform_export_pdf(**_kwargs(slot_order="category"))
+    assert seen["slot_order"] == "category"

@@ -744,3 +744,21 @@ def test_slots_eines_tages_stehen_chronologisch_im_bericht():
     assert html.index("09:00") < html.index("11:00") < html.index("13:00")
     # Das Datum steht nur in der ersten Zeile — und das ist jetzt der 9–11-Slot.
     assert html.count("23.03.2026") == 2  # erste Zeile + „Summe 23.03.2026“
+
+
+def _two_slot_day():
+    return {"2026-03-23": {"slots": [_slot("09:00", "10:00", kategorie="Zeta"),
+                                     _slot("13:00", "14:00", kategorie="Alpha")]}}
+
+
+def test_bericht_nach_kategorie_sortiert():
+    html, _ = generate_report(datetime.date(2026, 3, 1), datetime.date(2026, 3, 31),
+                              _two_slot_day(), slot_order="category")
+    assert html.index("Alpha") < html.index("Zeta")
+
+
+def test_bericht_eigene_reihenfolge_bleibt_wie_gespeichert():
+    entries = {"2026-03-23": {"slots": [_slot("13:00", "14:00"), _slot("09:00", "10:00")]}}
+    html, _ = generate_report(datetime.date(2026, 3, 1), datetime.date(2026, 3, 31),
+                              entries, slot_order="custom")
+    assert html.index("13:00") < html.index("09:00")

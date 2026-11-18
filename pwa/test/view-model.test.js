@@ -1288,3 +1288,15 @@ test('reservation rows keep the stored order: the desktop hands over event ids a
   const stored = { slots: [LATE, EARLY], deleted: false };
   assert.deepEqual(reservationRows(stored, null, '', { pauseEnabled: true }).map(({ start }) => start), ['11:00', '09:00']);
 });
+
+test('the week list and the editor follow the slot order of the desktop (#520)', () => {
+  const ZETA = { start: '09:00', end: '10:00', pause: 0, kategorie: 'Zeta' };
+  const ALPHA = { start: '13:00', end: '14:00', pause: 0, kategorie: 'Alpha' };
+  const model = (slotOrder) => weekModel({ getDay: days({ '2026-10-08': live([ZETA, ALPHA]) }), anchor: '2026-10-08', today: '2026-10-08', slotOrder });
+  assert.deepEqual(model('chrono').days[3].slots.map((t) => t.slice(0, 5)), ['09:00', '13:00']);
+  assert.deepEqual(model('category').days[3].slots.map((t) => t.slice(0, 5)), ['13:00', '09:00']);
+  assert.deepEqual(model('custom').days[3].slots.map((t) => t.slice(0, 5)), ['09:00', '13:00']);
+  const rows = (order) => editorRows(live([ALPHA, ZETA]), null, '', null, { order }).map(({ start }) => start);
+  assert.deepEqual(rows('chrono'), ['09:00', '13:00']);
+  assert.deepEqual(rows('custom'), ['13:00', '09:00']);
+});

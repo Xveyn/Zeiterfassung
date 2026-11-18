@@ -194,7 +194,8 @@ def test_the_response_carries_the_protocol_fields_and_no_token():
         "window_days": 90, "window_ahead_days": 14, "window_max_days": 365, "entries": {},
         "conflicts": [], "categories": ["Projekt"],
         "defaults": DEFAULTS, "desktop": DESKTOP,
-        "writable_settings": ["categories", "category_times"], "unpair": True}
+        "writable_settings": ["categories", "category_times"], "unpair": True,
+        "slot_order": "chrono"}
 
 
 def test_the_window_is_today_minus_90_days_through_today_plus_14_days():
@@ -921,3 +922,15 @@ def test_build_response_leaves_the_block_out_when_none_is_given():
 
 def test_every_response_announces_the_unpair_capability(env):
     assert run(env, {})["unpair"] is True
+
+
+def test_the_response_names_the_slot_order_and_defaults_to_chronological(env):
+    assert respond({})["slot_order"] == "chrono"
+    assert run(env, {})["slot_order"] == "chrono"
+
+
+def test_the_response_carries_the_configured_slot_order(env):
+    env.settings.set("slot_order_mode", "category")
+    assert run(env, {})["slot_order"] == "category"
+    env.settings.set("slot_order_mode", "kaputt")          # Fremdwert aus dem Sync: gilt als chrono
+    assert run(env, {})["slot_order"] == "chrono"

@@ -19,5 +19,34 @@
     {"name": "Kategorien nach Codepoint, nicht nach UTF-16-Einheit", "slots": [
       {"start": "09:00", "end": "10:00", "kategorie": "😀"},
       {"start": "09:00", "end": "10:00", "kategorie": "Ａ"}], "order": [1, 0]}
+  ],
+  "category": [
+    {"name": "leer", "slots": [], "order": []},
+    {"name": "alphabetisch, ohne Groß/Klein, Umlaut wie Grundbuchstabe", "slots": [
+      {"start": "09:00", "end": "10:00", "kategorie": "Zeta"},
+      {"start": "10:00", "end": "11:00", "kategorie": "ärger"},
+      {"start": "11:00", "end": "12:00", "kategorie": "Alpha"},
+      {"start": "12:00", "end": "13:00", "kategorie": "alpha"}], "order": [2, 3, 1, 0]},
+    {"name": "ß wie ss", "slots": [
+      {"start": "09:00", "end": "10:00", "kategorie": "Straße"},
+      {"start": "10:00", "end": "11:00", "kategorie": "Strasse"},
+      {"start": "11:00", "end": "12:00", "kategorie": "Stran"}], "order": [2, 0, 1]},
+    {"name": "Schluss-Sigma und ſ falten in Python und JS gleich (lower, nicht casefold)", "slots": [
+      {"start": "08:00", "end": "09:00", "kategorie": "ΟΔΟΣ"},
+      {"start": "09:00", "end": "10:00", "kategorie": "οδος"},
+      {"start": "10:00", "end": "11:00", "kategorie": "ſ"},
+      {"start": "11:00", "end": "12:00", "kategorie": "s"}], "order": [3, 2, 0, 1]},
+    {"name": "ohne Kategorie zuletzt, gleiche Kategorie nach Zeit", "slots": [
+      {"start": "08:00", "end": "09:00", "kategorie": ""},
+      {"start": "13:00", "end": "14:00", "kategorie": "B"},
+      {"start": "09:00", "end": "10:00", "kategorie": "B"}], "order": [2, 1, 0]},
+    {"name": "ohne Startzeit ans Ende in Listenreihenfolge", "slots": [
+      {"start": null, "end": "10:00", "kategorie": "A"},
+      {"start": "08:00", "end": "09:00", "kategorie": "Z"}], "order": [1, 0]}
+  ],
+  "custom": [
+    {"name": "Listenreihenfolge, nie sortiert", "slots": [
+      {"start": "11:00", "end": "12:00", "kategorie": "B"},
+      {"start": "09:00", "end": "10:00", "kategorie": "A"}], "order": [0, 1]}
   ]
 }

@@ -25,6 +25,7 @@ import tkinter as tk
 from src.category_defaults import resolve_slot_defaults
 from src.theme import (
     BG, FONT, PAUSE_VALUES, TEXT_MUTED, TIME_VALUES, dark_combo, secondary_button,
+    set_secondary_button_enabled,
 )
 
 # Kategorie am Slot: "" = keine Kategorie. Das Dropdown ist readonly (Anlegen/
@@ -85,6 +86,24 @@ def marker_pause(pause_text, in_marker):
     return pause_text
 
 
+def move_item(items, index, delta):
+    """Neue Liste, in der das Element an `index` um `delta` Plätze verschoben ist
+    (Tausch mit dem Nachbarn). Außerhalb der Liste oder über den Rand: unverändert.
+    Tk-frei."""
+    target = index + delta
+    result = list(items)
+    if not (0 <= index < len(result) and 0 <= target < len(result)):
+        return result
+    result[index], result[target] = result[target], result[index]
+    return result
+
+
+def arrow_states(index, count):
+    """(▲ aktiv, ▼ aktiv) einer Zeile: die oberste kann nicht höher, die unterste
+    nicht tiefer. Tk-frei."""
+    return index > 0, index < count - 1
+
+
 def slot_category_display(kategorie, start, end, pause, category_times, weekday_key,
                           default_start, default_end, default_pause):
     """Anzeige-Label fürs Kategorie-Dropdown eines Slots: Kategorie-Name, mit
@@ -123,8 +142,12 @@ class SlotRowList:
     def __init__(self, frame, *, with_pause, categories, category_times,
                  weekday_key, default_start, default_end, default_pause,
                  on_rows_changed, on_value_changed=None, on_new_category=None,
-                 pause_in_marker=True):
+                 pause_in_marker=True, movable=False):
         self.rows = []
+        # movable: ▲/▼ je Zeile (Modus „Eigene Reihenfolge", #520). Verschieben
+        # ändert nur die Reihenfolge der Zeilen, nie ihren Inhalt — gespeicherte
+        # Slots bleiben also unlöschbar, wie `removable` es verlangt.
+        self._movable = movable
         # on_new_category(on_saved): öffnet den Kategorien-Dialog; on_saved
         # wird nach dem Speichern gerufen. None = kein „Neue Kategorie"-Eintrag.
         self._on_new_category = on_new_category
@@ -154,6 +177,28 @@ class SlotRowList:
         if self._on_new_category is not None:
             choices.append(NEW_CATEGORY_LABEL)
         return choices
+
+    def move(self, record, delta):
+        """Verschiebt eine Zeile um `delta` Plätze und baut die Reihenfolge im
+        Frame neu auf; `rows` ist danach die Speicherreihenfolge."""
+        before = list(self.rows)
+        self.rows[:] = move_item(before, before.index(record), delta)
+        if self.rows == before:
+            return
+        for r in self.rows:
+            r["frame"].pack_forget()
+            r["frame"].pack(fill="x", pady=3)
+        self._refresh_arrows()
+        self._on_rows_changed()
+
+    def _refresh_arrows(self):
+        """Dämpft ▲ an der obersten und ▼ an der untersten Zeile (nur die Optik,
+        `move` ist dort ohnehin ein No-op)."""
+        for i, r in enumerate(self.rows):
+            if "arrows" not in r:
+                continue
+            for button, enabled in zip(r["arrows"], arrow_states(i, len(self.rows)), strict=True):
+                set_secondary_button_enabled(button, enabled)
 
     def add(self, start, end, kategorie, *, pause=None, removable=True,
             parent=None, extra=None):
@@ -299,6 +344,7 @@ class SlotRowList:
         def remove():
             row.destroy()
             self.rows.remove(record)
+            self._refresh_arrows()
             # Ein leeres Tk-Frame behält sonst die Höhe seiner letzten Zeile als
             # Lücke — beim Entfernen der letzten Zeile explizit kollabieren,
             # damit der Dialog passend schrumpft (pack_propagate baut die Höhe
@@ -314,7 +360,16 @@ class SlotRowList:
         if removable:
             secondary_button(row, "×", remove, padx=8, pady=0).pack(
                 side=tk.LEFT, padx=6)
+        if self._movable:
+            up = secondary_button(row, "▲", lambda: self.move(record, -1),
+                                  padx=6, pady=0)
+            up.pack(side=tk.LEFT, padx=(6, 0))
+            down = secondary_button(row, "▼", lambda: self.move(record, 1),
+                                    padx=6, pady=0)
+            down.pack(side=tk.LEFT, padx=(2, 0))
+            record["arrows"] = (up, down)
 
         self.rows.append(record)
+        self._refresh_arrows()
         self._on_rows_changed()
         return record

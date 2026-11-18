@@ -9,6 +9,7 @@ from src.dialogs.category_dialog import open_category_dialog
 from src.dialogs.date_row import build_date_row
 from src.dialogs.settings_dialog.fields import FieldSet
 from src.dialogs.settings_dialog.form_model import SaveOutcome
+from src.slot_order import MODE_LABELS, normalize_mode
 from src.dialogs.settings_dialog.tab_rules import (
     WSL_KEYS, validate_work, work_updates, wsl_snapshot,
 )
@@ -54,6 +55,16 @@ class WorkTab:
             form.check("Wochenende (Sa/So) im Kalender anzeigen", show_weekend_var)
         form.row("Bundesland:", dark_combo(body, state_var, state_labels, width=22))
         form.hint("Für Feiertage und Urlaub.")
+
+        # --- Slots eines Tages (#520) ---
+        slot_order_var = tk.StringVar(value=MODE_LABELS[
+            normalize_mode(settings.get("slot_order_mode"))])
+        form.section("Slots eines Tages")
+        form.row("Reihenfolge:", dark_combo(
+            body, slot_order_var, list(MODE_LABELS.values()), width=22))
+        form.hint("Gilt für Kalender, Berichte und Tages-Dialog. Bei „Eigene "
+                  "Reihenfolge“ ordnest du die Slots im Tages-Dialog mit den "
+                  "Pfeilen; die anderen Modi sortieren beim Speichern.")
 
         # --- Standardzeiten ---
         form.section("Standardzeiten")
@@ -208,6 +219,7 @@ class WorkTab:
         self.workweek_only_var = workweek_only_var
         self.show_weekend_var = show_weekend_var
         self.state_var = state_var
+        self.slot_order_var = slot_order_var
 
         self.title = "Arbeitszeit"
         self._dialog = dialog
@@ -218,6 +230,7 @@ class WorkTab:
         fields.add("workweek_only", workweek_only_var)
         fields.add("show_weekend", show_weekend_var)
         fields.add("state", state_var)
+        fields.add("slot_order_mode", slot_order_var)
         fields.add("default_times_mode", mode_var)
         fields.add("default_start_all", all_start_var)
         fields.add("default_end_all", all_end_var)

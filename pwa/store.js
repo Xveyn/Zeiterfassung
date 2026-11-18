@@ -16,7 +16,7 @@
 // es nicht. Scheitert das Schreiben, wirft die Methode; der Cache ist dem Speicher dann
 // voraus, und die Oberfläche meldet den Fehler.
 import { addDays, isIsoDate, localIsoDate, normalizeSlots, utcStamp, validateSlots } from './minutes.js';
-import { sortedSlots } from './slot-order.js';
+import { normalizeSlotOrder, sortedSlots } from './slot-order.js';
 import {
   RESERVATION_HORIZON_DAYS, normalizeReservationSlots, reservationEditable, reservationSignature,
   validateReservationSlots,
@@ -52,6 +52,7 @@ import { blockSignature, categoryRows, validateCategoryRows } from './categories
  * @property {boolean} reservations_enabled
  * @property {boolean} reservation_pause
  * @property {boolean} desktop_unpair
+ * @property {string} slot_order
  * @property {boolean} settings_writable
  * @property {Record<string, any> | null} reminders      Block `reminders` der letzten Antwort (#331); null = Desktop kennt ihn nicht
  * @property {boolean} push_enabled
@@ -94,6 +95,7 @@ const DEFAULT_META = Object.freeze({
   shift_step_minutes: 10,  // Schrittweite des Wischs auf den Zeitfeldern (#500): 0 = aus, sonst 5/10/15/30/60; gerätelokal
   reservations_enabled: false, // Desktop bietet Reservierungen an (Feld in der Antwort); fehlt es, bleibt alles verborgen
   reservation_pause: false,   // Desktop versteht `pause` an Reservierungs-Slots (Feld `reservation_pause`, #455); sonst geht sie nie auf den Draht
+  slot_order: 'chrono',       // Reihenfolge der Slots (Feld `slot_order` der Antwort, #520): chrono | category | custom
   desktop_unpair: false,      // Desktop kennt `POST /v1/unpair` (Feld `unpair` der Antwort, #499); sonst warnt die Rückfrage vor dem Trennen
   settings_writable: false,   // Desktop versteht `settings` (Feld `writable_settings` in der Antwort); sonst ist das Bearbeiten aus
   reminders: null,            // Block `reminders` der letzten Antwort (#331); null = Desktop kennt ihn nicht
@@ -275,8 +277,8 @@ export class Store {
   /** Speichert einen Tag (geprüfte Slots). Wirft bei ungültigen Slots oder Datum. */
   async saveDay(date, slots) {
     if (!isIsoDate(date)) throw new Error(`Ungültiges Datum: ${date}`);
-    // Chronologisch gespeichert (#520); Reservierungen (`saveReservation`) bleiben in Zeilenreihenfolge.
-    const normalized = sortedSlots(normalizeSlots(slots));
+    // In der Reihenfolge des Desktop-Modus gespeichert (#520; „custom“ = wie eingegeben); Reservierungen (`saveReservation`) bleiben in Zeilenreihenfolge.
+    const normalized = sortedSlots(normalizeSlots(slots), this._meta.slot_order);
     const check = validateSlots(normalized);
     if (!check.ok) throw new Error(check.message);
     const old = this._days.get(date);
@@ -606,6 +608,7 @@ export class Store {
       // ohne Pause hinaus und käme als 0 zurück.
       reservation_pause: parsed.reservations != null ? parsed.reservation_pause === true : this._meta.reservation_pause,
       desktop_unpair: parsed.unpair === true,
+      slot_order: normalizeSlotOrder(parsed.slot_order),
       last_pull_at: parsed.last_pull_at,
       server_time: parsed.server_time,
       settings_writable: Array.isArray(parsed.writable_settings)

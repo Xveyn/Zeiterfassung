@@ -13,7 +13,7 @@ import { WEEKDAY_KEYS, resolveSlotDefaults, weekdayKey } from './defaults.js';
 import { describeError } from './messages.js';
 import { openReservationSlots, pendingReservationMinutes, reservationBlockVisible, validateReservationSlots } from './reservations.js';
 import { describeState } from './push-policy.js';
-import { sortedSlots } from './slot-order.js';
+import { DEFAULT_SLOT_ORDER, sortedSlots } from './slot-order.js';
 import { LEGACY_AHEAD_DAYS, aheadDays, olderState } from './window-policy.js';
 
 export const WEEKDAYS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
@@ -77,7 +77,7 @@ function stampLabel(iso, timeZone) {
 // Abgleich wieder auf.
 /** @param {{ getDay: (date: string) => any, getReservation?: (date: string) => any, [key: string]: any }} options */
 export function weekModel({ getDay, anchor, today, conflictDates = [], windowDays = 0, aheadDays = LEGACY_AHEAD_DAYS,
-  getReservation = () => null, reservationsEnabled = false }) {
+  getReservation = () => null, reservationsEnabled = false, slotOrder = DEFAULT_SLOT_ORDER }) {
   const conflicts = new Set(conflictDates);
   const dates = weekDays(anchor);
   const week = dates.map((date, index) => {
@@ -98,7 +98,7 @@ export function weekModel({ getDay, anchor, today, conflictDates = [], windowDay
       // Außerhalb dessen, was das Handy vom Desktop kennt: ein leer wirkender Tag kann dort Einträge
       // haben, und Speichern ersetzt sie (der Handy-Stand gewinnt ohne Konflikt).
       outsideWindow: date > addDays(today, aheadDays) || (windowDays > 0 && date < addDays(today, -windowDays)),
-      slots: sortedSlots(slots).map(slotText),
+      slots: sortedSlots(slots, slotOrder).map(slotText),
       minutes,
       minutesLabel: minutes > 0 ? formatMinutes(minutes) : '',
       // Ein Tombstone (am Desktop oder hier geleert) sieht aus wie ein leerer Tag (#353).
@@ -112,7 +112,7 @@ export function weekModel({ getDay, anchor, today, conflictDates = [], windowDay
       // Reservierungen zählen nicht in `minutes`/`totalMinutes`; vergangene Tage zeigen nie eine.
       reservationVisible: visible,
       reservation: reservation && {
-        slots: sortedSlots(openReservationSlots(reservation.slots, slots, date === today)).map(slotText), dirty: reservation.dirty, error: reservation.error },
+        slots: sortedSlots(openReservationSlots(reservation.slots, slots, date === today), slotOrder).map(slotText), dirty: reservation.dirty, error: reservation.error },
       pendingMinutes: reservation ? pendingReservationMinutes(reservation.slots, slots, date === today) : 0,
     };
   });
@@ -233,12 +233,12 @@ function suggestedRow(slots, defaults, weekday) {
 
 /** Zeilen des Ist-Zeit-Reiters. Ohne gespeicherte Ist-Zeit schlägt eine vorhandene Reservierung
  *  (`reservation`, nur wenn der Tag sie zeigt) die Zeile vor, sonst gilt die Standardzeile. */
-export function editorRows(day, defaults = null, weekday = '', reservation = null, { sort = true } = {}) {
+export function editorRows(day, defaults = null, weekday = '', reservation = null, { order = DEFAULT_SLOT_ORDER } = {}) {
   if (!day || day.deleted || day.slots.length === 0) {
     const planned = reservation && !reservation.deleted && reservation.slots.length > 0;
     return [planned ? suggestedRow(reservation.slots, defaults, weekday) : freshRow(defaults, weekday)];
   }
-  return (sort ? sortedSlots(day.slots) : day.slots).map((slot) => ({
+  return sortedSlots(day.slots, order).map((slot) => ({
     start: slot.start, end: slot.end, pause: String(slot.pause ?? 0), kategorie: slot.kategorie ?? '',
   }));
 }
@@ -247,7 +247,8 @@ export function editorRows(day, defaults = null, weekday = '', reservation = nul
  *  Kalender-Id und Sende-Erinnerung positionsweise (#520). Die Standardpause belegt eine neue Zeile nur mit dem Flag
  *  (`pauseEnabled`, #455); ohne es steht die Pause auf 0 und geht nie in einen Slot. */
 export function reservationRows(reservation, defaults = null, weekday = '', { pauseEnabled = false } = {}) {
-  const rows = editorRows(reservation, defaults, weekday, null, { sort: false });
+  /** @type {any[]} */
+  const rows = editorRows(reservation, defaults, weekday, null, { order: 'custom' });
   if (pauseEnabled) return rows;
   return rows.map((row) => ({ ...row, pause: '0', base: row.base && { ...row.base, pause: '0' } }));
 }

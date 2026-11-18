@@ -3,6 +3,7 @@ from tkinter import filedialog, messagebox
 
 from src import workweek
 from src.report import default_pdf_filename
+from src.slot_order import normalize_mode
 from src.time_utils import format_date, validate_period
 from src.dialogs.period_picker import build_period_picker
 from src.dialogs.export_task import perform_export_pdf
@@ -72,6 +73,7 @@ def open_export_dialog(parent, storage, settings, runner, vacation_store=None):
                 name=settings.get("name"), categories=categories,
                 category_breakdown=category_breakdown,
                 vacation_days=vacation_days,
+                slot_order=normalize_mode(settings.get("slot_order_mode")),
             )
 
         def on_done(res):

@@ -1077,3 +1077,23 @@ test('the capability unpair follows the response and defaults to false', async (
   await store.applyResponse(old, emptySnapshot(), '2026-10-08');
   assert.equal(store.getMeta().desktop_unpair, false);
 });
+
+test('the slot order of the desktop is kept in the meta, an older desktop means chronological (#520)', async () => {
+  const { store } = await make();
+  assert.equal(store.getMeta().slot_order, 'chrono');
+  await store.applyResponse(parsedResponse({ slot_order: 'custom' }), store.snapshotDirty(), TODAY);
+  assert.equal(store.getMeta().slot_order, 'custom');
+  await store.applyResponse(parsedResponse(), store.snapshotDirty(), TODAY);          // ohne Feld: älterer Desktop
+  assert.equal(store.getMeta().slot_order, 'chrono');
+});
+
+test('a day is stored in the order of the mode: sorted, or as entered for the own order (#520)', async () => {
+  const { store } = await make();
+  await store.applyResponse(parsedResponse({ slot_order: 'custom' }), store.snapshotDirty(), TODAY);
+  await store.saveDay('2026-10-07', [OTHER, SLOT]);
+  assert.deepEqual(store.snapshotDirty().entries['2026-10-07'].slots, [OTHER, SLOT]);
+
+  await store.applyResponse(parsedResponse({ slot_order: 'category' }), store.snapshotDirty(), TODAY);
+  await store.saveDay('2026-10-08', [{ ...SLOT, kategorie: 'Zeta' }, { ...OTHER, kategorie: 'Alpha' }]);
+  assert.deepEqual(store.snapshotDirty().entries['2026-10-08'].slots.map((s) => s.kategorie), ['Alpha', 'Zeta']);
+});

@@ -175,7 +175,7 @@ PAYLOAD_SCHEMA_VERSION = 2
 PAYLOAD_KIND = "zeiterfassung-report"
 
 
-def _project_slots(entries: dict[str, Any]) -> dict[str, Any]:
+def _project_slots(entries: dict[str, Any], slot_order: str = "chrono") -> dict[str, Any]:
     """Reduziert jeden Slot auf die vier Felder des Wire-Formats.
 
     Sieht überflüssig aus, ist es aber nicht: `Storage._load` repariert nur die
@@ -196,7 +196,7 @@ def _project_slots(entries: dict[str, Any]) -> dict[str, Any]:
             {"start": slot.get("start"), "end": slot.get("end"),
              "pause": slot.get("pause", 0) or 0,
              "kategorie": slot.get("kategorie") or ""}
-            for slot in sorted_slots(record.get("slots", []))
+            for slot in sorted_slots(record.get("slots", []), slot_order)
         ]}
         for date_str, record in entries.items()
     }
@@ -222,7 +222,8 @@ def build_json_payload(*, date_from: datetime.date, date_to: datetime.date,
                        entries: dict[str, Any], name: str | None,
                        sender: str | None, categories: list[str] | None,
                        generated_at: str | None = None,
-                       vacation_days: dict[str, int] | None = None
+                       vacation_days: dict[str, int] | None = None,
+                       slot_order: str = "chrono"
                        ) -> dict[str, Any]:
     """Das JSON-Dokument für den Webhook.
 
@@ -248,7 +249,7 @@ def build_json_payload(*, date_from: datetime.date, date_to: datetime.date,
     ranged = filter_period(date_from, date_to, entries) or {}
     if ranged:
         ranged = filter_categories(ranged, categories)
-    ranged = _project_slots(ranged)
+    ranged = _project_slots(ranged, slot_order)
     vacation_ranged = (
         filter_period(date_from, date_to, vacation_days) or {}
         if vacation_days is not None else None

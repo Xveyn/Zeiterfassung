@@ -39,6 +39,7 @@ from src.api_summary import category_names
 from src.devices import sanitize_registry, with_own_entry
 from src.mobile_settings import clean_category_times, clock, pause
 from src.reservations import reservations_active
+from src.slot_order import DEFAULT_MODE, normalize_mode
 from src.settings import WEEKDAY_KEYS
 from src.storage import sanitize_slot
 
@@ -335,7 +336,8 @@ def build_response(merged: Mapping[str, Any], *, sent_dates: Iterable[str],
                    desktop: Mapping[str, str], window_days: int,
                    window_max_days: int,
                    reservations: Mapping[str, Any] | None = None,
-                   reminders: Mapping[str, Any] | None = None) -> dict[str, Any]:
+                   reminders: Mapping[str, Any] | None = None,
+                   slot_order: str = DEFAULT_MODE) -> dict[str, Any]:
     """Die Antwort des Abgleichs aus dem Merge-Ergebnis, ohne `token`/`expires_at`
     (die ergänzt die Route). Fenster `[heute − Fenster, heute + WINDOW_AHEAD_DAYS]` (heute ist das lokale
     Datum des Desktops) plus alle gesendeten Tage — beides für Einträge **und**
@@ -384,6 +386,9 @@ def build_response(merged: Mapping[str, Any], *, sent_dates: Iterable[str],
         "writable_settings": list(mobile_settings.SETTING_KEYS),
         # Fähigkeit: der Desktop kennt `POST /v1/unpair` (die PWA warnt sonst vor dem Trennen).
         "unpair": True,
+        # Reihenfolge der Slots eines Tages (#520): die PWA zeigt danach (`chrono`, `category`,
+        # `custom`); ein älterer Desktop schickt das Feld nicht, dann gilt `chrono`.
+        "slot_order": normalize_mode(slot_order),
     }
     if reservations is not None:       # nur bei eingeschalteten Reservierungen (Feature-Erkennung)
         response["reservations"] = dict(reservations)
@@ -496,7 +501,8 @@ def perform_sync(request: SyncRequest, *, device_id: str, device_name: str,
                               defaults=build_defaults(settings, names), desktop=desktop,
                               window_days=grant_window(request.window_days, cap),
                               window_max_days=cap, reservations=reservations,
-                              reminders=reminders)
+                              reminders=reminders,
+                              slot_order=normalize_mode(settings.get("slot_order_mode")))
     finally:
         if sync_guard is not None:
             sync_guard.release()

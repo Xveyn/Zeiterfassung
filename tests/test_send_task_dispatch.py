@@ -372,3 +372,17 @@ def test_webhook_secret_is_resolved_before_delivery(monkeypatch, fake_keyring):
 
 def test_missing_keyring_entry_has_its_own_text():
     assert "fehlen" in st._KIND_TEXTS["keyring_missing"]
+
+
+def test_slot_modus_aus_den_einstellungen_geht_an_pdf_und_json(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(st, "generate_pdf", lambda *a, **k: seen.setdefault("pdf", k) and b"PDF")
+    monkeypatch.setattr(st.webhook, "build_json_payload",
+                        lambda **k: seen.setdefault("json", k) and {"x": 1})
+    monkeypatch.setattr(st.webhook, "deliver", lambda *a, **k: {"ok": True, "status": 200})
+    settings = _FakeSettings()
+    settings._d["slot_order_mode"] = "category"
+    perform_send(**_kwargs(send_mail=False, mail=None, settings=settings,
+                           webhooks=[_hook("A", json_=True, pdf=True)]))
+    assert seen["pdf"]["slot_order"] == "category"
+    assert seen["json"]["slot_order"] == "category"

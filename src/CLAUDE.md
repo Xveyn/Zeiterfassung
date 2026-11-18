@@ -73,7 +73,7 @@ Rendering der Monats-/Wochenansicht inkl. Double-Buffer und Fenster-Geometrie.
   und bleibt dort. Ohne Ratchet spränge es bei jedem Lohn-Ein/Aus zwischen schmal und breit
   (Test: `tests/test_grid_geometry.py`). Die Höhe ratcht bewusst nicht (Banner braucht beide
   Richtungen).
-- **Slot-Reihenfolge (#520):** Zellenzeile (`_cell_time_text`: der früheste Slot plus `+N`) und Tooltip zeigen die Slots über `slot_order.sorted_slots`; der Löschen-Dialog (`ui._delete_options`) zeigt sortiert, seine Schlüssel tragen den Index der **gespeicherten** Liste.
+- **Slot-Reihenfolge (#520):** Zellenzeile (`_cell_time_text`: der erste Slot der Reihenfolge plus `+N`) und Tooltip zeigen die Slots über `slot_order.sorted_slots` im Modus `slot_order_mode` (`GridRenderer._slot_order`); der Löschen-Dialog (`ui._delete_options`) zeigt ebenso, seine Schlüssel tragen den Index der **gespeicherten** Liste. Bericht, PDF und Webhook bekommen den Modus als Parameter (`slot_order`), `send_task`/`export_dialog` lesen ihn aus den Einstellungen; der Handy-Abgleich nennt ihn in der Antwort (`mobile_sync.build_response`).
 - `_fmt_slot_line` ist `@staticmethod`; `App._delete_day` ruft es als
   `GridRenderer._fmt_slot_line(...)` (bleibt in App, nutzt aber den Renderer-Static).
 

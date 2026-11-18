@@ -17,6 +17,7 @@ from src import keyring_store, smtp, webhook, webhook_secrets
 from src.dialogs.mail_task import classify_mail_error
 from src.mail import fetch_user_email, get_gmail_service, send_email
 from src.report import generate_pdf
+from src.slot_order import normalize_mode
 
 log = logging.getLogger(__name__)
 
@@ -148,6 +149,7 @@ def perform_send(*, date_from, date_to, entries, name, categories,
     SMTP-Record-Dicts.
     """
     started = time.monotonic()
+    slot_order = normalize_mode(settings.get("slot_order_mode"))
     results = []
     smtp_accounts = list(smtp_accounts or [])
 
@@ -186,7 +188,7 @@ def perform_send(*, date_from, date_to, entries, name, categories,
             pdf_bytes = generate_pdf(
                 date_from, date_to, entries, name=name,
                 categories=categories, category_breakdown=category_breakdown,
-                vacation_days=vacation_days)
+                vacation_days=vacation_days, slot_order=slot_order)
         except Exception as e:
             log.exception("PDF-Erzeugung fehlgeschlagen")
             failure = {"ok": False, "kind": "error", "detail": str(e),
@@ -249,7 +251,8 @@ def perform_send(*, date_from, date_to, entries, name, categories,
             payload = webhook.build_json_payload(
                 date_from=date_from, date_to=date_to, entries=entries,
                 name=name, sender=settings.get("sender_email"),
-                categories=categories, vacation_days=vacation_days)
+                categories=categories, vacation_days=vacation_days,
+                slot_order=slot_order)
             json_bytes = _json.dumps(
                 payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
         except Exception as e:  # bewusst alles, s.o.

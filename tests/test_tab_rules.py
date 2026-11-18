@@ -27,6 +27,7 @@ def work_raw(**overrides):
         "werkstudent_limit_max_hours": "20",
         "state": STATES[1][1],
         "show_weekend": True,
+        "slot_order_mode": "Nach Uhrzeit",
     }
     for key in WEEKDAY_KEYS:
         raw[f"default_start_{key}"] = "08:00"
@@ -115,6 +116,12 @@ def test_work_updates_carries_state_and_weekend():
     upd = tr.work_updates(work_raw(), OLD_WSL)
     assert upd["state"] == STATES[1][0]
     assert upd["show_weekend"] is True
+
+
+def test_work_updates_maps_the_slot_order_label_to_its_code():
+    for label, code in (("Nach Uhrzeit", "chrono"), ("Nach Kategorie", "category"),
+                        ("Eigene Reihenfolge", "custom")):
+        assert tr.work_updates(work_raw(slot_order_mode=label), OLD_WSL)["slot_order_mode"] == code
 
 
 def test_wsl_snapshot_from_settings_and_updates_agree():
@@ -313,7 +320,7 @@ _legacy_keys_base = {
     "prerelease_updates_enabled", "ui_scale", "werkstudent_limit_enabled",
     "werkstudent_limit_start", "werkstudent_limit_end",
     "werkstudent_limit_max_hours", "pause_warning_enabled", "workweek_only",
-    "device_name", "auto_update_enabled", "reservations_enabled",
+    "device_name", "auto_update_enabled", "reservations_enabled", "slot_order_mode",
     "mobile_push_enabled", "mobile_push_reservation", "mobile_push_send",
     "mobile_push_suppress_toast", "default_times_mode", "auto_scale_restart",
 }
