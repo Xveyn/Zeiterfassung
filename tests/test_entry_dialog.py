@@ -365,3 +365,11 @@ def test_move_item_veraendert_die_eingabe_nicht():
     items = ["a", "b"]
     move_item(items, 0, 1)
     assert items == ["a", "b"]
+
+
+def test_arrow_states_sperren_nur_die_randpfeile():
+    from src.dialogs.slot_rows import arrow_states
+    assert arrow_states(0, 1) == (False, False)           # einzige Zeile: nichts zu verschieben
+    assert arrow_states(0, 3) == (False, True)            # oben: kein ▲
+    assert arrow_states(1, 3) == (True, True)
+    assert arrow_states(2, 3) == (True, False)            # unten: kein ▼
