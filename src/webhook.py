@@ -24,6 +24,7 @@ from urllib.parse import unquote, urlsplit
 
 from src.mail import is_offline_error
 from src.report import filter_categories, filter_period
+from src.slot_order import sorted_slots
 from src.time_utils import calculate_hours, hours_to_minutes, utc_now_iso
 from src.vacations import cap_by_worktime
 from src.version import VERSION
@@ -195,7 +196,7 @@ def _project_slots(entries: dict[str, Any]) -> dict[str, Any]:
             {"start": slot.get("start"), "end": slot.get("end"),
              "pause": slot.get("pause", 0) or 0,
              "kategorie": slot.get("kategorie") or ""}
-            for slot in record.get("slots", [])
+            for slot in sorted_slots(record.get("slots", []))
         ]}
         for date_str, record in entries.items()
     }

@@ -30,6 +30,7 @@ from src.weekly_limit import format_limit_warnings
 from src.reservations import reservations_active
 from src.storage import repair_notice_text, repair_toast_text
 from src.grid_renderer import GridRenderer
+from src.slot_order import ordered
 from src.paths import get_resource_path, relaunch_command, relaunch_env
 from src.mail import friendly_token_message
 from src import dpi, keyring_store, removal, secret_migration
@@ -72,6 +73,18 @@ def _delete_action(slots, selected, prefix):
     if not keep:
         return "delete", None
     return "save", keep
+
+
+def _delete_options(slots, prefix, label, fmt):
+    """Löschbare Einheiten eines Typs: ein Slot = der Typ als Ganzes, sonst je
+    Slot eine Zeile. Angezeigt wird chronologisch (#520), der Schlüssel trägt
+    aber den Index in der **gespeicherten** Liste — darauf rechnet
+    `_delete_action`."""
+    if not slots:
+        return []
+    if len(slots) == 1:
+        return [(f"{prefix}:all", label)]
+    return [(f"{prefix}:{i}", f"{label}  {fmt(s)}") for i, s in ordered(slots)]
 
 
 class App:
@@ -923,19 +936,11 @@ class App:
 
         # Löschbare Einheiten: bei genau einem Slot der Typ als Ganzes, bei
         # mehreren je Slot eine Checkbox.
-        options = []
-        if entry_slots:
-            if len(entry_slots) == 1:
-                options.append(("entry:all", "Arbeitszeit"))
-            else:
-                for i, s in enumerate(entry_slots):
-                    options.append((f"entry:{i}", f"Arbeitszeit  {GridRenderer._fmt_slot_line(s)}"))
-        if res_slots:
-            if len(res_slots) == 1:
-                options.append(("reservation:all", "Reservierung"))
-            else:
-                for i, s in enumerate(res_slots):
-                    options.append((f"reservation:{i}", f"Reservierung  {GridRenderer._fmt_slot_line(s, with_pause=True)}"))
+        options = _delete_options(entry_slots, "entry", "Arbeitszeit",
+                                  GridRenderer._fmt_slot_line)
+        options += _delete_options(
+            res_slots, "reservation", "Reservierung",
+            lambda s: GridRenderer._fmt_slot_line(s, with_pause=True))
         if vacation is not None:
             # Gelöscht wird IMMER die ganze Periode. Einzelne Tage aus der
             # Mitte herauszubrechen würde den Zeitraum zerreißen und die

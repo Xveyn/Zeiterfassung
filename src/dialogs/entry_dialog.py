@@ -9,6 +9,7 @@ from src.dialogs.slot_rows import (
 )
 from src.holidays_de import get_holidays
 from src.settings import WEEKDAY_KEYS, parse_reminder_minutes
+from src.slot_order import sorted_slots
 from src.theme import (
     BG, CELL_BG, FONT, FONT_BOLD, FONT_SMALL,
     STRAY_CLICK_GUARD_S, TEXT, TEXT_MUTED, px,
@@ -288,7 +289,7 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
     # Zeit). Gibt es weder Ist-Zeit noch Reservierung, bleibt der Block leer —
     # nur der „+ Slot"-Button erscheint, keine Default-Zeile.
     if entry and entry["slots"]:
-        for s in entry["slots"]:
+        for s in sorted_slots(entry["slots"]):
             add_ist_row(s["start"], s["end"], s.get("pause", 0),
                         s.get("kategorie", ""), removable=False)
     elif existing_reservation and existing_reservation["slots"]:
@@ -471,12 +472,16 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
         # Ohne Inhalt deaktiviert; während Cooldown/Speichern geblockt.
         if save_locked["value"]:
             return
-        ist_slots = [{
+        # Chronologisch gespeichert (#520): ein später angelegter früherer Slot
+        # landet nicht hinter den vorhandenen. Reservierungen bleiben in
+        # Zeilenreihenfolge — `ReservationStore.save` übernimmt die
+        # `gcal_event_id` positionsweise.
+        ist_slots = sorted_slots([{
             "start": r["start"].get(),
             "end": r["end"].get(),
             "pause": int(r["pause"].get() or 0),
             "kategorie": category_from_display(r["kategorie"].get()),
-        } for r in ist_rows]
+        } for r in ist_rows])
         res_slots = [{
             "start": r["start"].get(),
             "end": r["end"].get(),

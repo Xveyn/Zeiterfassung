@@ -388,3 +388,24 @@ def test_the_marker_is_active_only_for_a_marked_slot_with_the_feature_on():
     assert GridRenderer._reminder_for(settings(), None) is None
     assert GridRenderer._reminder_for(settings(send_reminder_enabled=False), reservation) is None
     assert GridRenderer._reminder_for(settings(send_reminder_reservations_enabled=False), reservation) is None
+
+
+def test_tooltip_zeigt_slots_chronologisch():
+    # #520: 11–13 steht vor 9–11 in der Liste, im Tooltip aber dahinter.
+    entry = {"slots": [{"start": "11:00", "end": "13:00", "pause": 0, "kategorie": ""},
+                       {"start": "09:00", "end": "11:00", "pause": 0, "kategorie": ""}]}
+    text = GridRenderer._build_tooltip_text(entry, None, None)
+    assert text.index("09:00") < text.index("11:00-13:00")
+
+
+def test_tooltip_reservierung_chronologisch():
+    res = {"slots": [{"start": "14:00", "end": "15:00", "pause": 0, "kategorie": ""},
+                     {"start": "08:00", "end": "09:00", "pause": 0, "kategorie": ""}]}
+    text = GridRenderer._build_tooltip_text(None, res, None)
+    assert text.index("08:00") < text.index("14:00")
+
+
+def test_zellenzeile_zeigt_den_fruehesten_slot_und_die_restzahl():
+    slots = [{"start": "11:00", "end": "13:00"}, {"start": "09:00", "end": "11:00"}]
+    assert GridRenderer._cell_time_text(slots) == "09:00-11:00  +1"
+    assert GridRenderer._cell_time_text([]) == ""

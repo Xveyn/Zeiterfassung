@@ -17,6 +17,7 @@ from src.time_utils import (
 )
 from src import send_reminder
 from src.holidays_de import get_holidays
+from src.slot_order import sorted_slots
 from src.tooltip import attach_tooltip
 from src.vacations import period_for_day
 from src.theme import (
@@ -291,14 +292,7 @@ class GridRenderer:
         # pixel-fixierte Standardzelle (width=8 in FONT) reinpasst. Wenn der
         # Caller eine breitere Zelle nutzt (z.B. bei ausgeblendeten Wochenenden
         # mit width=11), kann eine größere Schrift übergeben werden.
-        slots = entry.get("slots", [])
-        if slots:
-            first = slots[0]
-            time_text = GridRenderer._fmt_slot_time(first)
-            if len(slots) > 1:
-                time_text += f"  +{len(slots) - 1}"
-        else:
-            time_text = ""
+        time_text = GridRenderer._cell_time_text(entry.get("slots", []))
         time_lbl = tk.Label(
             cell, text=time_text,
             font=time_font, bg=bg, fg=TEXT_MUTED, cursor="hand2",
@@ -380,6 +374,16 @@ class GridRenderer:
         return f"{GridRenderer._fmt_slot_time(slot)}{kat}{pz}"
 
     @staticmethod
+    def _cell_time_text(slots):
+        """Zeitzeile der Zelle: der früheste Slot, bei mehreren `+N`."""
+        if not slots:
+            return ""
+        text = GridRenderer._fmt_slot_time(sorted_slots(slots)[0])
+        if len(slots) > 1:
+            text += f"  +{len(slots) - 1}"
+        return text
+
+    @staticmethod
     def _fmt_slot_time(slot):
         """'HH:MM-HH:MM'. Die Lese-Grenze (`sanitize_slot`) liefert für eine kaputte Zeit
         `None`; das soll nicht als 'None-None' in der Zelle stehen."""
@@ -442,10 +446,10 @@ class GridRenderer:
             parts.append(
                 "Arbeitszeit:\n"
                 + "\n".join(
-                    GridRenderer._fmt_slot_line(s) for s in entry["slots"]))
+                    GridRenderer._fmt_slot_line(s) for s in sorted_slots(entry["slots"])))
         if reservation is not None:
             lines = [GridRenderer._fmt_slot_line(s, with_pause=True)
-                     for s in reservation.get("slots", [])]
+                     for s in sorted_slots(reservation.get("slots", []))]
             if reminder is not None:
                 lines.append(send_reminder.reminder_tooltip_line(*reminder))
             parts.append("Reservierung:\n" + "\n".join(lines))

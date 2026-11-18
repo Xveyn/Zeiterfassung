@@ -1,0 +1,23 @@
+{
+  "chrono": [
+    {"name": "leer", "slots": [], "order": []},
+    {"name": "schon sortiert", "slots": [
+      {"start": "09:00", "end": "11:00"}, {"start": "11:00", "end": "13:00"}], "order": [0, 1]},
+    {"name": "Issue 520: früherer Slot später angelegt", "slots": [
+      {"start": "11:00", "end": "13:00"}, {"start": "09:00", "end": "11:00"}], "order": [1, 0]},
+    {"name": "gleicher Start, früheres Ende zuerst", "slots": [
+      {"start": "09:00", "end": "12:00"}, {"start": "09:00", "end": "10:00"}], "order": [1, 0]},
+    {"name": "gleiche Zeit, dann Kategorie, dann Listenposition", "slots": [
+      {"start": "09:00", "end": "10:00", "kategorie": "B"},
+      {"start": "09:00", "end": "10:00", "kategorie": "A"},
+      {"start": "09:00", "end": "10:00", "kategorie": "A", "pause": 5}], "order": [1, 2, 0]},
+    {"name": "ohne lesbare Startzeit ans Ende, in Listenreihenfolge", "slots": [
+      {"start": null, "end": "10:00"}, {"start": "08:00", "end": "09:00"}, {"end": "11:00"}],
+     "order": [1, 0, 2]},
+    {"name": "ohne Startzeit bleibt die Listenreihenfolge, auch wenn die Enden fallen", "slots": [
+      {"start": null, "end": "11:00"}, {"start": "", "end": "10:00"}], "order": [0, 1]},
+    {"name": "Kategorien nach Codepoint, nicht nach UTF-16-Einheit", "slots": [
+      {"start": "09:00", "end": "10:00", "kategorie": "😀"},
+      {"start": "09:00", "end": "10:00", "kategorie": "Ａ"}], "order": [1, 0]}
+  ]
+}

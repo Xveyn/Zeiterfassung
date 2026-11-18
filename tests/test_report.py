@@ -735,3 +735,12 @@ def test_pdf_caps_vacation_against_worktime_too():
             vacation_days={"2026-07-01": 480})
     assert "12.0h" not in captured["html"]
     assert "liegt Urlaub auf erfasster Arbeitszeit" in captured["html"]
+
+
+def test_slots_eines_tages_stehen_chronologisch_im_bericht():
+    # #520: gespeichert 11–13 vor 9–11 (Slot gelöscht und neu angelegt).
+    entries = {"2026-03-23": {"slots": [_slot("11:00", "13:00"), _slot("09:00", "11:00")]}}
+    html, _ = generate_report(datetime.date(2026, 3, 1), datetime.date(2026, 3, 31), entries)
+    assert html.index("09:00") < html.index("11:00") < html.index("13:00")
+    # Das Datum steht nur in der ersten Zeile — und das ist jetzt der 9–11-Slot.
+    assert html.count("23.03.2026") == 2  # erste Zeile + „Summe 23.03.2026“

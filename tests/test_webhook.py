@@ -655,3 +655,9 @@ def test_payload_caps_vacation_against_worktime_on_the_same_day():
     assert payload["vacation"] == {"2026-09-01": 240}
     assert payload["vacation_minutes"] == 240
     assert payload["total_minutes"] == 240  # Ist-Zeit unveraendert
+
+
+def test_payload_slots_stehen_chronologisch():
+    entries = {"2026-07-01": {"slots": [_slot("11:00", "13:00"), _slot("09:00", "11:00")]}}
+    slots = _payload(entries=entries)["entries"]["2026-07-01"]["slots"]
+    assert [s["start"] for s in slots] == ["09:00", "11:00"]

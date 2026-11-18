@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from src.devices import sanitize_device_name, short_device_id
+from src.slot_order import sorted_slots
 from src.time_utils import (
     DAYS_DE, WEEKDAYS_DE_FULL, format_iso_date, format_iso_datetime,
 )
@@ -162,7 +163,7 @@ def _slot_fields(slot: Any) -> tuple[str, str, str, str]:
 
 def _slots_of(cand: dict[str, Any]) -> list[Any]:
     slots = cand.get("slots")
-    return list(slots) if isinstance(slots, list) else []
+    return sorted_slots(slots) if isinstance(slots, list) else []
 
 
 def _slot_views(mine: dict[str, Any], other: dict[str, Any]) -> tuple[SlotView, ...]:

@@ -67,6 +67,12 @@ test('saving identical slots changes nothing, even in another order', async () =
   assert.deepEqual(store.snapshotDirty(), before);
 });
 
+test('a day is stored in chronological order, however the rows were entered (#520)', async () => {
+  const { store } = await make();
+  await store.saveDay('2026-10-07', [OTHER, SLOT]);
+  assert.deepEqual(store.snapshotDirty().entries['2026-10-07'].slots, [SLOT, OTHER]);
+});
+
 test('modified_at never runs backwards: at least one second after the previous stamp', async () => {
   const { store, now } = await make();
   await store.saveDay('2026-10-07', [SLOT]);
