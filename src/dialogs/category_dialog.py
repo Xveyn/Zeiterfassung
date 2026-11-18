@@ -10,11 +10,13 @@ settings.set_synced.
 
 import tkinter as tk
 
+from src.dialogs.slot_rows import arrow_states, move_item
 from src.settings import WEEKDAY_KEYS
 from src.theme import (
     BG, FONT, FONT_BOLD, PAUSE_VALUES, TEXT, TEXT_MUTED, TIME_VALUES,
     attach_unfocus_on_click, center_dialog_on_parent, create_dialog,
-    dark_combo, dark_entry, px, primary_button, secondary_button, themed_askyesno,
+    dark_combo, dark_entry, px, primary_button, secondary_button,
+    set_secondary_button_enabled, themed_askyesno,
 )
 from src.time_utils import DAYS_DE
 
@@ -170,7 +172,7 @@ def open_category_dialog(parent, settings, on_change=None):
 
     rows_frame = tk.Frame(outer, bg=BG)
     rows_frame.pack(fill="x")
-    rows = []  # Liste von {frame, name, start, end, pause}
+    rows = []  # Liste von {frame, container, name, start, end, pause, days, arrows}
 
     # Read-only Referenzzeile: die globalen Standardzeiten, damit der Nutzer
     # direkt sieht, worauf „(Standard)" hinausläuft. Als schlichte Labels (kein
@@ -227,6 +229,26 @@ def open_category_dialog(parent, settings, on_change=None):
         toggle_holder["btn"] = secondary_button(
             std_row, "Pro Tag ▶", _toggle_daygrid, padx=8, pady=0)
         toggle_holder["btn"].pack(side=tk.LEFT, padx=2)
+
+    def refresh_arrows():
+        """Dämpft ▲ an der obersten und ▼ an der untersten Kategorie (nur die
+        Optik, `move_row` ist dort ohnehin ein No-op)."""
+        for i, r in enumerate(rows):
+            for button, enabled in zip(r["arrows"], arrow_states(i, len(rows)), strict=True):
+                set_secondary_button_enabled(button, enabled)
+
+    def move_row(record, delta):
+        """Verschiebt eine Kategorie; `rows` ist danach die Speicherreihenfolge.
+        Die Reihenfolge gilt überall, wo die Liste auftaucht (Auswahl im Tages-Dialog,
+        Handy)."""
+        before = list(rows)
+        rows[:] = move_item(before, before.index(record), delta)
+        if rows == before:
+            return
+        for r in rows:
+            r["container"].pack_forget()
+            r["container"].pack(fill="x", pady=4)
+        refresh_arrows()
 
     def add_row(name="", defaults=None):
         if defaults is None:
@@ -326,7 +348,7 @@ def open_category_dialog(parent, settings, on_change=None):
                                    padx=4, before=pause_combo)
 
         record = {
-            "frame": row, "name": nv, "mode": mode_var,
+            "frame": row, "container": container, "name": nv, "mode": mode_var,
             "start": start_var, "end": end_var, "pause": pause_var,
             "days": day_vars,
         }
@@ -334,9 +356,16 @@ def open_category_dialog(parent, settings, on_change=None):
         def remove():
             container.destroy()
             rows.remove(record)
+            refresh_arrows()
 
         secondary_button(row, "×", remove, padx=8, pady=0).pack(side=tk.LEFT, padx=4)
+        up = secondary_button(row, "▲", lambda: move_row(record, -1), padx=6, pady=0)
+        up.pack(side=tk.LEFT, padx=(2, 0))
+        down = secondary_button(row, "▼", lambda: move_row(record, 1), padx=6, pady=0)
+        down.pack(side=tk.LEFT, padx=(2, 0))
+        record["arrows"] = (up, down)
         rows.append(record)
+        refresh_arrows()
 
         # Initialen Modus setzen + Sichtbarkeit herstellen.
         # <<ComboboxSelected>> feuert bei programmatischem .set() NICHT.

@@ -172,3 +172,12 @@ def test_not_losing_active_per_day_row():
     rows = [_row("X", mode="per_day",
                  days=_pd_days(mon=("09:00", "18:00")))]
     assert categories_losing_per_day(rows) == []
+
+
+def test_a_reordered_list_is_saved_in_that_order():
+    # Die Pfeile im Dialog ordnen `rows` um; gespeichert wird in genau dieser Reihenfolge (#520).
+    from src.dialogs.slot_rows import move_item
+    rows = [_row("Büro", start="08:00"), _row("Home"), _row("Kunde", end="17:00")]
+    categories, times = collect_categories(move_item(rows, 2, -1))
+    assert categories == ["Büro", "Kunde", "Home"]
+    assert set(times) == {"Büro", "Kunde"}
