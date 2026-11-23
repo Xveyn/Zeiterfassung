@@ -8,7 +8,7 @@ sie nicht kennt:
 
 - Validierung der Slots über `time_utils.validate_slots` (pro Slot Zeit/Pause,
   Überlappungsfreiheit) — dazu die Form (strenges JSON, genau `HH:MM`, nur die
-  vier bekannten Felder) und Grenzen (Slot-Anzahl, Kategorielänge, Jahr);
+  bekannten Felder, `notiz` nur für Ist-Zeiten) und Grenzen (Slot-Anzahl, Kategorielänge, Jahr);
 - Sperren: ungelöster Sync-Konflikt am Tag (die UI öffnet dort den
   Konfliktdialog statt des Tages-Dialogs) und Urlaubsminuten > 0 (Urlaub und
   Arbeitszeit schließen sich aus; 0-Minuten-Tage einer Periode bleiben
@@ -30,6 +30,7 @@ import unicodedata
 from typing import Any
 
 from src.pause_requirement import check_day_pause
+from src.slot_notes import NoteError, check_note
 from src.time_utils import parse_time, validate_slots
 from src.weekly_limit import check_week_limit
 
@@ -48,6 +49,7 @@ MAX_CATEGORY_LEN = 100
 # `parse_time` akzeptiert "8:00" — gespeichert werden soll genau "08:00".
 _TIME_RE = re.compile(r"[0-9]{2}:[0-9]{2}")
 _SLOT_KEYS = frozenset({"start", "end", "pause", "kategorie"})
+_NOTE_KEY = "notiz"
 # Spiegel von `dialogs.slot_rows.OVERRIDE_MARKER`/`NO_CATEGORY_LABEL`: dieses
 # Modul bleibt Tk-frei und darf `slot_rows` nicht importieren.
 # `tests/test_api_entry_write.py` hält beide Paare gleich.
@@ -128,34 +130,45 @@ def _parse_category(value: Any, index: int) -> str:
     return value
 
 
-def _parse_slot(item: Any, index: int) -> dict[str, Any]:
+def _parse_slot(item: Any, index: int, allow_note: bool) -> dict[str, Any]:
     if not isinstance(item, dict):
         raise WriteError(422, "invalid_slot", f"Slot {index} muss ein Objekt sein.")
     keys = set(item)
-    if not _REQUIRED_KEYS <= keys or not keys <= _SLOT_KEYS:
+    allowed = _SLOT_KEYS | {_NOTE_KEY} if allow_note else _SLOT_KEYS
+    if not _REQUIRED_KEYS <= keys or not keys <= allowed:
+        optional = "pause, kategorie und notiz" if allow_note else "pause und kategorie"
         raise WriteError(
             422, "invalid_slot",
-            f"Slot {index}: erlaubt sind start, end (Pflicht) sowie pause und kategorie; "
+            f"Slot {index}: erlaubt sind start, end (Pflicht) sowie {optional}; "
             f"gefunden: {sorted(str(key)[:_KEY_ECHO_MAX] for key in keys)[:10]}.")
     pause = item.get("pause", 0)
     if not isinstance(pause, int) or isinstance(pause, bool) or pause < 0:
         raise WriteError(422, "invalid_pause",
                          f"Slot {index}: pause muss eine ganze Zahl >= 0 (Minuten) sein.")
-    return {
+    slot = {
         "start": _parse_time_field(item["start"], "start", index),
         "end": _parse_time_field(item["end"], "end", index),
         "pause": pause,
         "kategorie": _parse_category(item.get("kategorie", ""), index),
     }
+    if _NOTE_KEY in item:
+        try:
+            slot[_NOTE_KEY] = check_note(item[_NOTE_KEY])
+        except NoteError as error:
+            raise WriteError(422, "invalid_note", f"Slot {index}: {error.message}") from None
+    return slot
 
 
-def parse_slots(raw: list[Any]) -> list[dict[str, Any]]:
+def parse_slots(raw: list[Any], *, allow_note: bool = False) -> list[dict[str, Any]]:
     """Geprüfte Slots (`{start, end, pause, kategorie}`, alle vier Felder) aus einer
-    Liste von Fremddaten. Wirft `WriteError` 422. Eine leere Liste ist hier gültig;
-    ob ein Tag ohne Slots erlaubt ist, entscheidet der Aufrufer."""
+    Liste von Fremddaten. Mit `allow_note` darf ein Slot `notiz` nennen (geprüft,
+    getrimmt, auch `""`); das Feld steht nur im Ergebnis, wenn die Eingabe es nennt.
+    Ohne `allow_note` (Reservierungen) ist `notiz` ein unbekanntes Feld. Wirft
+    `WriteError` 422. Eine leere Liste ist gültig; ob ein Tag ohne Slots erlaubt
+    ist, entscheidet der Aufrufer."""
     if len(raw) > MAX_SLOTS:
         raise WriteError(422, "too_many_slots", f"Höchstens {MAX_SLOTS} Slots je Tag.")
-    slots = [_parse_slot(item, i + 1) for i, item in enumerate(raw)]
+    slots = [_parse_slot(item, i + 1, allow_note) for i, item in enumerate(raw)]
     ok, message = validate_slots(slots, with_pause=True)
     if not ok:
         raise WriteError(422, "invalid_slots", message)
@@ -163,7 +176,8 @@ def parse_slots(raw: list[Any]) -> list[dict[str, Any]]:
 
 
 def parse_day_body(body: bytes) -> list[dict[str, Any]]:
-    """Body → geprüfte Slots (`{start, end, pause, kategorie}`, alle vier Felder).
+    """Body → geprüfte Slots (`{start, end, pause, kategorie}`, dazu `notiz`, wenn der
+    Body es nennt).
     Wirft `WriteError`: 400 bei kaputtem JSON oder falscher Form, 422 bei
     ungültigem Slot."""
     data = load_json_body(body)
@@ -173,7 +187,7 @@ def parse_day_body(body: bytes) -> list[dict[str, Any]]:
     if not raw:
         raise WriteError(422, "empty_slots",
                          "Eine leere Slot-Liste speichert nichts — zum Löschen DELETE benutzen.")
-    return parse_slots(raw)
+    return parse_slots(raw, allow_note=True)
 
 
 def check_date_range(day: datetime.date) -> None:

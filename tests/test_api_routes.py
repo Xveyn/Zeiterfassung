@@ -74,7 +74,8 @@ def test_entries_without_range_returns_everything_sorted(storage):
     entries = response.body["entries"]
     assert list(entries) == ["2026-01-05", "2026-01-20", "2026-02-03"]
     assert entries["2026-01-05"] == {
-        "slots": [{"start": "08:00", "end": "12:00", "pause": 0, "kategorie": "Projekt"}]}
+        "slots": [{"start": "08:00", "end": "12:00", "pause": 0, "kategorie": "Projekt",
+                   "notiz": ""}]}
 
 
 def test_entries_empty_store_gives_empty_object(storage):
@@ -158,7 +159,8 @@ def test_single_entry_returns_the_day(storage):
     assert response.status == 200
     assert response.body == {
         "date": "2026-01-20",
-        "slots": [{"start": "09:00", "end": "17:00", "pause": 30, "kategorie": ""}],
+        "slots": [{"start": "09:00", "end": "17:00", "pause": 30, "kategorie": "",
+                   "notiz": ""}],
     }
 
 
@@ -304,9 +306,11 @@ def test_put_creates_the_day_and_reports_it(env):
     assert response.status == 200
     assert response.body == {
         "date": DAY,
-        "slots": [{"start": "08:00", "end": "12:00", "pause": 0, "kategorie": "Projekt"}],
+        "slots": [{"start": "08:00", "end": "12:00", "pause": 0, "kategorie": "Projekt",
+                   "notiz": ""}],
         "changed": True, "warnings": []}
-    assert env.storage.get(DAY)["slots"] == response.body["slots"]
+    assert env.storage.get(DAY)["slots"] == [
+        {"start": "08:00", "end": "12:00", "pause": 0, "kategorie": "Projekt"}]
     assert env.changes == 1
 
 
@@ -334,7 +338,8 @@ def test_a_put_with_the_slots_of_a_deleted_day_revives_it(env):
     response = env.put(SLOTS_BODY)
 
     assert response.body["changed"] is True
-    assert env.storage.get(DAY)["slots"] == response.body["slots"]
+    assert [{k: v for k, v in s.items() if k != "notiz"} for s in response.body["slots"]] \
+        == env.storage.get(DAY)["slots"]
     assert env.changes == changes_before + 1
 
 
@@ -831,7 +836,7 @@ def test_the_api_reads_a_store_file_with_broken_entries(tmp_path):
 
     assert entries.status == 200 and month.status == 200
     assert list(entries.body["entries"]) == ["2026-01-05", "2026-01-08"]
-    assert entries.body["entries"]["2026-01-08"]["slots"] == [ist_slot("09:00", "10:00", 0, "")]
+    assert entries.body["entries"]["2026-01-08"]["slots"] == [{**ist_slot("09:00", "10:00", 0, ""), "notiz": ""}]
     assert month.body["total_minutes"] == 240 + 60
     assert get(env, "/v1/entries/2026-01-06").status == 404
 
@@ -865,7 +870,7 @@ def test_entries_carry_only_the_four_slot_fields(storage):
 
     slots = call("/v1/entries", make_ctx(storage)).body["entries"]["2026-01-05"]["slots"]
 
-    assert slots == [{"start": "08:00", "end": "12:00", "pause": 0, "kategorie": "A"}]
+    assert slots == [{"start": "08:00", "end": "12:00", "pause": 0, "kategorie": "A", "notiz": ""}]
 
 
 def test_a_single_entry_carries_only_the_four_slot_fields(storage):
@@ -873,4 +878,59 @@ def test_a_single_entry_carries_only_the_four_slot_fields(storage):
 
     slots = call("/v1/entries/2026-01-05", make_ctx(storage)).body["slots"]
 
-    assert slots == [{"start": "08:00", "end": "12:00", "pause": 0, "kategorie": "A"}]
+    assert slots == [{"start": "08:00", "end": "12:00", "pause": 0, "kategorie": "A", "notiz": ""}]
+
+
+# --- Notiz am Slot (#519) ---------------------------------------------------------------------
+
+def _body(**slot):
+    return json.dumps({"slots": [{"start": "08:00", "end": "12:00", **slot}]}).encode()
+
+
+def _get_day(env):
+    return handle(ApiRequest("GET", f"/v1/entries/{DAY}", {}), env.ctx, LOCAL)
+
+
+def test_put_with_a_note_is_readable_by_get(env):
+    response = env.put(_body(notiz="Kunde"))
+
+    assert response.status == 200
+    assert response.body["slots"][0]["notiz"] == "Kunde"
+    assert _get_day(env).body["slots"][0]["notiz"] == "Kunde"
+
+
+def test_get_of_a_day_without_note_shows_an_empty_note(env):
+    env.put(_body())
+    assert _get_day(env).body["slots"] == [
+        {"start": "08:00", "end": "12:00", "pause": 0, "kategorie": "", "notiz": ""}]
+
+
+def test_put_without_notiz_keeps_the_note_and_reports_the_change(env):
+    env.put(_body(notiz="Kunde"))
+
+    first = env.put(_body(pause=15))
+    again = env.put(_body(pause=15))
+
+    assert first.body["changed"] is True and first.body["slots"][0]["notiz"] == "Kunde"
+    assert again.body["changed"] is False
+
+
+def test_put_with_an_empty_note_removes_it(env):
+    env.put(_body(notiz="Kunde"))
+
+    response = env.put(_body(notiz=""))
+
+    assert response.body["changed"] is True
+    assert response.body["slots"][0]["notiz"] == ""
+    assert "notiz" not in env.storage.get(DAY)["slots"][0]
+
+
+def test_unchanged_put_without_notiz_on_a_noted_day_is_not_a_change(env):
+    env.put(_body(notiz="Kunde"))
+    assert env.put(_body()).body["changed"] is False
+
+
+def test_put_with_a_bad_note_is_422_invalid_note(env):
+    response = env.put(_body(notiz="a\nb"))
+    assert response.status == 422 and code(response) == "invalid_note"
+
