@@ -919,11 +919,15 @@ test('foreign values in slots, stamps and conflict versions never reach the stor
 
 test('valid values pass through unchanged', () => {
   const doc = fixture('sync-response.json');
+  // `notiz` (#519) liest diese PWA noch nicht; sie lässt das Feld fallen.
+  const withoutNote = (slots) => slots.map(({ notiz: _notiz, ...slot }) => slot);
 
   const parsed = parseSyncResponse(doc);
 
-  assert.deepEqual(parsed.entries['2026-10-07'], doc.entries['2026-10-07']);
-  assert.deepEqual(parsed.conflicts[0].versions, doc.conflicts[0].versions);
+  const day = doc.entries['2026-10-07'];
+  assert.deepEqual(parsed.entries['2026-10-07'], { ...day, slots: withoutNote(day.slots) });
+  assert.deepEqual(parsed.conflicts[0].versions,
+    doc.conflicts[0].versions.map((v) => ({ ...v, slots: withoutNote(v.slots) })));
 });
 
 for (const [name, change] of [

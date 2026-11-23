@@ -13,7 +13,8 @@
           "start": "08:00",
           "end": "12:00",
           "pause": 0,
-          "kategorie": "Projekt"
+          "kategorie": "Projekt",
+          "notiz": "Kunde Mustermann"
         }
       ],
       "modified_at": "2026-10-07T18:30:00Z",
@@ -41,7 +42,8 @@
               "start": "08:00",
               "end": "12:00",
               "pause": 0,
-              "kategorie": "Projekt"
+              "kategorie": "Projekt",
+              "notiz": ""
             }
           ]
         },
@@ -54,7 +56,8 @@
               "start": "09:00",
               "end": "13:00",
               "pause": 0,
-              "kategorie": ""
+              "kategorie": "",
+              "notiz": ""
             }
           ]
         }
@@ -115,6 +118,7 @@
   "writable_settings": ["categories", "category_times", "slot_order_mode"],
   "reservation_pause": true,
   "unpair": true,
+  "slot_notes": true,
   "slot_order": "chrono",
   "reservations": {
     "2026-10-15": {

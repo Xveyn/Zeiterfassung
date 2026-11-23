@@ -195,7 +195,7 @@ def test_the_response_carries_the_protocol_fields_and_no_token():
         "conflicts": [], "categories": ["Projekt"],
         "defaults": DEFAULTS, "desktop": DESKTOP,
         "writable_settings": ["categories", "category_times", "slot_order_mode"], "unpair": True,
-        "slot_order": "chrono"}
+        "slot_notes": True, "slot_order": "chrono"}
 
 
 def test_the_window_is_today_minus_90_days_through_today_plus_14_days():
@@ -253,7 +253,7 @@ def test_foreign_slot_values_are_sanitised_in_the_response():
 
     slots = respond(merged)["entries"][_iso(0)]["slots"]
 
-    assert slots == [{"start": "08:00", "end": "12:00", "pause": 0, "kategorie": ""}]
+    assert slots == [{"start": "08:00", "end": "12:00", "pause": 0, "kategorie": "", "notiz": ""}]
 
 
 def test_keys_that_are_not_a_date_are_left_out_of_the_response():
@@ -277,7 +277,7 @@ def test_deleted_is_true_only_for_the_boolean_true(flag):
 
     entry = respond(merged)["entries"][_iso(0)]
 
-    assert entry["deleted"] is False and entry["slots"] == [SLOT]
+    assert entry["deleted"] is False and entry["slots"] == [{**SLOT, "notiz": ""}]
 
 
 def test_a_tombstone_never_carries_slots():
@@ -302,7 +302,8 @@ def test_conflict_candidates_use_the_cleaned_slots():
 
     versions = respond({"conflicts": [conflict]})["conflicts"][0]["versions"]
 
-    assert versions[0]["slots"] == [{"start": "08:00", "end": "12:00", "pause": 0, "kategorie": ""}]
+    assert versions[0]["slots"] == [{"start": "08:00", "end": "12:00", "pause": 0, "kategorie": "",
+                                     "notiz": ""}]
 
 
 def test_conflicts_are_sorted_by_date():
@@ -333,9 +334,9 @@ def test_open_entry_conflicts_in_the_window_are_listed_with_device_names():
 
     assert conflicts == [{"id": f"c-{_iso(-1)}", "date": _iso(-1), "versions": [
         {"device": "PHONE-0001", "name": "Pixel", "modified_at": "2026-10-07T18:30:00Z",
-         "slots": [SLOT]},
+         "slots": [{**SLOT, "notiz": ""}]},
         {"device": "DESK", "name": "", "modified_at": "2026-10-07T20:00:00Z",
-         "slots": [{"start": "09:00", "end": "13:00", "pause": 0, "kategorie": ""}]}]}]
+         "slots": [{"start": "09:00", "end": "13:00", "pause": 0, "kategorie": "", "notiz": ""}]}]}]
 
 
 def test_resolved_setting_and_out_of_window_conflicts_are_left_out():
@@ -610,7 +611,7 @@ def test_a_phone_edit_after_the_last_pull_wins_even_with_a_stamp_before_it(env, 
 
     assert env.storage.get("2026-10-07")["slots"][0]["start"] == "07:00"
     assert env.conflicts.get_all() == []
-    assert response["entries"]["2026-10-07"]["slots"] == [corrected]
+    assert response["entries"]["2026-10-07"]["slots"] == [{**corrected, "notiz": ""}]
     assert response["entries"]["2026-10-07"]["device_id"] == PHONE
 
 
@@ -950,3 +951,122 @@ def test_an_invalid_slot_order_is_422_invalid_entry_and_changes_nothing(env):
     assert (error.status, error.code) == (422, "invalid_entry")
     assert "slot_order_mode" in error.message
     assert env.settings.get("slot_order_mode") == "chrono"
+
+
+# --- Notizen (#519) ---------------------------------------------------------------------------
+
+NOTE_SLOT = {**SLOT, "notiz": "Kunde Mustermann"}
+LATE = {"start": "13:00", "end": "17:00", "pause": 30, "kategorie": "Büro"}
+
+
+def test_a_day_whose_slots_all_carry_a_note_gets_entry_notes_and_four_field_slots():
+    parsed = parse({"2026-10-07": day(slots=(NOTE_SLOT, {**LATE, "notiz": "  "}))})
+
+    entry = parsed.entries["2026-10-07"]
+    assert entry["notes"] == {"08:00": "Kunde Mustermann"}
+    assert entry["slots"] == [SLOT, LATE]
+
+
+def test_a_day_without_any_note_has_no_notes_key():
+    entry = parse({"2026-10-07": day(slots=(SLOT, LATE))}).entries["2026-10-07"]
+    assert "notes" not in entry
+    assert all("notiz" not in slot for slot in entry["slots"])
+
+
+def test_a_day_with_empty_notes_on_all_slots_carries_an_empty_notes_key():
+    entry = parse({"2026-10-07": day(slots=({**SLOT, "notiz": ""},))}).entries["2026-10-07"]
+    assert entry["notes"] == {}
+
+
+def test_notes_on_only_some_slots_of_a_day_is_422_invalid_entry():
+    error = rejected(body({"2026-10-07": day(slots=(NOTE_SLOT, LATE))}))
+    assert (error.status, error.code) == (422, "invalid_entry")
+    assert "notiz" in error.message and "2026-10-07" in error.message
+
+
+@pytest.mark.parametrize("note", ["x" * 201, "a\nb", 5, None])
+def test_an_invalid_note_is_422_invalid_entry(note):
+    error = rejected(body({"2026-10-07": day(slots=({**SLOT, "notiz": note},))}))
+    assert (error.status, error.code) == (422, "invalid_entry")
+
+
+def put_desktop_notes(env, date, notes, *, slots=(SLOT,), modified_at="2026-10-01T10:00:00Z"):
+    raw = dict(env.storage.get_all_raw())
+    raw[date] = {"slots": [dict(s) for s in slots], "notes": dict(notes), "modified_at": modified_at,
+                 "device_id": "DESK", "deleted": False}
+    env.storage.apply_merge(raw)
+
+
+def test_an_old_pwa_editing_a_day_keeps_the_desktop_note(env):
+    put_desktop_notes(env, "2026-10-07", {"08:00": "Kunde Mustermann"})
+
+    response = run(env, {"2026-10-07": day(slots=({**SLOT, "pause": 15},))},
+                   last_pull_at="2026-10-05T00:00:00Z")
+
+    stored = env.storage.get_all_raw()["2026-10-07"]
+    assert stored["slots"] == [{**SLOT, "pause": 15}]
+    assert stored["notes"] == {"08:00": "Kunde Mustermann"}
+    assert response["entries"]["2026-10-07"]["slots"] == [{**SLOT, "pause": 15, "notiz": "Kunde Mustermann"}]
+    assert env.conflicts.get_all() == []
+
+
+def test_a_new_pwa_removes_the_note_with_empty_notes(env):
+    put_desktop_notes(env, "2026-10-07", {"08:00": "Kunde Mustermann"})
+
+    response = run(env, {"2026-10-07": day(slots=({**SLOT, "notiz": ""},))},
+                   last_pull_at="2026-10-05T00:00:00Z")
+
+    assert env.storage.get_all_raw()["2026-10-07"]["notes"] == {}
+    assert response["entries"]["2026-10-07"]["slots"] == [{**SLOT, "notiz": ""}]
+
+
+@pytest.mark.parametrize("desktop", ["none", "plain", "tombstone"])
+def test_empty_notes_on_a_day_the_desktop_never_noted_are_not_written(env, desktop):
+    if desktop == "plain":
+        put_desktop(env, "2026-10-07", modified_at="2026-10-01T10:00:00Z")
+    elif desktop == "tombstone":
+        put_desktop(env, "2026-10-07", slots=(), deleted=True, modified_at="2026-10-01T10:00:00Z")
+
+    run(env, {"2026-10-07": day(slots=({**SLOT, "notiz": ""},))}, last_pull_at="2026-10-05T00:00:00Z")
+
+    stored = env.storage.get_all_raw()["2026-10-07"]
+    assert "notes" not in stored and stored["slots"] == [SLOT]
+
+
+def test_a_new_pwa_sets_a_note(env):
+    put_desktop(env, "2026-10-07", modified_at="2026-10-01T10:00:00Z")
+
+    response = run(env, {"2026-10-07": day(slots=(NOTE_SLOT, {**LATE, "notiz": ""}))},
+                   last_pull_at="2026-10-05T00:00:00Z")
+
+    assert env.storage.get_all_raw()["2026-10-07"]["notes"] == {"08:00": "Kunde Mustermann"}
+    assert env.storage.get("2026-10-07")["slots"][0]["notiz"] == "Kunde Mustermann"
+    assert response["entries"]["2026-10-07"]["slots"] == [NOTE_SLOT, {**LATE, "notiz": ""}]
+
+
+def test_every_response_announces_slot_notes(env):
+    assert respond({})["slot_notes"] is True
+    assert run(env, {})["slot_notes"] is True
+
+
+def test_conflict_versions_carry_the_notes_of_their_candidate():
+    conflict = _conflict(_iso(-1))
+    conflict["candidates"][1]["notes"] = {"09:00": "Kunde", "10:00": "ohne Slot"}
+
+    versions = respond({"conflicts": [conflict]})["conflicts"][0]["versions"]
+
+    assert versions[0]["slots"] == [{**SLOT, "notiz": ""}]
+    assert versions[1]["slots"] == [{"start": "09:00", "end": "13:00", "pause": 0, "kategorie": "",
+                                     "notiz": "Kunde"}]
+
+
+def test_stored_notes_and_starts_that_are_foreign_data_do_not_break_the_response():
+    weird = [{"start": ["08:00"], "end": "12:00", "pause": 0, "kategorie": ""},
+             {"start": "13:00", "end": "17:00", "pause": 0, "kategorie": ""}]
+    for notes in ({"13:00": "a\x00b" + "x" * 300}, ["kein Objekt"], {"13:00": 5}, None):
+        entry = {**_entry(_iso(0), slots=weird), "notes": notes}
+
+        slots = respond({"entries": {_iso(0): entry}})["entries"][_iso(0)]["slots"]
+
+        assert all(isinstance(s["notiz"], str) and len(s["notiz"]) <= 200 for s in slots)
+        assert slots[-1]["notiz"] in ("", "ab" + "x" * 198)
