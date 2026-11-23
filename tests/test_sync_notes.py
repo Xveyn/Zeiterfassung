@@ -181,3 +181,28 @@ def test_broken_notes_value_does_not_raise(other):
     broken = _entry(T1, "A", notes="kaputt")
     ab, ba = _both(broken, other)
     assert ab["entries"] == ba["entries"]
+
+
+@pytest.mark.parametrize("start", [["08:00"], {"x": 1}])
+def test_unhashable_start_does_not_raise_and_stays_symmetric(start):
+    foreign = _entry(T2, "B", slots=[_slot(start=start)])
+    keyed = _entry(T1, "A", notes={"08:00": "K"})
+    ab, ba = _both(foreign, keyed)
+    assert ab["entries"] == ba["entries"]
+
+
+def test_stamp_at_the_end_of_the_range_does_not_inherit_and_stays_symmetric():
+    keyless = _entry("9999-12-31T23:59:59Z", "C")
+    keyed = _entry(T1, "A", notes={"08:00": "K"})
+    ab, ba = _both(keyless, keyed)
+    assert ab["entries"] == ba["entries"]
+    assert ab["entries"][DAY] == keyless
+
+
+def test_stamp_before_year_1000_is_not_bumped_past_real_stamps():
+    old = "0500-01-01T00:00:00Z"
+    keyless = _entry(old, "C")
+    keyed = _entry(old, "C", notes={"08:00": "K"})
+    ab, ba = _both(keyless, keyed)
+    assert ab["entries"] == ba["entries"]
+    assert ab["entries"][DAY]["modified_at"] == old

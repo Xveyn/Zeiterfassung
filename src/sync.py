@@ -113,7 +113,7 @@ def _slots_signature(entry: Entry) -> list[tuple[Any, ...]]:
     notes = slot_notes.notes_of(entry)
     return sorted_signature(
         (s.get("start"), s.get("end"), s.get("pause", 0), s.get("kategorie", ""),
-         notes.get(s.get("start"), ""))
+         notes.get(s["start"], "") if isinstance(s.get("start"), str) else "")
         for s in (entry.get("slots") or [])
     )
 

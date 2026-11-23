@@ -218,3 +218,13 @@ def test_resolution_passender_ohne_schluessel_niemand_hat_ihn_faellt_auf_replace
 
 def test_resolution_ignoriert_nicht_objekte():
     assert sn.resolution_notes(_res([_slot("08:00")]), [None, 5, "x"], None) is None
+
+
+def test_bump_stamp_at_the_end_of_the_range_is_none():
+    assert sn.bump_stamp("9999-12-31T23:59:59Z") is None
+
+
+def test_bump_stamp_before_year_1000_is_none():
+    # strftime schreibt solche Jahre je nach Plattform ohne führende Nullen; der Stempel
+    # sortierte dann als Text hinter jeden echten.
+    assert sn.bump_stamp("0500-01-01T00:00:00Z") is None

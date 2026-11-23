@@ -138,14 +138,17 @@ def notes_from_slots(slots: list[dict[str, Any]]) -> dict[str, str]:
 
 
 def bump_stamp(stamp: object) -> str | None:
-    """Stempel plus eine Sekunde, `None` bei unlesbarem Stempel."""
+    """Stempel plus eine Sekunde, `None` bei unlesbarem oder nicht anhebbarem Stempel."""
     if not isinstance(stamp, str):
         return None
     try:
-        parsed = datetime.strptime(stamp, _STAMP_FORMAT)
-    except ValueError:
+        bumped = datetime.strptime(stamp, _STAMP_FORMAT) + timedelta(seconds=1)
+    except (ValueError, OverflowError):
         return None
-    return (parsed + timedelta(seconds=1)).strftime(_STAMP_FORMAT)
+    if bumped.year < 1000:
+        # strftime schreibt solche Jahre plattformabhängig ohne führende Nullen.
+        return None
+    return bumped.strftime(_STAMP_FORMAT)
 
 
 def supplement(entry: Mapping[str, Any], other: Mapping[str, Any]) -> dict[str, Any] | None:
