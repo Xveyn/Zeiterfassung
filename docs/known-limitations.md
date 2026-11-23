@@ -752,19 +752,32 @@ daraus folgt, ist in einer gemischten Flotte nicht ganz zu schließen.
   Liste steht (bis zur Kompaktierung), baut seine Schleife über die Auflösungen den Tag bei jedem Sync
   aus vier Schlüsseln neu; das zählt wie ein Neuspeichern ohne `notes`.
 - **Welche Löschungen den Schlüssel behalten.** Ein Tombstone trägt `notes: {}`, wenn der gelöschte
-  Stand den Schlüssel trug: beim Löschen am neuen Desktop, beim Löschen am Handy (der Desktop setzt
-  den Schlüssel nach seinem Eintrag) und bei einer als „gelöscht“ angewendeten Konflikt-Auflösung.
-  Ein danach neu angelegter Tag trägt den Schlüssel dann ebenfalls und erbt nichts. Ein Tombstone
-  eines **alten** Geräts hat nur vier Schlüssel, ebenso einer, den die Auflösungs-Schleife eines alten
-  Geräts neu baut (er gewinnt bei gleichem Stempel über die Textform); ein danach neu angelegter Tag
-  ohne Schlüssel kann dann von einem Gerät, das noch einen Stand mit Notiz hält, die alte Notiz
-  zurückbekommen.
+  Stand den Schlüssel trug: beim Löschen am neuen Desktop und beim Löschen am Handy (der Desktop setzt
+  den Schlüssel nach seinem Eintrag). Eine als „gelöscht“ gelöste Konflikt-Auflösung schreibt ihn,
+  wenn der gespeicherte Stand oder einer der beiden Kandidaten ihn trägt (oder die Wahl eine Notiz
+  hat); Tombstone und Auflösung tragen ihn dann beide. Ein Tombstone eines **alten** Geräts hat nur
+  vier Schlüssel, ebenso einer, den die Auflösungs-Schleife eines alten Geräts neu baut (er gewinnt
+  bei gleichem Stempel über die Textform); ein danach neu angelegter Tag ohne Schlüssel kann dann von
+  einem Gerät, das noch einen Stand mit Notiz hält, die alte Notiz zurückbekommen.
+- **Welche Neuanlagen den Schlüssel tragen.** Legt ein neuer Desktop einen Tag über einem Tombstone
+  mit Schlüssel neu an, trägt der neue Tag ihn sofort und erbt nichts. Das Handy (die PWA schickt
+  heute kein `notiz`) und ein altes Gerät legen den Tag ohne Schlüssel an; er bekommt ihn im Merge,
+  sobald das mergende Gerät den Tombstone mit Schlüssel hält (`notes: {}`, Stempel + 1 s). Beim
+  Handy ist das immer der Fall, der Desktop hält den Tombstone selbst. **Grenze:** synchronisiert ein
+  Gerät, das noch den Stand mit Notiz von vor dem Löschen hält, den ohne Schlüssel neu angelegten Tag
+  **bevor** ein Gerät mit dem Tombstone es tut, erbt er die alte Notiz, und sie kommt zurück
+  (dieselbe Reihenfolge-Abhängigkeit wie in der Drei-Geräte-Grenze oben).
+- **Nach der Kompaktierung fehlt die Markierung.** Die Kompaktierung entfernt abgeschlossene
+  Tombstones samt `notes: {}`. Ein danach neu angelegter Tag wird ohne Schlüssel geschrieben (es gibt
+  keinen Vorgänger mehr, der ihn trug), und ein Gerät, das seit **vor** dem Löschen offline war und
+  den Stand mit Notiz hält, erbt beim nächsten Sync die alte Notiz in den neuen Tag.
 - **Die Anhebung um eine Sekunde macht den ergänzten Stand zum neuesten.** Dafür reicht schon eine
-  Sekunde Uhrabweichung: geht die Uhr eines Handys etwa eine Sekunde vor dem Desktop (oder läuft der
-  Abgleich in derselben Sekunde wie das Speichern), liegt der gespeicherte Stand eines Tages mit Notiz
-  danach eine Sekunde hinter dem Abgleich-Zeitpunkt. Ändert eine PWA, die kein `notiz` sendet,
-  denselben Tag erneut, entsteht ein unnötiger Konflikt „Handy gegen Handy“; Daten gehen nicht
-  verloren (s. „Last-Write-Wins hängt an den Geräte-Uhren“).
+  Sekunde Uhrabweichung: zeigt die Uhr eines Handys etwa eine Sekunde mehr als die des Desktops (oder
+  läuft der Abgleich in derselben Sekunde wie das Speichern), ist der Stempel des gespeicherten Tages
+  mit Notiz danach jünger als der Abgleich-Zeitpunkt (`last_pull_at`), den der Desktop sich merkt.
+  Ändert eine PWA, die kein `notiz` sendet, denselben Tag erneut, gelten beide Seiten als seither
+  geändert, und es entsteht ein unnötiger Konflikt „Handy gegen Handy“; Daten gehen nicht verloren
+  (s. „Last-Write-Wins hängt an den Geräte-Uhren“).
 - **Eine alte Version löst einen Konflikt, dessen Stände sich nur in der Notiz unterscheiden:** sie
   sieht zwei gleiche Karten, es gilt der jüngere Stand.
 - **Geteilte Arbeitszeiten kommen ohne Notizen an.** Die Teilen-Datei bleibt bewusst bei den vier

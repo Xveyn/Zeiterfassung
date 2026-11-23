@@ -333,7 +333,10 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
   gelöschte Stand den Schlüssel trug, sonst den Tombstone aus vier Schlüsseln. Ein Slot ohne
   Schlüssel `notiz` erbt die Notiz des bisherigen Slots mit gleicher Startzeit (ein Schreiber, der
   Notizen nicht kennt, löscht keine; Vorbild `reservations.inherit_pause`), ein Slot mit Schlüssel
-  (auch `""`) gilt wie angegeben. `get_all_raw`/`apply_merge` bleiben Rohformat für den Sync.
+  (auch `""`) gilt wie angegeben. `save`/`delete` nehmen `notes_known`: dann schreiben sie den
+  Schlüssel auch ohne Vorgänger, der ihn trug (einziger Aufrufer `sync.resolve_conflict`, Regel dort);
+  ohne das Argument bleiben Verhalten und Bytes wie beschrieben, `save_many` kennt es nicht.
+  `get_all_raw`/`apply_merge` bleiben Rohformat für den Sync.
   `reservations.py` — Reservierungen
   (zukünftige Soll-Zeiten, eigenes Konzept). `settings.py` — Einstellungen mit Defaults.
 - `conflicts_store.py` — lokale Sync-Konfliktliste. `category_defaults.py` — Default-Kategorien.
@@ -436,7 +439,8 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
   `slot_notes.py`): `notiz` je Slot in der Antwort, auch in den Konflikt-Versionen, dazu die Fähigkeit
   `slot_notes: true`. Die Anfrage trägt `notiz` optional, aber je Tag an **allen** Slots oder an keinem;
   gemischt ist `422 invalid_entry`. Den Schutz übernimmt der Merge: ohne `notiz` bleibt der Handy-Eintrag
-  ohne `notes`, und die Erb-Regel greift (das Handy ist `local`); mit `notiz` setzt der Eintrag `notes`
+  ohne `notes`, und die Erb-Regel greift (das Handy ist `local`; über einem Tombstone mit Schlüssel bekommt
+  ein neu angelegter Tag so `{}`); mit `notiz` setzt der Eintrag `notes`
   nach der Schreib-Regel von `Storage.save`. Den Schlüssel richtet `_notes_key_like_desktop` am
   Desktop-Eintrag (lebend oder Tombstone) aus: trägt er ihn, behält ein leeres `notes` vom Handy ihn und
   ein Tombstone des Handys bekommt `notes: {}` (wie `Storage.delete`); trägt er ihn nicht, entfällt ein
@@ -579,8 +583,10 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
 
   **Erb-Regel der Slot-Notizen (Xveyn#519).** Eine ältere Version speichert einen Tag aus vier
   Schlüsseln, `notes` fehlt, ihr neuerer Stempel gewänne. Darum geht jeder Eintrag-Merge über
-  `_merge_entry`: fehlt genau einer Seite der Schlüssel, erbt sie von der anderen (`slot_notes.supplement`:
-  nur Notizen zu Startzeiten ihrer eigenen Slots, auch `{}` ist dann ein gesetzter Schlüssel). Verglichen
+  `_merge_entry`: fehlt genau einer lebenden Seite der Schlüssel, erbt sie von der anderen (`slot_notes.supplement`:
+  nur Notizen zu Startzeiten ihrer eigenen Slots, auch `{}` ist dann ein gesetzter Schlüssel; von einem
+  Tombstone mit Schlüssel nur `{}`, die Markierung für einen ohne Schlüssel neu angelegten Tag — vom Handy
+  oder einem alten Gerät —, sonst füllte ein Gerät mit dem Stand vor dem Löschen die alte Notiz nach). Verglichen
   wird mit einer Signatur, die die Notizen einschließt (`_values_equal_entry`); Gewinner und Konflikte
   bleiben wie sonst, die Kandidaten tragen die ergänzten Stände. Gewinnt die ergänzte Seite (oder haben
   beide denselben Stempel und dasselbe Gerät), wird der Stempel um **1 s** angehoben: sonst hielte das
@@ -588,20 +594,27 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
   ihn bei jedem Sync wieder hoch. Lässt sich der Stempel nicht anheben (unlesbar, Ende des Bereichs,
   Jahr vor 1000), gilt keine Erbschaft. Fehlt der Schlüssel beiden Seiten, ändert sich nichts. Ein
   Stand mit `notes: {}` erbt nichts (bewusst gelöscht). **Gelöste Konflikte:** `_apply_resolutions` nimmt
-  je Schlüssel nur die jüngste Auflösung (`_lww_key`), und `_resolution_candidate` liest den Stand
+  je Schlüssel nur die jüngste Auflösung (`_lww_key` über das, was die Auflösung selbst trägt, bei
+  Gleichstand die Konflikt-ID; abgeleitete Notizen hängen am gemergten Eintrag, und ein zweiter Merge
+  wählte sonst eine andere), und `_resolution_candidate` liest den Stand
   **vor allen Auflösungen**, nie einen Zwischenstand, sonst hinge das Ergebnis an der Reihenfolge der
-  Konfliktliste. Eine Auflösung trägt `notes` auf oberster Ebene neben `slots`/`deleted`, nie im Slot
-  (`resolve_conflict` schreibt sie mit). Fehlt sie (ein altes Gerät hat aufgelöst), nimmt
+  Konfliktliste. Eine Auflösung trägt `notes` auf oberster Ebene neben `slots`/`deleted`, nie im Slot.
+  `resolve_conflict` hält Tag und Auflösung im Schlüssel gleich: bekannt ist er, wenn der gespeicherte
+  Stand oder ein Kandidat ihn trägt oder die Wahl eine nicht leere Notiz hat (dann `notes_known` an
+  `Storage.save`/`delete`), und die Auflösung trägt `notes` genau dann, wenn der eben geschriebene Tag
+  ihn trägt, mit dessen Notizen (`{}` beim Tombstone). Sonst schlüge ein Tombstone aus vier Schlüsseln
+  den Kandidaten mit Schlüssel über die Textform, oder eine leere Notiz höbe den Tag im nächsten Merge
+  auf jedem Gerät an. Fehlt sie (ein altes Gerät hat aufgelöst), nimmt
   `slot_notes.resolution_notes` die Notizen des Kandidaten mit den Slots der Auflösung (bei mehreren
   der jüngere), fehlt diesem der Schlüssel, die eines anderen Kandidaten, passt keiner, die des
-  ersetzten Stands. Eine als gelöscht angewendete Auflösung trägt `notes: {}`, wenn der ersetzte Stand
-  oder ein Kandidat den Schlüssel trägt (wie `Storage.delete`). `_resolve_entry` wendet dieselbe
+  ersetzten Stands. Eine als gelöscht angewendete Auflösung trägt `notes: {}`, wenn sie selbst, der
+  ersetzte Stand oder ein Kandidat den Schlüssel trägt (wie `Storage.delete`). `_resolve_entry` wendet dieselbe
   Erb-Regel gegen den gemergten Eintrag an, ebenfalls mit Anhebung um 1 s, aber nur, wenn der Eintrag
   Stempel und Gerät der Auflösung trägt: genau diese Form bauen alte Geräte in der Schleife aus vier
   Schlüsseln und ersetzen damit auch bei gleichem Stempel (der Normalfall, `resolve_conflict` stempelt
   beides gleich). Ein anders gestempelter Eintrag ohne `notes` ist ein späterer Schreibvorgang und erbt
-  nicht. Tombstones mit `notes: {}` brauchen keine eigene Merge-Regel: `supplement` lässt gelöschte
-  Stände aus, sie gewinnen oder verlieren nach LWW; Kompaktierung und Startup-Sweep sehen nur `deleted`.
+  nicht. Ein Tombstone wird nie ergänzt und gewinnt oder verliert nach LWW; Kompaktierung und
+  Startup-Sweep sehen nur `deleted` und entfernen ihn samt Markierung (Grenze: `docs/known-limitations.md`).
 
   Die Bedingung des Sweeps ist bewusst eng: Feature AUS reicht nicht, es muss
   **nie an** gewesen sein. Wer den Sync abschaltet, dessen Remote kennt die
