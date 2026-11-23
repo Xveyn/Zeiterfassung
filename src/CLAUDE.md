@@ -324,6 +324,14 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
   selbst auf die vier Felder (`webhook._project_slots`, `api_routes._wire_slots`).
   `get_all_raw` bleibt das Original für den Sync. `sync.validate_remote_doc` lehnt Slot-Listen
   mit Nicht-Objekten ab.
+  **Slot-Notizen (Xveyn#519; Format und Begründung: Wurzel-`CLAUDE.md`, `slot_notes.py`):** die
+  Lese-/Schreibgrenze liegt hier. `get`/`get_all` liefern jeden Slot in App-Form, `notiz` nur wenn
+  nicht leer, aus `notes` des Tages; ein roh im Slot stehendes `notiz` wird verworfen (einzige
+  Quelle ist `notes`). `save`/`save_many` nehmen `notiz` aus den Slots und schreiben `notes` nur,
+  wenn der Tag Notizen hat oder der überschriebene lebende Stand den Schlüssel trug; ein Slot ohne
+  Schlüssel `notiz` erbt die Notiz des bisherigen Slots mit gleicher Startzeit (ein Schreiber, der
+  Notizen nicht kennt, löscht keine; Vorbild `reservations.inherit_pause`), ein Slot mit Schlüssel
+  (auch `""`) gilt wie angegeben. `get_all_raw`/`apply_merge` bleiben Rohformat für den Sync.
   `reservations.py` — Reservierungen
   (zukünftige Soll-Zeiten, eigenes Konzept). `settings.py` — Einstellungen mit Defaults.
 - `conflicts_store.py` — lokale Sync-Konfliktliste. `category_defaults.py` — Default-Kategorien.
@@ -422,6 +430,14 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
   haben, hebt `_phone_doc` die Stempel der gesendeten Tage auf `last_pull_at + 1 s` an (außer bei
   `excluded`): das Handy schickt nur Tage, die es seit dem Abgleich geändert hat, und bei einem
   nachgehenden Handy ginge die Änderung sonst still gegen die Desktop-Version verloren.
+  **Notizen reisen additiv mit** (`PROTOCOL` bleibt 2; Format und Begründung: Wurzel-`CLAUDE.md`,
+  `slot_notes.py`): `notiz` je Slot in der Antwort, auch in den Konflikt-Versionen, dazu die Fähigkeit
+  `slot_notes: true`. Die Anfrage trägt `notiz` optional, aber je Tag an **allen** Slots oder an keinem;
+  gemischt ist `422 invalid_entry`. Den Schutz übernimmt der Merge: ohne `notiz` bleibt der Handy-Eintrag
+  ohne `notes`, und die Erb-Regel greift (das Handy ist `local`); mit `notiz` setzt der Eintrag `notes`
+  nach der Schreib-Regel von `Storage.save`. Ein leeres `notes` vom Handy entfällt, wenn der
+  Desktop-Tag den Schlüssel nicht trägt (`_drop_unneeded_notes`), sonst hätte der Tag danach einen
+  Schlüssel, den sonst niemand gesetzt hat. Eine alte gecachte PWA löscht so keine Notiz.
   **Reservierungen reisen additiv mit** (`reservations`, `PROTOCOL` bleibt 2): `parse_request` liest sie nur mit
   `accept_reservations` (die Route übergibt `reservations_active`; bei ausgeschaltetem Schalter werden sie ignoriert, nicht
   abgelehnt) und prüft sie über `mobile_reservations.parse_reservations` (Tage vor heute entfallen still — sie würden sonst
@@ -556,6 +572,27 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
      meint jeden Abnehmer: neben dem Drive-Sync setzt auch der Abgleich mit dem
      Handy (`mobile_sync.perform_sync`) den Marker `sync_history.mark_synced` —
      das Handy ist ein Partner, gegen den ein Tombstone wirkt.
+
+  **Erb-Regel der Slot-Notizen (Xveyn#519).** Eine ältere Version speichert einen Tag aus vier
+  Schlüsseln, `notes` fehlt, ihr neuerer Stempel gewänne. Darum geht jeder Eintrag-Merge über
+  `_merge_entry`: fehlt genau einer Seite der Schlüssel, erbt sie von der anderen (`slot_notes.supplement`:
+  nur Notizen zu Startzeiten ihrer eigenen Slots, auch `{}` ist dann ein gesetzter Schlüssel). Verglichen
+  wird mit einer Signatur, die die Notizen einschließt (`_values_equal_entry`); Gewinner und Konflikte
+  bleiben wie sonst, die Kandidaten tragen die ergänzten Stände. Gewinnt die ergänzte Seite (oder haben
+  beide denselben Stempel und dasselbe Gerät), wird der Stempel um **1 s** angehoben: sonst hielte das
+  alte Gerät beide Stände für gleich, behielte über den Wert-Tiebreak seinen (ohne `notes`) und lüde
+  ihn bei jedem Sync wieder hoch. Lässt sich der Stempel nicht anheben (unlesbar, Ende des Bereichs,
+  Jahr vor 1000), gilt keine Erbschaft. Fehlt der Schlüssel beiden Seiten, ändert sich nichts. Ein
+  Stand mit `notes: {}` erbt nichts (bewusst gelöscht). **Gelöste Konflikte:** `_apply_resolutions` nimmt
+  je Schlüssel nur die jüngste Auflösung (`_lww_key`), und `_resolution_candidate` liest den Stand
+  **vor allen Auflösungen**, nie einen Zwischenstand, sonst hinge das Ergebnis an der Reihenfolge der
+  Konfliktliste. Eine Auflösung trägt `notes` auf oberster Ebene neben `slots`/`deleted`, nie im Slot
+  (`resolve_conflict` schreibt sie mit). Fehlt sie (ein altes Gerät hat aufgelöst), nimmt
+  `slot_notes.resolution_notes` die Notizen des Kandidaten mit den Slots der Auflösung (bei mehreren
+  der jüngere), fehlt diesem der Schlüssel, die eines anderen Kandidaten, passt keiner, die des
+  ersetzten Stands. `_resolve_entry` wendet dieselbe Erb-Regel gegen den gemergten Eintrag an, ebenfalls
+  mit Anhebung um 1 s: alte Geräte bauen den Eintrag in dieser Schleife aus vier Schlüsseln neu und
+  ersetzen ihn auch bei gleichem Stempel (der Normalfall, `resolve_conflict` stempelt beides gleich).
 
   Die Bedingung des Sweeps ist bewusst eng: Feature AUS reicht nicht, es muss
   **nie an** gewesen sein. Wer den Sync abschaltet, dessen Remote kennt die
@@ -858,6 +895,11 @@ Wert.
   (Wochenlimit/Pausenpflicht gegen den simulierten Stand nach dem Speichern, nie ein Fehler —
   auch nicht bei ungewöhnlich gespeicherten Daten: jede Prüfung ist für sich abgesichert).
   Hält keinen Lock; den nimmt der Aufrufer um Prüfen und Speichern gemeinsam.
+  **Notiz (Xveyn#519):** `parse_slots(..., allow_note=…)` lässt `notiz` je Slot nur für Ist-Zeiten zu
+  (`parse_day_body`, Handy-Abgleich), geprüft über `slot_notes.check_note` (Verstoß: `422 invalid_note`).
+  Reservierungs-Slots lehnen `notiz` weiter als unbekanntes Feld ab. In `api_routes` liefert `_wire_slots`
+  `notiz` an jedem Slot immer (`""` ohne); beim `PUT` erbt ein Slot ohne Feld die Notiz des bisherigen
+  Slots mit gleicher Startzeit, ein Slot mit Feld (auch `""`) gilt wie angegeben.
 - `api_summary.py` — Auswertungen der lokalen API (#92), Tk-frei, rein: Pfad-Parser (`parse_week`, `parse_month`, `parse_year`, nur ASCII-Ziffern, `fromisocalendar` entscheidet über KW 53), `summarize` (Tage, Kategorien, `weeks[]` mit Wochenlimit, Pausenwarnungen, Urlaub über `vacations.cap_by_worktime`), `category_names`, `holidays_for`. Gerechnet wird über **Minuten je Slot**; gespeicherte Slots sind Fremddaten, ein ungewöhnlicher Slot zählt 0 Minuten und wird geloggt. Schlüssel zählen nur als echter Kalendertag (`_is_day_key`: `2025-12-32` passt auf die Form, nicht auf den Kalender), Urlaubsminuten nur zwischen 0 und 1440; `VacationStore.day_minutes` überspringt Perioden ohne lesbare `days`. Die Routen (`/v1/summary/week|month`, `/v1/categories`, `/v1/holidays`) in `api_routes` holen nur den Snapshot (`Storage.get_all()`, `VacationStore.day_minutes()`), halten keinen Lock und melden nie `on_change`.
 - `api_server.py` — HTTP-Server, seit #221 für zwei Instanzen gebaut: die lokale API (Loopback, ein Token) und die Handy-Instanz (LAN, Gerätetoken) teilen sich ihn und unterscheiden sich in der **`Surface`** (`dispatch`, `route_methods(path)` für den Preflight **und** das `Allow` eines 405 (RFC 9110: die Methoden der Zielressource), `methods` (Vereinigung aller Routen) nur als `Allow` für einen unbekannten Pfad, `public` = exakte (Methode, Pfad)-Paare ohne Token, `cors`); `ApiServer(context, …)` baut ohne Angabe die lokale (`local_surface`). Ein Prüfer liefert `Principal | Denied | None` (`Denied(code)` → `401 <code>`).
   Ein Daemon-Thread mit eigener `handle_request()`-Schleife (kein

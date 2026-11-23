@@ -185,8 +185,8 @@ Eigenschaften, die Tests festhalten müssen:
 - Alte Geräte vergleichen weiter nur die vier Felder. Eine reine Notiz-Änderung
   ist für sie „gleich“, sie übernehmen dann den neueren Stempel samt `notes`.
 
-Dem Bauenden überlassen: wie mit einem Stempel umzugehen ist, der sich nicht als
-`%Y-%m-%dT%H:%M:%SZ` lesen lässt (Vorschlag: dann nicht erben).
+Ein Stempel, der sich nicht anheben lässt (unlesbar, am Ende des Bereichs, Jahr vor
+1000), bedeutet: keine Erbschaft.
 
 ### Gelöste Konflikte
 
@@ -202,10 +202,19 @@ Eintrag dabei aus `resolution` neu. Das betrifft die Notizen an drei Stellen:
   dessen Slots der Auflösung entsprechen. Die Kandidaten tragen `notes`, weil
   `_strip_for_candidate` alle Schlüssel behält. Fehlt diesem Kandidaten der
   Schlüssel, erbt er nach der Regel oben vom anderen Kandidaten; passt kein
-  Kandidat, vom Stand, den die Auflösung ersetzt. Geerbt wird also nie blind vom
-  vorläufigen Gewinner, sonst hinge die Notiz der verworfenen Version am
+  Kandidat, vom Stand, den die Auflösung ersetzt (hat weder der passende noch ein
+  anderer Kandidat den Schlüssel, kommen die Notizen vom ersetzten Eintrag). Geerbt
+  wird also nie blind vom vorläufigen Gewinner, sonst hinge die Notiz der verworfenen Version am
   gewählten Slot. Passen beide Kandidaten (sie unterscheiden sich nur in der
   Notiz), gilt der jüngere.
+- **Je Tag gilt nur die jüngste Auflösung** (dieselbe LWW-Ordnung wie überall), und
+  der Rückgriff auf den ersetzten Stand liest den Eintrag, wie er **vor allen
+  Auflösungen** war, nie einen Zwischenstand der Schleife. Sonst hinge das Ergebnis
+  an der Reihenfolge zweier Auflösungen für denselben Tag; die Symmetrie ist bindend.
+- **Ein Eintrag ohne `notes` erbt von einer Auflösung, die Notizen trägt,** beim
+  gleichen Stempel und mit Anhebung um eine Sekunde, unter derselben Bedingung wie im
+  Eintrag-Merge. Nötig, wenn beide Seiten nur den Stand halten, den ein altes Gerät
+  gestrippt hat.
 - **Alte Geräte entfernen `notes` in dieser Schleife.** Sie bauen den Eintrag aus
   vier Schlüsseln und ersetzen den vorhandenen auch bei gleichem Stempel, und der
   Gleichstand ist der Normalfall (`resolve_conflict` stempelt Auflösung und
@@ -220,7 +229,7 @@ Eintrag dabei aus `resolution` neu. Das betrifft die Notizen an drei Stellen:
 | Weg | Form | Verhalten ohne Notiz |
 |---|---|---|
 | Lokale API, `GET` | `notiz` an jedem Slot, immer vorhanden | `""` |
-| Lokale API, `PUT` | `notiz` optional je Slot; fehlt es, erbt der Slot (gleiche Startzeit); Verstoß gegen die Regeln ist `422 invalid_note` | wie heute |
+| Lokale API, `PUT` | `notiz` optional je Slot, nur an Ist-Zeit-Slots (Reservierungs-Slots lehnen `notiz` weiter ab, `parse_slots(..., allow_note=…)`); fehlt es, erbt der Slot (gleiche Startzeit); Verstoß gegen die Regeln ist `422 invalid_note` | wie heute |
 | Handy-Abgleich, Antwort | `notiz` an jedem Slot (auch in den Konflikt-Kandidaten) und die Fähigkeit `slot_notes: true` | `""` |
 | Handy-Abgleich, Anfrage | `notiz` optional je Slot, s. unten | wie heute |
 | Webhook | `notiz` am Slot **nur, wenn nicht leer** | Dokument bitgleich zu heute |
@@ -237,7 +246,10 @@ bleibt der Eintrag ohne `notes`, und die Erb-Regel im Merge greift, weil das
 Handy dort die Seite `local` ist. Gemischt ist `422 invalid_entry`. Eine alte gecachte PWA, die einen
 Tag mit Notiz bearbeitet, löscht die Notiz damit nicht. Vor der Änderung der
 Live-Beispiele werden die Vorgänger eingefroren
-(`compat/sync-request-pre-notes.json`, `compat/sync-response-pre-notes.json`).
+(`compat/sync-request-pre-notes.json`, `compat/sync-response-pre-notes.json`). Der
+Zeitpunkt: das Live-Beispiel der Antwort ändert sich mit dem Desktop-Kern (PR 1), dort
+wird `sync-response-pre-notes.json` eingefroren; das Live-Beispiel der Anfrage ändert
+sich erst mit der PWA (PR 3), dort wird auch `sync-request-pre-notes.json` eingefroren.
 
 **Import einer Teilen-Datei** schreibt über `save_many` Slots ohne `notiz`; ein
 importierter Tag behält deshalb die Notizen der Slots, deren Startzeit bleibt.
@@ -331,6 +343,14 @@ ein Minor.
   falsch gehenden Uhren kann daraus wie heute schon ein unnötiger Konflikt
   entstehen (Audit N2).
 - Geteilte Arbeitszeiten kommen ohne Notizen an.
+- Schreibt ein altes Gerät einen Tag genau eine Sekunde, bevor der Nutzer auf einem
+  anderen Gerät den Konflikt für diesen Tag auflöst, kann die Anhebung um eine Sekunde
+  den alten Stand auf den Stempel der Auflösung heben; dann entscheidet die Geräte-ID,
+  und der alte Wert kann den aufgelösten in den Einträgen ersetzen (der Konflikt-
+  Datensatz bleibt, ohne Notizen hätte die Auflösung gewonnen). Symmetrisch und
+  stabil, braucht eine gemischte Flotte mit Notizen; bewusst nur dokumentiert
+  (`docs/known-limitations.md`). Möglicher Fix: die Anhebung erst nach den Auflösungen
+  und nur, wenn der Eintrag danach noch der Gewinner ist.
 
 ## Was Tests mindestens zeigen müssen
 

@@ -731,6 +731,37 @@ für Fragen: `docs/datenschutz.md` (die Web-App verlinkt es im Koppel-Bildschirm
 - **Offene Randfälle:** #422 (Koppel-Dialog), #423 („verdrängt“ ohne Ausweg), #425 und #426 (Relay-Transport der
   Web-App, Tests und Doku).
 
+## Slot-Notizen (#519): bekannte Grenzen
+
+Die Notiz liegt am Tag je Startzeit (`notes`, s. `CLAUDE.md`, `src/slot_notes.py`) und
+reist mit dem Tag durch Sync und Konflikte. Ältere Versionen kennen den Schlüssel nicht; was
+daraus folgt, ist in einer gemischten Flotte nicht ganz zu schließen.
+
+- **Eine alte Version ändert die Startzeit eines Slots oder löscht ihn: die Notiz geht
+  verloren,** die Zuordnung hängt an der Startzeit. Tauscht sie die Zeiten zweier Slots, wandern die
+  Notizen mit den Zeiten. Zwischen zwei neuen Geräten gibt es das nicht: sie schreiben `notes` an
+  jedem Tag mit, der Notizen hat oder hatte.
+- **Eine gelöschte Notiz kann in einer gemischten Flotte zurückkommen.** Dafür braucht es drei
+  Geräte in dieser Reihenfolge: ein neues Gerät entfernt die Notiz, ein altes speichert denselben
+  Tag danach neu (im Sync-Doc fehlt der Schlüssel), und ein drittes, das noch den Stand mit Notiz
+  hält, synchronisiert vor dem ersten. Es erbt die Notiz und macht sie zum neuesten Stand.
+  Synchronisiert das erste Gerät zuerst, bleibt sie gelöscht. Schließen ließe sich das nur mit
+  eigenen Zeitstempeln je Notiz.
+- **Die Anhebung um eine Sekunde macht den ergänzten Stand zum neuesten.** Bei stark falsch gehenden
+  Uhren kann daraus wie schon heute ein unnötiger Konflikt entstehen (s. „Last-Write-Wins hängt an
+  den Geräte-Uhren“).
+- **Eine alte Version löst einen Konflikt, dessen Stände sich nur in der Notiz unterscheiden:** sie
+  sieht zwei gleiche Karten, es gilt der jüngere Stand.
+- **Geteilte Arbeitszeiten kommen ohne Notizen an.** Die Teilen-Datei bleibt bewusst bei den vier
+  Slot-Feldern (v3).
+- **Eine Auflösung kann von einem alten Schreiber überholt werden.** Schreibt ein Gerät in der alten
+  Version einen Tag genau eine Sekunde, bevor der Nutzer auf einem anderen Gerät den Konflikt für
+  diesen Tag auflöst, kann die Anhebung um eine Sekunde den alten Stand auf den Stempel der Auflösung
+  heben. Dann entscheidet die Geräte-ID, und der alte Wert kann den aufgelösten in den Einträgen
+  ersetzen (der Konflikt-Datensatz bleibt erhalten; ohne Notizen hätte die Auflösung gewonnen). Das
+  ist symmetrisch und stabil und braucht eine gemischte Flotte mit Notizen am Tag. Möglicher Fix: die
+  Anhebung erst nach den Auflösungen anwenden und nur, wenn der Eintrag danach noch der Gewinner ist.
+
 ## Beschädigte oder fremde Daten (Storage)
 
 - **Ungültige Slot-Werte werden beim Lesen ersetzt, nicht repariert.** Eine gespeicherte Pause, die keine ganze Zahl von 0 bis 1440 ist (`null`, Text, `30.5`, negativ, `inf`), zählt `0`; `start`/`end` ohne Text zählen als leer, eine Kategorie ohne Text als „ohne Kategorie“. Die Datei behält den Originalwert, bis der Tag neu gespeichert wird.

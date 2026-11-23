@@ -196,7 +196,9 @@ Desktop) ist seltener, kommt aber vor. Sieben Regeln:
    `test/sync.test.js` und `test/store.test.js`, den ganzen Zyklus mit der echten Handy-Instanz
    `tests/test_mobile_reservation_pause_e2e.py` über `tests/mobile_session_probe.mjs`).
    Die Fähigkeit `reservation_pause` ist Feature-Erkennung nach Regel 2: nicht „Desktop ≥ 1.27“, sondern
-   „steht das Feld in der Antwort“.
+   „steht das Feld in der Antwort“. Dazu der Stand vor den Slot-Notizen (`compat/sync-response-pre-notes.json`,
+   ohne `slot_notes` und ohne `notiz` an Slots): der Desktop sendet beides schon, die PWA liest es noch
+   nicht (Xveyn#519); das Live-Beispiel der Anfrage ändert sich erst mit der PWA, dort wird dann auch deren Vorgänger eingefroren.
 5. **Neue PWA, alter Desktop.** Ein Desktop vor #311 ignoriert `settings` in der
    Anfrage und kennt `writable_settings` nicht. Die PWA bietet das Bearbeiten
    der Kategorien deshalb nur an, wenn die Antwort `writable_settings` mit
