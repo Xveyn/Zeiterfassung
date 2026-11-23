@@ -239,19 +239,37 @@ _TIMES = [T0, T1, T2]
 _DEVICES = ["A", "B"]
 
 
-def _random_doc(rng):
+def _random_notes(rng, start):
+    # Notizen: Schlüssel fehlt (alte Version), leer oder mit Notiz zu einer
+    # Startzeit, die nicht immer zum eigenen Slot passt (Startzeit geändert).
+    return rng.choice([{}, {start: rng.choice(["K", "L"])},
+                       {rng.choice(["08:00", "09:00"]): "K"}])
+
+
+def _random_entry(rng):
+    start = rng.choice(["08:00", "09:00"])
+    entry = _e(start, rng.choice(_TIMES), rng.choice(_DEVICES), deleted=rng.random() < 0.2)
+    if not entry["deleted"] and rng.random() < 0.5:
+        entry["notes"] = _random_notes(rng, start)
+    return entry
+
+
+def _random_entry_resolution(rng, new_style):
+    """Auflösung eines Eintrags-Konflikts; `new_style` trägt immer `notes`."""
+    if rng.random() < 0.3:
+        return {"slots": [], "deleted": True}
+    start = rng.choice(["08:00", "09:00"])
+    resolution = {"slots": rng.choice([[], _e(start, T1, "A")["slots"]]), "deleted": False}
+    if new_style or rng.random() < 0.3:
+        resolution["notes"] = _random_notes(rng, start)
+    return resolution
+
+
+def _random_doc(rng, new_style=False):
     entries = {}
     for key in _KEYS:
         if rng.random() < 0.7:
-            start = rng.choice(["08:00", "09:00"])
-            entries[key] = _e(start, rng.choice(_TIMES),
-                              rng.choice(_DEVICES), deleted=rng.random() < 0.2)
-            # Notizen: Schlüssel fehlt (alte Version), leer oder mit Notiz zu einer
-            # Startzeit, die nicht immer zum eigenen Slot passt (Startzeit geändert).
-            if not entries[key]["deleted"] and rng.random() < 0.5:
-                entries[key]["notes"] = rng.choice([
-                    {}, {start: rng.choice(["K", "L"])},
-                    {rng.choice(["08:00", "09:00"]): "K"}])
+            entries[key] = _random_entry(rng)
     settings = {}
     if rng.random() < 0.7:
         settings["recipient"] = _s(rng.choice(["a@x.de", "b@x.de"]),
@@ -260,26 +278,60 @@ def _random_doc(rng):
     for i in range(rng.randint(0, 2)):
         resolved = rng.random() < 0.6
         kind = rng.choice(["entry", "setting"])
-        conflicts.append(_conflict(
+        conflict = _conflict(
             f"c{i}", kind=kind,
             key=rng.choice(_KEYS) if kind == "entry" else "recipient",
             resolved=resolved,
-            resolution=(({"slots": [], "deleted": rng.random() < 0.5} if kind == "entry"
+            resolution=((_random_entry_resolution(rng, new_style) if kind == "entry"
                          else {"value": rng.choice(["a@x.de", "c@x.de"])})
                         if resolved else None),
             resolved_at=rng.choice(_TIMES) if resolved else None,
-            resolved_by=rng.choice(_DEVICES) if resolved else None))
+            resolved_by=rng.choice(_DEVICES) if resolved else None)
+        if kind == "entry":
+            conflict["candidates"] = [_random_entry(rng) for _ in range(rng.randint(0, 2))]
+        conflicts.append(conflict)
     doc = _doc(entries, settings, conflicts)
     doc["devices"] = {"A": {"name": rng.choice(["Laptop", "Büro"]),
                             "updated_at": rng.choice(_TIMES)}}
     return doc
 
 
-def test_merge_is_commutative_and_idempotent_over_random_docs():
+_PULLS = ["", T0, T1, T2]
+
+
+@pytest.mark.parametrize("last_pull_at", _PULLS)
+def test_merge_is_commutative_and_idempotent_over_random_docs(last_pull_at):
     assert "recipient" in SYNCED_SETTING_KEYS
     rng = random.Random(142)
     for _ in range(500):
         a, b = _random_doc(rng), _random_doc(rng)
-        ab, ba = merge(a, b, T0), merge(b, a, T0)
+        ab, ba = merge(a, b, last_pull_at), merge(b, a, last_pull_at)
         assert _canon(ab) == _canon(ba)
-        assert _canon(merge(ab, ab, T0)) == _canon(ab)
+        assert _canon(merge(ab, ab, last_pull_at)) == _canon(ab)
+
+
+@pytest.mark.parametrize("last_pull_at", _PULLS)
+def test_merge_of_new_version_docs_is_stable_on_the_second_merge(last_pull_at):
+    """Trägt jede Auflösung ihre `notes`, ändert ein zweiter Merge mit einer der
+    beiden Seiten die Einträge nicht mehr."""
+    rng = random.Random(519)
+    for _ in range(1000):
+        a, b = _random_doc(rng, new_style=True), _random_doc(rng, new_style=True)
+        ab, ba = merge(a, b, last_pull_at), merge(b, a, last_pull_at)
+        assert _canon(ab) == _canon(ba)
+        assert merge(ab, a, last_pull_at)["entries"] == ab["entries"]
+        assert merge(ab, b, last_pull_at)["entries"] == ab["entries"]
+
+
+@pytest.mark.parametrize("last_pull_at", _PULLS)
+def test_merge_with_old_resolutions_converges_after_one_extra_round(last_pull_at):
+    """Auflösungen ohne `notes` (ein altes Gerät hat aufgelöst) dürfen eine Runde
+    mehr brauchen, danach ändert ein weiterer Merge nichts."""
+    rng = random.Random(520)
+    for _ in range(1000):
+        a, b = _random_doc(rng), _random_doc(rng)
+        ab, ba = merge(a, b, last_pull_at), merge(b, a, last_pull_at)
+        assert _canon(ab) == _canon(ba)
+        for side in (a, b):
+            once = merge(ab, side, last_pull_at)
+            assert merge(once, side, last_pull_at)["entries"] == once["entries"]

@@ -206,3 +206,192 @@ def test_stamp_before_year_1000_is_not_bumped_past_real_stamps():
     ab, ba = _both(keyless, keyed)
     assert ab["entries"] == ba["entries"]
     assert ab["entries"][DAY]["modified_at"] == old
+
+
+# --- Gelöste Konflikte ---------------------------------------------------------
+
+T2_PLUS = "2026-05-14T11:00:01Z"
+
+
+def _resolved(resolution, *, candidates=(), resolved_at=T2, resolved_by="A", id_="c1"):
+    return {"id": id_, "kind": "entry", "key": DAY, "candidates": list(candidates),
+            "detected_at": T1, "resolved": True, "resolution": resolution,
+            "resolved_at": resolved_at, "resolved_by": resolved_by}
+
+
+def _stores(tmp_path):
+    from src.conflicts_store import ConflictsStore
+    from src.settings import Settings
+    from src.storage import Storage
+    storage = Storage(str(tmp_path / "z.json"), device_id="A")
+    settings = Settings(str(tmp_path / "s.json"))
+    conflicts = ConflictsStore(str(tmp_path / "c.json"))
+    return storage, settings, conflicts
+
+
+def _open_conflict(*candidates):
+    return {"id": "c1", "kind": "entry", "key": DAY, "candidates": list(candidates),
+            "detected_at": T1, "resolved": False, "resolution": None,
+            "resolved_at": None, "resolved_by": None}
+
+
+def _plain(slots):
+    return [{k: s[k] for k in ("start", "end", "pause", "kategorie")} for s in slots]
+
+
+def test_resolving_takes_the_notes_of_the_chosen_candidate(tmp_path):
+    storage, settings, conflicts = _stores(tmp_path)
+    cand_a = _entry(T1, "A", slots=[_slot(pause=30)], notes={"08:00": "KA"})
+    cand_b = _entry(T2, "B", notes={"08:00": "KB"})
+    storage.save(DAY, [{**_slot(), "notiz": "KB"}])
+    conflicts.save_all([_open_conflict(cand_a, cand_b)])
+
+    sync.resolve_conflict("c1", {"slots": _plain(cand_a["slots"])}, conflicts, storage,
+                          settings, device_id="A")
+
+    assert storage.get(DAY)["slots"][0]["notiz"] == "KA"
+    assert storage.get_all_raw()[DAY]["notes"] == {"08:00": "KA"}
+    assert conflicts.get_all()[0]["resolution"]["notes"] == {"08:00": "KA"}
+
+
+def test_resolving_a_keyless_candidate_inherits_from_the_other_candidate(tmp_path):
+    storage, settings, conflicts = _stores(tmp_path)
+    cand_a = _entry(T1, "A", slots=[_slot(pause=30)], notes={"08:00": "KA"})
+    cand_b = _entry(T2, "B")
+    storage.save(DAY, [{**_slot(), "notiz": "KB"}])
+    conflicts.save_all([_open_conflict(cand_a, cand_b)])
+
+    sync.resolve_conflict("c1", {"slots": _plain(cand_b["slots"])}, conflicts, storage,
+                          settings, device_id="A")
+
+    assert storage.get(DAY)["slots"][0]["notiz"] == "KA"
+    assert conflicts.get_all()[0]["resolution"]["notes"] == {"08:00": "KA"}
+
+
+def test_resolving_without_any_notes_writes_no_notes(tmp_path):
+    storage, settings, conflicts = _stores(tmp_path)
+    cand_a = _entry(T1, "A", slots=[_slot(pause=30)])
+    cand_b = _entry(T2, "B")
+    storage.save(DAY, [_slot()])
+    conflicts.save_all([_open_conflict(cand_a, cand_b)])
+
+    sync.resolve_conflict("c1", {"slots": _plain(cand_a["slots"])}, conflicts, storage,
+                          settings, device_id="A")
+
+    assert "notes" not in conflicts.get_all()[0]["resolution"]
+    assert "notes" not in storage.get_all_raw()[DAY]
+
+
+def test_resolving_with_delete_keeps_working(tmp_path):
+    storage, settings, conflicts = _stores(tmp_path)
+    cand = _entry(T1, "A", notes={"08:00": "KA"})
+    storage.save(DAY, [{**_slot(), "notiz": "KA"}])
+    conflicts.save_all([_open_conflict(cand)])
+
+    sync.resolve_conflict("c1", {"deleted": True}, conflicts, storage, settings,
+                          device_id="A")
+
+    assert storage.get(DAY) is None
+    assert "notes" not in conflicts.get_all()[0]["resolution"]
+
+
+def test_old_device_stripping_the_resolved_day_heals_after_one_merge():
+    resolution = {"slots": [_slot()], "deleted": False, "notes": {"08:00": "K"}}
+    conflict = _resolved(resolution, resolved_at=T2, resolved_by="A")
+    local_entry = _entry(T2, "A", notes={"08:00": "K"})
+    local = {**_doc({DAY: local_entry}), "conflicts": [conflict]}
+    remote = {**_doc({DAY: old_rewrite(local_entry, modified_at=T2, device_id="A")}),
+              "conflicts": [conflict]}
+
+    merged = merge(local, remote, T0)
+    result = merged["entries"][DAY]
+    assert result["notes"] == {"08:00": "K"}
+    assert result["modified_at"] == T2_PLUS
+    assert result["modified_at"] > conflict["resolved_at"]
+    assert merge(remote, local, T0)["entries"] == merged["entries"]
+    assert merge(merged, remote, T0)["entries"] == merged["entries"]
+
+
+def test_stripped_day_on_both_sides_heals_from_the_resolution():
+    resolution = {"slots": [_slot()], "deleted": False, "notes": {"08:00": "K"}}
+    conflict = _resolved(resolution, resolved_at=T2, resolved_by="A")
+    stripped = _entry(T2, "A")
+    doc = {**_doc({DAY: stripped}), "conflicts": [conflict]}
+
+    merged = merge(doc, doc, T0)
+    assert merged["entries"][DAY]["notes"] == {"08:00": "K"}
+    assert merged["entries"][DAY]["modified_at"] == T2_PLUS
+    assert merge(merged, doc, T0)["entries"] == merged["entries"]
+    assert merge(doc, merged, T0)["entries"] == merged["entries"]
+
+
+def test_old_resolution_takes_the_notes_of_the_matching_candidate():
+    cand_a = _entry(T1, "A", notes={"08:00": "KA"})
+    cand_b = _entry(T1, "B", slots=[_slot(pause=30)], notes={"08:00": "KB"})
+    conflict = _resolved({"slots": [_slot(pause=30)]}, candidates=[cand_a, cand_b],
+                         resolved_at=T3, resolved_by="C")
+    current = _entry(T2, "A", notes={"08:00": "KA"})
+    merged = merge({**_doc({DAY: current}), "conflicts": [conflict]}, _doc(), T0)
+    result = merged["entries"][DAY]
+    assert result["notes"] == {"08:00": "KB"}
+    assert result["modified_at"] == T3
+    assert result["slots"][0]["pause"] == 30
+
+
+def test_two_resolutions_with_notes_apply_order_independently():
+    x = _resolved({"slots": [_slot()], "notes": {"08:00": "X"}}, id_="c1",
+                  resolved_at=T2, resolved_by="A")
+    y = _resolved({"slots": [_slot()]}, id_="c2", resolved_at=T2, resolved_by="B",
+                  candidates=[_entry(T1, "B", notes={"08:00": "Y"})])
+    base = {DAY: _entry(T1, "A", notes={"08:00": "Z"})}
+    one = merge({**_doc(base), "conflicts": [x, y]}, _doc(), T0)
+    two = merge({**_doc(base), "conflicts": [y, x]}, _doc(), T0)
+    assert one["entries"] == two["entries"]
+    assert one["entries"][DAY]["device_id"] == "B"
+    assert one["entries"][DAY]["notes"] == {"08:00": "Y"}
+
+
+def test_resolution_without_notes_and_no_notes_anywhere_is_unchanged():
+    conflict = _resolved({"slots": [_slot(pause=30)]}, candidates=[_entry(T1, "A")],
+                         resolved_at=T3, resolved_by="C")
+    merged = merge({**_doc({DAY: _entry(T2, "A")}), "conflicts": [conflict]}, _doc(), T0)
+    assert merged["entries"][DAY] == {"slots": [_slot(pause=30)], "modified_at": T3,
+                                      "device_id": "C", "deleted": False}
+
+
+@pytest.mark.parametrize("conflict_patch", [
+    {"resolution": "kaputt"},
+    {"resolution": ["x"]},
+    {"candidates": "kaputt"},
+    {"candidates": [None, 3, {"slots": "x", "notes": ["y"]}]},
+    {"resolution": {"slots": [_slot()], "notes": "kaputt"}},
+    {"resolution": {"slots": [_slot()], "notes": {"08:00": ["x"], 3: "y"}}},
+    {"resolution": {"slots": [_slot(start=["08:00"])], "notes": {"08:00": "K"}}},
+    {"resolution": {"slots": "kaputt"}},
+    {"resolved_at": 5},
+    {"resolved_by": ["x"]},
+    {"key": ["2026-05-14"]},
+    {"key": None},
+])
+def test_foreign_resolution_data_does_not_raise_and_stays_symmetric(conflict_patch):
+    conflict = {**_resolved({"slots": [_slot()]}, resolved_at=T2), **conflict_patch}
+    a = {**_doc({DAY: _entry(T1, "A", notes={"08:00": "K"})}), "conflicts": [conflict]}
+    b = _doc({DAY: _entry("9999-12-31T23:59:59Z", "B")})
+    ab, ba = merge(a, b, T0), merge(b, a, T0)
+    assert ab["entries"] == ba["entries"]
+
+
+def test_bump_onto_the_resolution_stamp_is_decided_by_the_device_both_ways():
+    """Die Anhebung kann einen Stand genau auf `resolved_at` heben; dann
+    entscheidet wie bei jedem sekundengleichen Stand das Gerät, symmetrisch."""
+    keyed = _entry(T1, "A", notes={"08:00": "K"})
+    stale = old_rewrite(keyed, modified_at="2026-05-14T10:59:59Z", device_id="Z", pause=15)
+    conflict = _resolved({"slots": [_slot()], "notes": {"08:00": "R"}},
+                         resolved_at=T2, resolved_by="A")
+    a = {**_doc({DAY: keyed}), "conflicts": [conflict]}
+    b = _doc({DAY: stale})
+    ab, ba = merge(a, b, T0), merge(b, a, T0)
+    assert ab["entries"] == ba["entries"]
+    assert ab["entries"][DAY]["modified_at"] == T2
+    assert ab["entries"][DAY]["device_id"] == "Z"
+    assert merge(ab, b, T0)["entries"] == ab["entries"]
