@@ -56,7 +56,7 @@ def group_key(note: str) -> str:
     return note.strip().lower()
 
 
-def has_key(entry: Mapping[str, Any]) -> bool:
+def has_key(entry: object) -> bool:
     return isinstance(entry, Mapping) and ENTRY_KEY in entry
 
 

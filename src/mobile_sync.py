@@ -432,13 +432,13 @@ def _phone_doc(request: SyncRequest, device_id: str, device_name: str, now: str,
     `last_pull_at + 1 s` angehoben (innerhalb der erlaubten 15 Minuten Abweichung).
     Die Einstellungen bekommen denselben angehobenen Stempel.
 
-    Leere `notes` behält ein Tag nur, wenn der lebende Desktop-Eintrag (`desktop_entries`)
-    den Schlüssel trägt: ein Tag, der nie eine Notiz hatte, bleibt so ohne `notes`."""
+    Den Schlüssel `notes` richtet `_notes_key_like_desktop` am Desktop-Eintrag aus
+    (`desktop_entries`): ein Tag, der nie eine Notiz hatte, bleibt ohne `notes`."""
     floor = mobile_pairing.shift(changed_since, datetime.timedelta(seconds=1)) if changed_since else ""
     return {
         "schema_version": sync.SCHEMA_VERSION,
         "entries": {
-            date: {**_drop_unneeded_notes(entry, (desktop_entries or {}).get(date)),
+            date: {**_notes_key_like_desktop(entry, (desktop_entries or {}).get(date)),
                    "modified_at": max(entry["modified_at"], floor), "device_id": device_id}
             for date, entry in request.entries.items()
         },
@@ -453,14 +453,19 @@ def _phone_doc(request: SyncRequest, device_id: str, device_name: str, now: str,
     }
 
 
-def _drop_unneeded_notes(entry: Mapping[str, Any], desktop: object) -> dict[str, Any]:
-    """Der Handy-Eintrag ohne ein leeres `notes`, das der Desktop-Eintrag nicht schon trägt."""
+def _notes_key_like_desktop(entry: Mapping[str, Any], desktop: object) -> dict[str, Any]:
+    """Der Handy-Eintrag mit dem Schlüssel `notes` nach der Schreib-Regel von `Storage`.
+
+    Trägt der Desktop-Eintrag (lebend oder Tombstone) den Schlüssel, behält ein leeres
+    `notes` ihn und ein Tombstone des Handys bekommt `notes: {}`; sonst entfällt ein
+    leeres `notes`, und der Tag bleibt ohne Schlüssel, den sonst niemand gesetzt hat."""
     result = dict(entry)
-    if result.get(slot_notes.ENTRY_KEY) == {}:
-        keeps = (isinstance(desktop, Mapping) and desktop.get("deleted") is not True
-                 and slot_notes.has_key(desktop))
-        if not keeps:
-            del result[slot_notes.ENTRY_KEY]
+    keyed = slot_notes.has_key(desktop)
+    if result.get("deleted") is True:
+        if keyed:
+            result[slot_notes.ENTRY_KEY] = {}
+    elif result.get(slot_notes.ENTRY_KEY) == {} and not keyed:
+        del result[slot_notes.ENTRY_KEY]
     return result
 
 

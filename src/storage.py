@@ -332,8 +332,8 @@ class Storage:
         """Der zu schreibende Eintrag: vier Felder je Slot, Notizen unter `notes`.
 
         Ein Slot ohne `notiz` erbt die des bisherigen lebenden Slots mit gleichem
-        `start`. `notes` steht nur, wenn es Notizen gibt oder der bisherige lebende
-        Eintrag den Schlüssel schon trug; ein Tombstone vererbt nichts."""
+        `start`. `notes` steht, wenn es Notizen gibt oder der bisherige Eintrag den
+        Schlüssel trug, auch ein Tombstone; Notizen vererbt ein Tombstone nicht."""
         alive = isinstance(previous, dict) and not previous.get("deleted")
         old = self._user_shape(previous)["slots"] if alive else []
         eff = effective_slots(slots, old)
@@ -344,7 +344,7 @@ class Storage:
             "device_id": self.device_id,
             "deleted": False,
         }
-        if notes or (alive and has_key(previous)):
+        if notes or has_key(previous):
             entry["notes"] = notes
         return entry
 
@@ -369,12 +369,18 @@ class Storage:
             # Tombstone: behält die Zeile mit deleted=true, damit der Sync ein
             # Delete gegen ein veraltetes Save eines anderen Geräts durchsetzen kann.
             previous = self._data[date_str]
-            self._data[date_str] = {
+            tombstone: Entry = {
                 "slots": [],
                 "modified_at": utc_now_iso(),
                 "device_id": self.device_id,
                 "deleted": True,
             }
+            # Der Schlüssel `notes` überlebt das Löschen: ein später neu angelegter
+            # Tag trägt ihn dann, und der Merge liest ihn nicht als Stand eines
+            # Schreibers, der nichts von Notizen weiß (sonst erbte er die alte Notiz).
+            if has_key(previous):
+                tombstone["notes"] = {}
+            self._data[date_str] = tombstone
             try:
                 self._save_to_disk()
             except BaseException:

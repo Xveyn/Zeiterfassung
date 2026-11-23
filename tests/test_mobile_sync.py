@@ -7,7 +7,7 @@ import types
 
 import pytest
 
-from src import mobile_sync, sync_history, sync_journal
+from src import mobile_sync, sync, sync_history, sync_journal
 from src.conflicts_store import ConflictsStore
 from src.mobile_sync import SyncError
 from src.reservations import ReservationStore
@@ -1031,6 +1031,61 @@ def test_empty_notes_on_a_day_the_desktop_never_noted_are_not_written(env, deskt
 
     stored = env.storage.get_all_raw()["2026-10-07"]
     assert "notes" not in stored and stored["slots"] == [SLOT]
+
+
+def put_desktop_tombstone(env, date, *, notes=None, modified_at="2026-10-01T10:00:00Z"):
+    raw = dict(env.storage.get_all_raw())
+    raw[date] = {"slots": [], "modified_at": modified_at, "device_id": "DESK", "deleted": True}
+    if notes is not None:
+        raw[date]["notes"] = notes
+    env.storage.apply_merge(raw)
+
+
+@pytest.mark.parametrize("desktop", ["live", "tombstone"])
+def test_a_phone_tombstone_keeps_the_notes_key_of_the_desktop_day(env, desktop):
+    if desktop == "live":
+        put_desktop_notes(env, "2026-10-07", {"08:00": "Kunde Mustermann"})
+    else:
+        put_desktop_tombstone(env, "2026-10-07", notes={})
+
+    run(env, {"2026-10-07": tomb()}, last_pull_at="2026-10-05T00:00:00Z")
+
+    stored = env.storage.get_all_raw()["2026-10-07"]
+    assert stored["deleted"] is True and stored["slots"] == []
+    assert stored["notes"] == {}
+
+
+def test_a_phone_tombstone_on_a_day_without_the_key_has_four_keys(env):
+    put_desktop(env, "2026-10-07", modified_at="2026-10-01T10:00:00Z")
+
+    run(env, {"2026-10-07": tomb()}, last_pull_at="2026-10-05T00:00:00Z")
+
+    assert set(env.storage.get_all_raw()["2026-10-07"]) == {"slots", "modified_at", "device_id", "deleted"}
+
+
+def test_empty_notes_from_the_phone_stay_on_a_desktop_tombstone_with_the_key(env):
+    put_desktop_tombstone(env, "2026-10-07", notes={})
+
+    run(env, {"2026-10-07": day(slots=({**SLOT, "notiz": ""},))}, last_pull_at="2026-10-05T00:00:00Z")
+
+    stored = env.storage.get_all_raw()["2026-10-07"]
+    assert stored["deleted"] is False and stored["notes"] == {}
+
+
+def test_phone_deletes_a_noted_day_and_a_stale_state_does_not_bring_the_note_back(env):
+    put_desktop_notes(env, "2026-10-07", {"08:00": "Kunde Mustermann"})
+    stale = dict(env.storage.get_all_raw()["2026-10-07"])
+
+    run(env, {"2026-10-07": tomb()}, last_pull_at="2026-10-05T00:00:00Z")
+    env.storage.save("2026-10-07", [{**SLOT, "notiz": ""}])
+    recreated = env.storage.get_all_raw()["2026-10-07"]
+    assert recreated["notes"] == {}
+
+    doc = {"schema_version": 4, "entries": {"2026-10-07": stale}, "settings": {}, "conflicts": []}
+    mine = {"schema_version": 4, "entries": {"2026-10-07": recreated}, "settings": {}, "conflicts": []}
+    for merged in (sync.merge(mine, doc, "2026-10-05T00:00:00Z"),
+                   sync.merge(doc, mine, "2026-10-05T00:00:00Z")):
+        assert merged["entries"]["2026-10-07"] == recreated
 
 
 def test_a_new_pwa_sets_a_note(env):

@@ -435,9 +435,11 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
   `slot_notes: true`. Die Anfrage trägt `notiz` optional, aber je Tag an **allen** Slots oder an keinem;
   gemischt ist `422 invalid_entry`. Den Schutz übernimmt der Merge: ohne `notiz` bleibt der Handy-Eintrag
   ohne `notes`, und die Erb-Regel greift (das Handy ist `local`); mit `notiz` setzt der Eintrag `notes`
-  nach der Schreib-Regel von `Storage.save`. Ein leeres `notes` vom Handy entfällt, wenn der
-  Desktop-Tag den Schlüssel nicht trägt (`_drop_unneeded_notes`), sonst hätte der Tag danach einen
-  Schlüssel, den sonst niemand gesetzt hat. Eine alte gecachte PWA löscht so keine Notiz.
+  nach der Schreib-Regel von `Storage.save`. Den Schlüssel richtet `_notes_key_like_desktop` am
+  Desktop-Eintrag (lebend oder Tombstone) aus: trägt er ihn, behält ein leeres `notes` vom Handy ihn und
+  ein Tombstone des Handys bekommt `notes: {}` (wie `Storage.delete`); trägt er ihn nicht, entfällt ein
+  leeres `notes`, sonst hätte der Tag danach einen Schlüssel, den sonst niemand gesetzt hat. Eine alte
+  gecachte PWA löscht so keine Notiz.
   **Reservierungen reisen additiv mit** (`reservations`, `PROTOCOL` bleibt 2): `parse_request` liest sie nur mit
   `accept_reservations` (die Route übergibt `reservations_active`; bei ausgeschaltetem Schalter werden sie ignoriert, nicht
   abgelehnt) und prüft sie über `mobile_reservations.parse_reservations` (Tage vor heute entfallen still — sie würden sonst

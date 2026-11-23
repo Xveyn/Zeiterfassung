@@ -65,8 +65,82 @@ def test_tombstone_does_not_inherit(st, path):
     st.save(D, [_slot(notiz="x")])
     st.delete(D)
     st.save(D, [_slot()])
-    assert "notes" not in _disk(path)[D]
+    assert _disk(path)[D]["notes"] == {}
     assert "notiz" not in st.get(D)["slots"][0]
+
+
+def test_deleting_a_day_with_the_key_leaves_a_keyed_tombstone(st, path):
+    st.save(D, [_slot(notiz="x")])
+    st.delete(D)
+    entry = _disk(path)[D]
+    assert entry["deleted"] is True and entry["slots"] == []
+    assert entry["notes"] == {}
+    st.delete(D)
+    assert _disk(path)[D]["notes"] == {}
+
+
+def test_deleting_a_day_whose_notes_were_emptied_keeps_the_key(st, path):
+    st.save(D, [_slot(notiz="x")])
+    st.save(D, [_slot(notiz="")])
+    st.delete(D)
+    assert _disk(path)[D]["notes"] == {}
+
+
+def test_recreating_after_a_keyed_tombstone_writes_the_key_and_inherits_nothing(st, path):
+    st.save(D, [_slot(notiz="x")])
+    st.delete(D)
+    st.save(D, [_slot(notiz="")])
+    assert _disk(path)[D]["notes"] == {}
+    st.delete(D)
+    st.save_many({D: {"slots": [_slot()]}})
+    assert _disk(path)[D]["notes"] == {}
+    assert "notiz" not in st.get(D)["slots"][0]
+
+
+def test_recreating_after_a_keyed_tombstone_takes_a_new_note(st, path):
+    st.save(D, [_slot(notiz="x")])
+    st.delete(D)
+    st.save(D, [_slot(notiz="y")])
+    assert _disk(path)[D]["notes"] == {"08:00": "y"}
+
+
+_NOTELESS_TOMBSTONE = """{
+  "2026-11-03": {
+    "slots": [],
+    "modified_at": "2026-11-03T09:00:00Z",
+    "device_id": "dev",
+    "deleted": true
+  }
+}"""
+
+_NOTELESS_RECREATED = """{
+  "2026-11-03": {
+    "slots": [
+      {
+        "start": "08:00",
+        "end": "12:00",
+        "pause": 0,
+        "kategorie": ""
+      }
+    ],
+    "modified_at": "2026-11-03T10:00:00Z",
+    "device_id": "dev",
+    "deleted": false
+  }
+}"""
+
+
+def test_delete_and_recreate_without_notes_writes_todays_bytes(st, path, monkeypatch):
+    import src.storage as storage_mod
+    stamps = iter(["2026-11-03T08:00:00Z", "2026-11-03T09:00:00Z", "2026-11-03T10:00:00Z"])
+    monkeypatch.setattr(storage_mod, "utc_now_iso", lambda: next(stamps))
+    st.save(D, [_slot()])
+    st.delete(D)
+    with open(path, encoding="utf-8") as fh:
+        assert fh.read() == _NOTELESS_TOMBSTONE
+    st.save(D, [_slot(notiz="")])
+    with open(path, encoding="utf-8") as fh:
+        assert fh.read() == _NOTELESS_RECREATED
 
 
 def test_save_many_inherits(st, path):

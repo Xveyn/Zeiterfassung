@@ -291,8 +291,10 @@ def _resolution_candidate(conflict: Conflict, replaced: Entry | None) -> dict[st
     """Der Stand, den ein gelöster Konflikt schreibt; `None` bei unbekannter Art.
 
     Eine Auflösung eines Eintrags bekommt `notes` nach `slot_notes.resolution_notes`;
-    `replaced` ist der Stand vor allen Auflösungen, nie ein Zwischenstand der
-    Schleife, sonst hinge das Ergebnis an der Reihenfolge der Konfliktliste."""
+    gelöscht trägt sie `notes: {}`, wenn `replaced` oder ein Kandidat den Schlüssel
+    trägt (wie `Storage.delete`). `replaced` ist der Stand vor allen Auflösungen, nie
+    ein Zwischenstand der Schleife, sonst hinge das Ergebnis an der Reihenfolge der
+    Konfliktliste."""
     resolution = conflict.get("resolution")
     if not isinstance(resolution, dict):
         resolution = {}
@@ -311,8 +313,12 @@ def _resolution_candidate(conflict: Conflict, replaced: Entry | None) -> dict[st
         "deleted": bool(resolution.get("deleted", False)),
     }
     candidates = conflict.get("candidates")
-    notes = slot_notes.resolution_notes(
-        resolution, candidates if isinstance(candidates, list) else [], replaced)
+    candidates = candidates if isinstance(candidates, list) else []
+    if candidate["deleted"]:
+        if slot_notes.has_key(replaced) or any(slot_notes.has_key(c) for c in candidates):
+            candidate["notes"] = {}
+        return candidate
+    notes = slot_notes.resolution_notes(resolution, candidates, replaced)
     if notes is not None:
         candidate["notes"] = notes
     return candidate

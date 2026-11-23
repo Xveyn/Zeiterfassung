@@ -251,6 +251,9 @@ def _random_entry(rng):
     entry = _e(start, rng.choice(_TIMES), rng.choice(_DEVICES), deleted=rng.random() < 0.2)
     if not entry["deleted"] and rng.random() < 0.5:
         entry["notes"] = _random_notes(rng, start)
+    elif entry["deleted"] and rng.random() < 0.5:
+        # Ein Tombstone eines Tages, der den Schlüssel trug, behält ihn leer.
+        entry["notes"] = {}
     return entry
 
 
