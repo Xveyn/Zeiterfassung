@@ -14,8 +14,9 @@ from src.slot_notes import effective_slots, has_key, notes_from_slots, notes_of,
 from src.time_utils import utc_now_iso
 
 # JSON-getragene Records (Audit N8): ein Slot {start, end, pause, kategorie};
-# ein Entry {slots, modified_at, device_id, deleted}; der Store hält
-# {ISO-Datum: Entry}. Werte sind heterogen (str/int/bool/list) → Any.
+# ein Entry {slots, modified_at, device_id, deleted}, dazu `notes` ({start: Notiz}),
+# wenn der Tag Notizen hat oder hatte, bei einem Tombstone als `{}`; der Store hält
+# {ISO-Datum: Entry}. Werte sind heterogen (str/int/bool/list/dict) → Any.
 Slot = dict[str, Any]
 Entry = dict[str, Any]
 

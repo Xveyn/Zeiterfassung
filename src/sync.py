@@ -5,13 +5,20 @@ Doc-Struktur (Sync-File und Zwischenformate), Stand SCHEMA_VERSION = 4:
 {
   "schema_version": 4,
   "entries":   {date: {slots: [{start, end, pause, kategorie}],
-                       modified_at, device_id, deleted}},
+                       modified_at, device_id, deleted, notes?}},
   "settings":  {key:  {value, modified_at, device_id}},
   "conflicts": [{id, kind, key, candidates, detected_at,
                  resolved, resolution, resolved_at, resolved_by}],
   "devices":   {device_id: {name, updated_at}},   # optional, s.u.
   "meta":      {gc_watermark}
 }
+
+`notes` ({start: Notiz}, Xveyn#519) ist wie `devices` additiv: ein Eintrag trägt den
+Schlüssel, wenn der Tag Notizen hat oder hatte, ein Tombstone als `{}`, wenn der
+gelöschte Stand ihn trug. Die `resolution` eines Eintrags-Konflikts trägt ihn auf
+oberster Ebene neben `slots`/`deleted`, wenn ein neues Gerät aufgelöst hat und der
+Tag Notizen hat oder hatte. Ältere Clients behalten ihn am Eintrag als unbekannten
+Schlüssel; Regeln in `slot_notes.py` und `_merge_entry`.
 
 `devices` ist die Geräte-Registry (s. `devices.py`): sie übersetzt die
 `device_id` in einen lesbaren Namen für die Anzeige (Konfliktdialog). Sie ist

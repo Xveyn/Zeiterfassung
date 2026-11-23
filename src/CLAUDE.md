@@ -328,7 +328,9 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
   Lese-/Schreibgrenze liegt hier. `get`/`get_all` liefern jeden Slot in App-Form, `notiz` nur wenn
   nicht leer, aus `notes` des Tages; ein roh im Slot stehendes `notiz` wird verworfen (einzige
   Quelle ist `notes`). `save`/`save_many` nehmen `notiz` aus den Slots und schreiben `notes` nur,
-  wenn der Tag Notizen hat oder der überschriebene lebende Stand den Schlüssel trug; ein Slot ohne
+  wenn der Tag Notizen hat oder der überschriebene Stand den Schlüssel trug, auch ein Tombstone
+  (Notizen vererbt ein Tombstone nie); `delete` schreibt `notes: {}` in den Tombstone, wenn der
+  gelöschte Stand den Schlüssel trug, sonst den Tombstone aus vier Schlüsseln. Ein Slot ohne
   Schlüssel `notiz` erbt die Notiz des bisherigen Slots mit gleicher Startzeit (ein Schreiber, der
   Notizen nicht kennt, löscht keine; Vorbild `reservations.inherit_pause`), ein Slot mit Schlüssel
   (auch `""`) gilt wie angegeben. `get_all_raw`/`apply_merge` bleiben Rohformat für den Sync.
@@ -592,9 +594,14 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
   (`resolve_conflict` schreibt sie mit). Fehlt sie (ein altes Gerät hat aufgelöst), nimmt
   `slot_notes.resolution_notes` die Notizen des Kandidaten mit den Slots der Auflösung (bei mehreren
   der jüngere), fehlt diesem der Schlüssel, die eines anderen Kandidaten, passt keiner, die des
-  ersetzten Stands. `_resolve_entry` wendet dieselbe Erb-Regel gegen den gemergten Eintrag an, ebenfalls
-  mit Anhebung um 1 s: alte Geräte bauen den Eintrag in dieser Schleife aus vier Schlüsseln neu und
-  ersetzen ihn auch bei gleichem Stempel (der Normalfall, `resolve_conflict` stempelt beides gleich).
+  ersetzten Stands. Eine als gelöscht angewendete Auflösung trägt `notes: {}`, wenn der ersetzte Stand
+  oder ein Kandidat den Schlüssel trägt (wie `Storage.delete`). `_resolve_entry` wendet dieselbe
+  Erb-Regel gegen den gemergten Eintrag an, ebenfalls mit Anhebung um 1 s, aber nur, wenn der Eintrag
+  Stempel und Gerät der Auflösung trägt: genau diese Form bauen alte Geräte in der Schleife aus vier
+  Schlüsseln und ersetzen damit auch bei gleichem Stempel (der Normalfall, `resolve_conflict` stempelt
+  beides gleich). Ein anders gestempelter Eintrag ohne `notes` ist ein späterer Schreibvorgang und erbt
+  nicht. Tombstones mit `notes: {}` brauchen keine eigene Merge-Regel: `supplement` lässt gelöschte
+  Stände aus, sie gewinnen oder verlieren nach LWW; Kompaktierung und Startup-Sweep sehen nur `deleted`.
 
   Die Bedingung des Sweeps ist bewusst eng: Feature AUS reicht nicht, es muss
   **nie an** gewesen sein. Wer den Sync abschaltet, dessen Remote kennt die
@@ -898,7 +905,8 @@ Wert.
   auch nicht bei ungewöhnlich gespeicherten Daten: jede Prüfung ist für sich abgesichert).
   Hält keinen Lock; den nimmt der Aufrufer um Prüfen und Speichern gemeinsam.
   **Notiz (Xveyn#519):** `parse_slots(..., allow_note=…)` lässt `notiz` je Slot nur für Ist-Zeiten zu
-  (`parse_day_body`, Handy-Abgleich), geprüft über `slot_notes.check_note` (Verstoß: `422 invalid_note`).
+  (`parse_day_body`, Handy-Abgleich), geprüft über `slot_notes.check_note` (Verstoß in der lokalen API
+  `422 invalid_note`, im Handy-Abgleich `422 invalid_entry`).
   Reservierungs-Slots lehnen `notiz` weiter als unbekanntes Feld ab. In `api_routes` liefert `_wire_slots`
   `notiz` an jedem Slot immer (`""` ohne); beim `PUT` erbt ein Slot ohne Feld die Notiz des bisherigen
   Slots mit gleicher Startzeit, ein Slot mit Feld (auch `""`) gilt wie angegeben.

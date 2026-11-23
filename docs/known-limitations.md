@@ -740,16 +740,31 @@ daraus folgt, ist in einer gemischten Flotte nicht ganz zu schließen.
 - **Eine alte Version ändert die Startzeit eines Slots oder löscht ihn: die Notiz geht
   verloren,** die Zuordnung hängt an der Startzeit. Tauscht sie die Zeiten zweier Slots, wandern die
   Notizen mit den Zeiten. Zwischen zwei neuen Geräten gibt es das nicht: sie schreiben `notes` an
-  jedem Tag mit, der Notizen hat oder hatte.
-- **Eine gelöschte Notiz kann in einer gemischten Flotte zurückkommen.** Dafür braucht es drei
-  Geräte in dieser Reihenfolge: ein neues Gerät entfernt die Notiz, ein altes speichert denselben
-  Tag danach neu (im Sync-Doc fehlt der Schlüssel), und ein drittes, das noch den Stand mit Notiz
-  hält, synchronisiert vor dem ersten. Es erbt die Notiz und macht sie zum neuesten Stand.
-  Synchronisiert das erste Gerät zuerst, bleibt sie gelöscht. Schließen ließe sich das nur mit
-  eigenen Zeitstempeln je Notiz.
-- **Die Anhebung um eine Sekunde macht den ergänzten Stand zum neuesten.** Bei stark falsch gehenden
-  Uhren kann daraus wie schon heute ein unnötiger Konflikt entstehen (s. „Last-Write-Wins hängt an
-  den Geräte-Uhren“).
+  jedem Tag mit, der Notizen hat oder hatte, auch über das Löschen des Tages hinweg (s. unten).
+- **Eine gelöschte oder geänderte Notiz kann in einer gemischten Flotte zurückkommen.** Dafür
+  braucht es drei Geräte in dieser Reihenfolge: ein neues Gerät entfernt oder ändert die Notiz und
+  synchronisiert, ein altes speichert denselben Tag danach neu (im Sync-Doc fehlt der Schlüssel), und
+  ein drittes neues Gerät, das noch den Stand mit der alten Notiz hält, synchronisiert vor dem
+  ersten. Es erbt die alte Notiz und macht sie zum neuesten Stand; am Ende haben alle Geräte die alte
+  Notiz, ohne Konflikt, und die Änderung des ersten Geräts ist spurlos weg. Synchronisiert das erste
+  Gerät zuerst, bleibt seine Fassung. Schließen ließe sich das nur mit eigenen Zeitstempeln je Notiz.
+- **Ein altes Gerät braucht dafür keine Bedienung.** Solange für den Tag ein gelöster Konflikt in der
+  Liste steht (bis zur Kompaktierung), baut seine Schleife über die Auflösungen den Tag bei jedem Sync
+  aus vier Schlüsseln neu; das zählt wie ein Neuspeichern ohne `notes`.
+- **Welche Löschungen den Schlüssel behalten.** Ein Tombstone trägt `notes: {}`, wenn der gelöschte
+  Stand den Schlüssel trug: beim Löschen am neuen Desktop, beim Löschen am Handy (der Desktop setzt
+  den Schlüssel nach seinem Eintrag) und bei einer als „gelöscht“ angewendeten Konflikt-Auflösung.
+  Ein danach neu angelegter Tag trägt den Schlüssel dann ebenfalls und erbt nichts. Ein Tombstone
+  eines **alten** Geräts hat nur vier Schlüssel, ebenso einer, den die Auflösungs-Schleife eines alten
+  Geräts neu baut (er gewinnt bei gleichem Stempel über die Textform); ein danach neu angelegter Tag
+  ohne Schlüssel kann dann von einem Gerät, das noch einen Stand mit Notiz hält, die alte Notiz
+  zurückbekommen.
+- **Die Anhebung um eine Sekunde macht den ergänzten Stand zum neuesten.** Dafür reicht schon eine
+  Sekunde Uhrabweichung: geht die Uhr eines Handys etwa eine Sekunde vor dem Desktop (oder läuft der
+  Abgleich in derselben Sekunde wie das Speichern), liegt der gespeicherte Stand eines Tages mit Notiz
+  danach eine Sekunde hinter dem Abgleich-Zeitpunkt. Ändert eine PWA, die kein `notiz` sendet,
+  denselben Tag erneut, entsteht ein unnötiger Konflikt „Handy gegen Handy“; Daten gehen nicht
+  verloren (s. „Last-Write-Wins hängt an den Geräte-Uhren“).
 - **Eine alte Version löst einen Konflikt, dessen Stände sich nur in der Notiz unterscheiden:** sie
   sieht zwei gleiche Karten, es gilt der jüngere Stand.
 - **Geteilte Arbeitszeiten kommen ohne Notizen an.** Die Teilen-Datei bleibt bewusst bei den vier
@@ -759,8 +774,12 @@ daraus folgt, ist in einer gemischten Flotte nicht ganz zu schließen.
   diesen Tag auflöst, kann die Anhebung um eine Sekunde den alten Stand auf den Stempel der Auflösung
   heben. Dann entscheidet die Geräte-ID, und der alte Wert kann den aufgelösten in den Einträgen
   ersetzen (der Konflikt-Datensatz bleibt erhalten; ohne Notizen hätte die Auflösung gewonnen). Das
-  ist symmetrisch und stabil und braucht eine gemischte Flotte mit Notizen am Tag. Möglicher Fix: die
-  Anhebung erst nach den Auflösungen anwenden und nur, wenn der Eintrag danach noch der Gewinner ist.
+  geschieht auf einem neuen Gerät, das den alten Stand im selben Merge sieht, in dem es die Auflösung
+  erst anwendet. Schreibt das alte Gerät in **derselben** Sekunde wie die Auflösung, entscheidet ohne
+  Notizen die Geräte-ID; mit Notizen liegt der angehobene alte Stand eine Sekunde nach ihr und gewinnt
+  immer. Das ist symmetrisch und stabil und braucht eine gemischte Flotte mit Notizen am Tag.
+  Möglicher Fix: die Anhebung erst nach den Auflösungen anwenden und nur, wenn der Eintrag danach noch
+  der Gewinner ist.
 
 ## Beschädigte oder fremde Daten (Storage)
 

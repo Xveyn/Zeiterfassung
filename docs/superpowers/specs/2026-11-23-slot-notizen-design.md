@@ -94,14 +94,21 @@ Eigenschaften von B bleiben, die Erb-Regel wird sogar einfacher.
 - `notes` enthält nur nicht-leere Notizen und nur Startzeiten, zu denen der Tag
   einen Slot hat.
 - **Der Schlüssel `notes` ist „klebrig“:** ein Schreiber setzt ihn, sobald der Tag
-  Notizen hat **oder** der Stand, den er überschreibt, den Schlüssel schon trug
-  (dann auch leer, `{}`). Daraus folgen drei Bedeutungen:
+  Notizen hat **oder** der Stand, den er überschreibt, den Schlüssel schon trug,
+  auch ein Tombstone (dann leer, `{}`). Daraus folgen drei Bedeutungen:
   - Schlüssel fehlt: der Schreiber wusste nichts von Notizen an diesem Tag (alte
-    Version, oder neue Version an einem Tag, der nie welche hatte).
+    Version, oder neue Version an einem Tag, der den Schlüssel nie trug, auch nicht
+    vor einem Löschen).
   - `{}`: die Notizen dieses Tages wurden bewusst entfernt.
   - gefüllt: die Notizen dieses Tages.
 
-  Auf dieser Unterscheidung beruht die Erb-Regel. Tombstones tragen keine Notizen.
+  Auf dieser Unterscheidung beruht die Erb-Regel. **Tombstones tragen keine Notizen,
+  aber den Schlüssel:** trug der gelöschte Stand ihn, steht im Tombstone `notes: {}`
+  (Löschen am Desktop, Löschen am Handy, als gelöscht angewendete Auflösung). Ein
+  danach neu angelegter Tag trägt den Schlüssel dann ebenfalls und erbt nichts aus
+  dem Tombstone. Ohne das läse der Merge den neu angelegten Tag als Stand eines
+  Schreibers, der nichts von Notizen weiß, und füllte die alte Notiz von einem
+  Gerät nach, das noch den Stand vor dem Löschen hält.
 - **Ein Tag, der nie eine Notiz hatte, wird exakt so geschrieben wie heute.** Wer
   keine Notizen benutzt, hat dieselbe Datei und dasselbe Sync-Doc wie mit 1.28.
 - Für alte Versionen ist `notes` ein unbekannter Schlüssel am Eintrag. Geprüft:
@@ -140,7 +147,8 @@ am Tag kennen nur `Storage` und der Sync.
   ist `notes` am Tag.
 - `save`/`save_many` nehmen `notiz` aus den Slots und schreiben `notes` nach der
   Regel oben (gesetzt, wenn Notizen da sind oder der bisherige Stand den
-  Schlüssel trug).
+  Schlüssel trug, auch ein Tombstone). `delete` schreibt `notes: {}` in den
+  Tombstone, wenn der gelöschte Stand den Schlüssel trug.
 - **Ein Slot ohne Schlüssel `notiz` erbt beim Speichern** die Notiz des bisher
   gespeicherten Slots mit derselben Startzeit. Ein Slot mit Schlüssel (auch `""`)
   gilt wie angegeben. Damit löscht kein interner Schreiber, der Notizen nicht
@@ -178,7 +186,11 @@ Eigenschaften, die Tests festhalten müssen:
 - **Zwei neue Geräte**, die denselben alten Stand unabhängig ergänzen, erzeugen
   denselben Eintrag (kein Konflikt).
 - **Bewusst gelöscht bleibt gelöscht:** ein Stand mit `notes: {}` erbt nichts,
-  und ein schlüsselloser neuerer Stand erbt von ihm das leere `{}`.
+  und ein schlüsselloser neuerer Stand erbt von ihm das leere `{}`. Das gilt auch
+  für einen gelöschten Tag: sein Tombstone behält den Schlüssel, ein neu angelegter
+  Tag trägt ihn und bekommt die alte Notiz nicht zurück. Ein Tombstone mit `{}`
+  braucht keine eigene Merge-Regel (gelöschte Stände erben nicht, er gewinnt oder
+  verliert nach LWW). Ausnahmen bei alten Geräten: s. „Bekannte Grenzen“.
 - **Ohne Notizen ändert sich nichts:** fehlt `notes` auf beiden Seiten, sind
   Gewinner, Stempel und Konflikte dieselben wie heute. Für einen Bestand, der nie
   eine Notiz gesehen hat, ist das immer der Fall.
@@ -211,10 +223,14 @@ Eintrag dabei aus `resolution` neu. Das betrifft die Notizen an drei Stellen:
   der Rückgriff auf den ersetzten Stand liest den Eintrag, wie er **vor allen
   Auflösungen** war, nie einen Zwischenstand der Schleife. Sonst hinge das Ergebnis
   an der Reihenfolge zweier Auflösungen für denselben Tag; die Symmetrie ist bindend.
-- **Ein Eintrag ohne `notes` erbt von der gewinnenden Auflösung, die Notizen trägt,**
-  unabhängig von den Stempeln (`sync._resolve_entry`); nur die Anhebung um eine Sekunde
-  hängt davon ab, dass der Eintrag danach noch mit seinem Stempel und Gerät gewinnt. Nötig, wenn beide Seiten nur den Stand halten, den ein altes Gerät
-  gestrippt hat.
+- **Ein Eintrag ohne `notes` erbt von der jüngsten Auflösung des Tages, wenn er deren
+  Stempel und Gerät trägt** (`sync._resolve_entry`): genau diese Form baut die Schleife
+  eines alten Geräts aus vier Schlüsseln. Er wird dabei um eine Sekunde angehoben, wenn er
+  danach noch mit seinem Stempel und Gerät gewinnt. Nötig, wenn beide Seiten nur den Stand
+  halten, den ein altes Gerät gestrippt hat. Ein anders gestempelter Eintrag ohne `notes`
+  ist ein späterer Schreibvorgang (etwa ein gelöschter und neu angelegter Tag) und erbt
+  nicht. Eine als gelöscht angewendete Auflösung trägt `notes: {}`, wenn der ersetzte
+  Stand oder ein Kandidat den Schlüssel trägt.
 - **Alte Geräte entfernen `notes` in dieser Schleife.** Sie bauen den Eintrag aus
   vier Schlüsseln und ersetzen den vorhandenen auch bei gleichem Stempel, und der
   Gleichstand ist der Normalfall (`resolve_conflict` stempelt Auflösung und
@@ -328,29 +344,46 @@ ein Minor.
   dessen Notiz verloren (die Zuordnung hängt an der Startzeit). Tauscht sie die
   Zeiten zweier Slots, wandern die Notizen mit den Zeiten.
 - Zwischen zwei neuen Geräten gibt es diese Grenze nicht: sie schreiben `notes`
-  an jedem Tag mit, der Notizen hat oder hatte.
-- **Eine gelöschte Notiz kann in einer gemischten Flotte zurückkommen.** Dafür
-  braucht es drei Geräte in dieser Reihenfolge: ein neues Gerät entfernt die
-  Notiz, ein altes speichert denselben Tag danach neu (der Schlüssel fehlt dann
-  im Sync-Doc), und ein drittes, das noch den Stand mit Notiz hält, synchronisiert
-  vor dem ersten. Es erbt die Notiz und macht sie zum neuesten Stand. Synchronisiert
-  das erste Gerät zuerst, bleibt sie gelöscht. Ganz schließen ließe sich das nur
-  mit eigenen Zeitstempeln je Notiz.
+  an jedem Tag mit, der Notizen hat oder hatte, auch über ein Löschen hinweg.
+- **Eine gelöschte oder geänderte Notiz kann in einer gemischten Flotte
+  zurückkommen.** Dafür braucht es drei Geräte in dieser Reihenfolge: ein neues
+  Gerät entfernt oder ändert die Notiz, ein altes speichert denselben Tag danach
+  neu (der Schlüssel fehlt dann im Sync-Doc), und ein drittes neues, das noch den
+  Stand mit der alten Notiz hält, synchronisiert vor dem ersten. Es erbt die alte
+  Notiz und macht sie zum neuesten Stand; alle Geräte enden ohne Konflikt bei der
+  alten Notiz, die Änderung des ersten ist spurlos weg. Synchronisiert das erste
+  Gerät zuerst, bleibt seine Fassung. Ganz schließen ließe sich das nur mit
+  eigenen Zeitstempeln je Notiz.
+- Das alte Gerät braucht dafür keine Bedienung: solange für den Tag ein gelöster
+  Konflikt in der Liste steht, baut seine Schleife über die Auflösungen den Tag bei
+  jedem Sync aus vier Schlüsseln neu.
+- Den Schlüssel behalten die Löschungen am neuen Desktop, am Handy (über den
+  Desktop) und eine als gelöscht angewendete Auflösung. Ein Tombstone eines
+  **alten** Geräts hat vier Schlüssel, ebenso einer, den die Auflösungs-Schleife
+  eines alten Geräts neu baut (er gewinnt bei gleichem Stempel über die Textform).
+  Ein danach neu angelegter Tag ohne Schlüssel kann von einem Gerät, das noch einen
+  Stand mit Notiz hält, die alte Notiz zurückbekommen.
 - Löst ein **altes** Gerät einen Konflikt auf, in dem sich die Stände nur in der
   Notiz unterscheiden, sieht es zwei gleiche Karten; es gilt dann der jüngere
   Stand.
-- Die Anhebung um eine Sekunde macht den ergänzten Stand zum neuesten; bei stark
-  falsch gehenden Uhren kann daraus wie heute schon ein unnötiger Konflikt
-  entstehen (Audit N2).
+- Die Anhebung um eine Sekunde macht den ergänzten Stand zum neuesten. Schon eine
+  Sekunde reicht für einen unnötigen Konflikt: geht die Uhr eines Handys etwa eine
+  Sekunde vor dem Desktop (oder läuft der Abgleich in derselben Sekunde wie das
+  Speichern), liegt ein Tag mit Notiz danach eine Sekunde hinter dem
+  Abgleich-Zeitpunkt, und die nächste Änderung einer PWA ohne `notiz` an diesem Tag
+  wird ein Konflikt „Handy gegen Handy“ (Audit N2).
 - Geteilte Arbeitszeiten kommen ohne Notizen an.
 - Schreibt ein altes Gerät einen Tag genau eine Sekunde, bevor der Nutzer auf einem
   anderen Gerät den Konflikt für diesen Tag auflöst, kann die Anhebung um eine Sekunde
   den alten Stand auf den Stempel der Auflösung heben; dann entscheidet die Geräte-ID,
   und der alte Wert kann den aufgelösten in den Einträgen ersetzen (der Konflikt-
-  Datensatz bleibt, ohne Notizen hätte die Auflösung gewonnen). Symmetrisch und
-  stabil, braucht eine gemischte Flotte mit Notizen; bewusst nur dokumentiert
-  (`docs/known-limitations.md`). Möglicher Fix: die Anhebung erst nach den Auflösungen
-  und nur, wenn der Eintrag danach noch der Gewinner ist.
+  Datensatz bleibt, ohne Notizen hätte die Auflösung gewonnen). Das geschieht auf einem
+  neuen Gerät, das den alten Stand im selben Merge sieht, in dem es die Auflösung erst
+  anwendet. Schreibt das alte Gerät in derselben Sekunde wie die Auflösung, entscheidet
+  ohne Notizen die Geräte-ID, mit Notizen gewinnt der angehobene alte Stand immer.
+  Symmetrisch und stabil, braucht eine gemischte Flotte mit Notizen; bewusst nur
+  dokumentiert (`docs/known-limitations.md`). Möglicher Fix: die Anhebung erst nach den
+  Auflösungen und nur, wenn der Eintrag danach noch der Gewinner ist.
 
 ## Was Tests mindestens zeigen müssen
 

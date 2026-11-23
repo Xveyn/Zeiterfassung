@@ -506,3 +506,22 @@ def test_compaction_and_orphan_sweep_drop_keyed_tombstones(tmp_path):
     settings.set("gc_watermark", "")
     assert sync.drop_orphan_tombstones(storage, settings) == 1
     assert storage.get_all_raw() == {}
+
+
+def test_old_write_in_the_resolution_second_wins_after_the_bump():
+    """Bekannte Grenze: ohne Notizen entschiede die Geräte-ID ("0" < "A", die Auflösung
+    gewänne); der ergänzte alte Stand liegt nach der Anhebung eine Sekunde später."""
+    keyed = _entry(T1, "A", notes={"08:00": "K"})
+    old = old_rewrite(keyed, modified_at=T2, device_id="0", pause=15)
+    conflict = _resolved({"slots": [_slot()], "notes": {"08:00": "R"}},
+                         resolved_at=T2, resolved_by="A")
+    a = {**_doc({DAY: keyed}), "conflicts": [conflict]}
+    ab, ba = merge(a, _doc({DAY: old}), T0), merge(_doc({DAY: old}), a, T0)
+    assert ab["entries"] == ba["entries"]
+    assert ab["entries"][DAY]["modified_at"] == T2_BUMPED
+    assert ab["entries"][DAY]["device_id"] == "0"
+
+    plain = _resolved({"slots": [_slot()]}, resolved_at=T2, resolved_by="A")
+    without = merge({**_doc({DAY: _entry(T1, "A")}), "conflicts": [plain]},
+                    _doc({DAY: old}), T0)
+    assert without["entries"][DAY]["device_id"] == "A"
