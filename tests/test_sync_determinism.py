@@ -243,8 +243,15 @@ def _random_doc(rng):
     entries = {}
     for key in _KEYS:
         if rng.random() < 0.7:
-            entries[key] = _e(rng.choice(["08:00", "09:00"]), rng.choice(_TIMES),
+            start = rng.choice(["08:00", "09:00"])
+            entries[key] = _e(start, rng.choice(_TIMES),
                               rng.choice(_DEVICES), deleted=rng.random() < 0.2)
+            # Notizen: Schlüssel fehlt (alte Version), leer oder mit Notiz zu einer
+            # Startzeit, die nicht immer zum eigenen Slot passt (Startzeit geändert).
+            if not entries[key]["deleted"] and rng.random() < 0.5:
+                entries[key]["notes"] = rng.choice([
+                    {}, {start: rng.choice(["K", "L"])},
+                    {rng.choice(["08:00", "09:00"]): "K"}])
     settings = {}
     if rng.random() < 0.7:
         settings["recipient"] = _s(rng.choice(["a@x.de", "b@x.de"]),

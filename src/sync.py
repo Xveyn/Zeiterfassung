@@ -51,6 +51,7 @@ from src.devices import merge_registries, sanitize_registry, with_own_entry
 # damit validate_remote_doc nie gegen einen anderen Feldsatz prüft als der
 # Store später schreibt. storage.py importiert sync.py nicht (kein Zyklus).
 from src.storage import REQUIRED_ENTRY_KEYS
+from src import slot_notes
 
 if TYPE_CHECKING:
     import threading
@@ -107,9 +108,12 @@ def sorted_signature(items: Iterable[tuple[Any, ...]]) -> list[tuple[Any, ...]]:
 def _slots_signature(entry: Entry) -> list[tuple[Any, ...]]:
     """Reihenfolge-normalisierte Signatur der Slot-Liste eines Eintrags,
     für den Gleichheitsvergleich im Merge. Sortiert nach den Slot-Feldern,
-    damit eine reine Umordnung der Slots NICHT als Änderung zählt."""
+    damit eine reine Umordnung der Slots NICHT als Änderung zählt. Die Notiz
+    zur Startzeit gehört dazu: eine reine Notiz-Änderung ist eine Änderung."""
+    notes = slot_notes.notes_of(entry)
     return sorted_signature(
-        (s.get("start"), s.get("end"), s.get("pause", 0), s.get("kategorie", ""))
+        (s.get("start"), s.get("end"), s.get("pause", 0), s.get("kategorie", ""),
+         notes.get(s.get("start"), ""))
         for s in (entry.get("slots") or [])
     )
 
@@ -198,6 +202,36 @@ def _merge_one(local: dict[str, Any] | None, remote: dict[str, Any] | None,
     return (winner, None)
 
 
+def _merge_entry(loc: Entry | None, rem: Entry | None, last_pull_at: str,
+                 key: str) -> tuple[Entry | None, Conflict | None]:
+    """`_merge_one` für einen Tag, mit der Erb-Regel der Slot-Notizen.
+
+    Fehlt einer Seite der Schlüssel `notes` (eine ältere Version hat den Tag
+    geschrieben), erbt sie die Notizen der anderen (`slot_notes.supplement`).
+    Trägt der Gewinner Stempel und Gerät der ergänzten Seite, bekommt er
+    `modified_at + 1 s`: sonst hielte das alte Gerät beide Stände für gleich
+    und lüde seinen eigenen (ohne `notes`) bei jedem Sync wieder hoch. Die
+    Konflikt-Kandidaten behalten ihre Stempel (Dedupe über sie)."""
+    supplemented: tuple[Any, Any] | None = None
+    if loc is not None and rem is not None:
+        loc_s = slot_notes.supplement(loc, rem)
+        rem_s = slot_notes.supplement(rem, loc)
+        if loc_s is not None:
+            supplemented = (loc.get("modified_at"), loc.get("device_id"))
+            loc = loc_s
+        elif rem_s is not None:
+            supplemented = (rem.get("modified_at"), rem.get("device_id"))
+            rem = rem_s
+    winner, conflict = _merge_one(loc, rem, last_pull_at,
+                                  equal_fn=_values_equal_entry, kind="entry", key=key)
+    if (winner is not None and supplemented is not None
+            and (winner.get("modified_at"), winner.get("device_id")) == supplemented):
+        bumped = slot_notes.bump_stamp(winner.get("modified_at"))
+        if bumped is not None:
+            winner = {**winner, "modified_at": bumped}
+    return winner, conflict
+
+
 def _strip_for_candidate(item: dict[str, Any]) -> dict[str, Any]:
     """Reduziert ein Entry/Setting auf das, was im conflict.candidates landen soll."""
     return {k: v for k, v in item.items()}
@@ -271,8 +305,7 @@ def merge(local: Doc, remote: Doc, last_pull_at: str) -> Doc:
     for key in all_entry_keys:
         loc = local.get("entries", {}).get(key)
         rem = remote.get("entries", {}).get(key)
-        winner, conflict = _merge_one(loc, rem, last_pull_at,
-                                       equal_fn=_values_equal_entry, kind="entry", key=key)
+        winner, conflict = _merge_entry(loc, rem, last_pull_at, key)
         # Regel 2: Self-Heal — ein zurückgekehrtes (excluded) Gerät darf einen
         # alten, remote-fehlenden lebenden Eintrag nicht auferstehen lassen.
         if (excluded and rem is None and loc is not None
