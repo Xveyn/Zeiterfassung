@@ -525,3 +525,52 @@ def test_old_write_in_the_resolution_second_wins_after_the_bump():
     without = merge({**_doc({DAY: _entry(T1, "A")}), "conflicts": [plain]},
                     _doc({DAY: old}), T0)
     assert without["entries"][DAY]["device_id"] == "A"
+
+
+def test_resolving_with_a_slot_level_note_stores_four_field_slots(tmp_path):
+    storage, settings, conflicts = _stores(tmp_path)
+    cand_a = _entry(T1, "A", slots=[_slot(pause=30)], notes={"08:00": "KA"})
+    cand_b = _entry(T2, "B")
+    storage.save(DAY, [_slot()])
+    conflicts.save_all([_open_conflict(cand_a, cand_b)])
+
+    chosen = {"slots": [{**_slot(pause=30), "notiz": " Neu "}], "deleted": False}
+    sync.resolve_conflict("c1", chosen, conflicts, storage, settings, device_id="A")
+
+    resolution = conflicts.get_all()[0]["resolution"]
+    assert resolution["slots"] == [_slot(pause=30)]
+    assert all(set(s) == {"start", "end", "pause", "kategorie"} for s in resolution["slots"])
+    assert resolution["notes"] == {"08:00": "Neu"}
+    assert storage.get(DAY)["slots"][0]["notiz"] == "Neu"
+    assert storage.get_all_raw()[DAY]["notes"] == {"08:00": "Neu"}
+    assert chosen["slots"][0]["notiz"] == " Neu "
+
+
+def test_an_explicit_empty_slot_note_counts_as_given(tmp_path):
+    storage, settings, conflicts = _stores(tmp_path)
+    cand_a = _entry(T1, "A", slots=[_slot(pause=30)], notes={"08:00": "KA"})
+    storage.save(DAY, [{**_slot(pause=30), "notiz": "KA"}])
+    conflicts.save_all([_open_conflict(cand_a, _entry(T2, "B"))])
+
+    sync.resolve_conflict("c1", {"slots": [{**_slot(pause=30), "notiz": ""}]}, conflicts,
+                          storage, settings, device_id="A")
+
+    resolution = conflicts.get_all()[0]["resolution"]
+    assert resolution["slots"] == [_slot(pause=30)]
+    assert resolution["notes"] == {}
+    assert "notiz" not in storage.get(DAY)["slots"][0]
+    assert storage.get_all_raw()[DAY]["notes"] == {}
+
+
+def test_slots_without_a_note_key_still_inherit_next_to_given_ones(tmp_path):
+    storage, settings, conflicts = _stores(tmp_path)
+    late = _slot(start="13:00", end="17:00")
+    cand = _entry(T1, "A", slots=[_slot(end="12:00"), late],
+                  notes={"08:00": "K8", "13:00": "K13"})
+    storage.save(DAY, [_slot(end="12:00"), late])
+    conflicts.save_all([_open_conflict(cand, _entry(T2, "B"))])
+
+    chosen = {"slots": [{**_slot(end="12:00"), "notiz": "Neu"}, dict(late)]}
+    sync.resolve_conflict("c1", chosen, conflicts, storage, settings, device_id="A")
+
+    assert conflicts.get_all()[0]["resolution"]["notes"] == {"08:00": "Neu", "13:00": "K13"}

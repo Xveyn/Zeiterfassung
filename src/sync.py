@@ -119,7 +119,7 @@ def _slots_signature(entry: Entry) -> list[tuple[Any, ...]]:
     zur Startzeit gehört dazu: eine reine Notiz-Änderung ist eine Änderung."""
     notes = slot_notes.notes_of(entry)
     return sorted_signature(
-        (s.get("start"), s.get("end"), s.get("pause", 0), s.get("kategorie", ""),
+        (*slot_notes.slot_fields(s),
          notes.get(s["start"], "") if isinstance(s.get("start"), str) else "")
         for s in (entry.get("slots") or [])
     )
@@ -664,14 +664,47 @@ def remote_is_newer(remote_doc: Doc) -> bool:
     return (remote_doc.get("schema_version") or 1) > SCHEMA_VERSION
 
 
+_SLOT_FIELDS = ("start", "end", "pause", "kategorie")
+
+
+def _slot_level_notes(resolution: dict[str, Any]) -> dict[str, str] | None:
+    """Projiziert die Slots einer Auflösung (in place) auf die vier Felder.
+
+    Liefert die am Slot angegebenen Notizen (`{start: bereinigte Notiz}`, auch `""`),
+    `None`, wenn kein Slot ein `notiz` trägt. Ein `notiz` in der gespeicherten
+    Auflösung gelangte über die Schleife in `merge` in den Bestand alter Geräte und
+    von dort in deren Teilen-Datei, die jeder Empfänger ablehnte."""
+    slots = resolution.get("slots")
+    if not isinstance(slots, list):
+        return None
+    given: dict[str, str] = {}
+    noted = False
+    projected: list[Any] = []
+    for slot in slots:
+        if not isinstance(slot, dict):
+            projected.append(slot)
+            continue
+        if slot_notes.SLOT_KEY in slot:
+            noted = True
+            start = slot.get("start")
+            if isinstance(start, str):
+                given[start] = slot_notes.clean_note(slot[slot_notes.SLOT_KEY])
+        projected.append({k: v for k, v in slot.items() if k in _SLOT_FIELDS})
+    resolution["slots"] = projected
+    return given if noted else None
+
+
 def resolve_conflict(conflict_id: str, chosen_value: dict[str, Any],
                      conflicts_store: ConflictsStore, storage: Storage, settings: Settings,
                      device_id: str, data_lock: threading.RLock | None = None) -> None:
     """User hat einen Konflikt aufgelöst. chosen_value enthält den gewählten
     (oder manuell editierten) Wert. Für entries: {slots: [...]} (und
-    optional deleted). Für settings: {value}.
+    optional deleted, notes); ein `notiz` am Slot gilt als gegeben (auch `""`).
+    Für settings: {value}.
     Schreibt den Wert in den entsprechenden Store und markiert den Konflikt
-    als resolved im ConflictsStore.
+    als resolved im ConflictsStore. Die Auflösung eines Eintrags speichert Slots
+    mit genau vier Feldern und die Notizen unter `notes`: ihre Slots landen über die
+    Schleife in `merge` auch im Bestand alter Geräte (s. `_slot_level_notes`).
 
     data_lock: geteilter Store-RLock (Whole-Branch-Review-Finding). Die
     Read-Modify-Write-Spanne (get_all → mutieren → storage/settings-Write →
@@ -695,14 +728,19 @@ def resolve_conflict(conflict_id: str, chosen_value: dict[str, Any],
         target["resolved_by"] = device_id
 
         if target["kind"] == "entry":
+            given = _slot_level_notes(target["resolution"])
             if chosen_value.get("deleted"):
                 storage.delete(target["key"])
             else:
-                slots = chosen_value.get("slots", [])
+                resolution = target["resolution"]
+                slots = resolution.get("slots", [])
                 candidates = target.get("candidates")
                 notes = slot_notes.resolution_notes(
-                    chosen_value, candidates if isinstance(candidates, list) else [],
+                    resolution, candidates if isinstance(candidates, list) else [],
                     storage.get_all_raw().get(target["key"]))
+                if given is not None:
+                    notes = {**{k: v for k, v in (notes or {}).items() if k not in given},
+                             **{k: v for k, v in given.items() if v}}
                 if notes is not None:
                     # Die Notiz steht in der Auflösung, nicht im Slot (sonst gelangte
                     # sie über die Schleife in `merge` in den Bestand alter Geräte);

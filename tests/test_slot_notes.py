@@ -51,6 +51,13 @@ def test_check_note_meldungen():
     assert e.value.message == "notiz darf höchstens 200 Zeichen haben."
 
 
+@pytest.mark.parametrize("text", ["a\u2028b", "a\u2029b"])
+def test_line_separators_are_rejected_like_control_characters(text):
+    with pytest.raises(NoteError) as e:
+        sn.check_note(text)
+    assert e.value.message == "notiz darf keine Steuerzeichen enthalten."
+
+
 def test_has_key():
     assert sn.has_key({"notes": "kaputt"})
     assert not sn.has_key({"slots": []})
@@ -228,3 +235,18 @@ def test_bump_stamp_before_year_1000_is_none():
     # strftime schreibt solche Jahre je nach Plattform ohne führende Nullen; der Stempel
     # sortierte dann als Text hinter jeden echten.
     assert sn.bump_stamp("0500-01-01T00:00:00Z") is None
+
+
+def test_resolution_matches_a_candidate_with_the_defaults_of_the_merge_signature():
+    """`pause` fehlt → 0, `kategorie` fehlt → "" (wie `sync._slots_signature`)."""
+    cand = {"slots": [{"start": "08:00", "end": "12:00"}], "notes": {"08:00": "K"},
+            "modified_at": "2026-11-03T10:00:00Z", "device_id": "A"}
+    res = {"slots": [{"start": "08:00", "end": "12:00", "pause": 0, "kategorie": ""}]}
+    assert sn.resolution_notes(res, [cand], {"slots": [], "notes": {"08:00": "R"}}) == {"08:00": "K"}
+
+
+def test_resolution_signature_with_mixed_value_types_does_not_raise():
+    cand = {"slots": [{"start": None, "end": 5}, {"start": "08:00", "end": "12:00"}],
+            "notes": {"08:00": "K"}}
+    res = {"slots": [{"start": "08:00", "end": "12:00"}, {"start": None, "end": 5}]}
+    assert sn.resolution_notes(res, [cand], None) == {"08:00": "K"}

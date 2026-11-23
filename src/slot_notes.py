@@ -17,7 +17,6 @@ SLOT_KEY = "notiz"
 ENTRY_KEY = "notes"
 
 _STAMP_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
-_SLOT_FIELDS = ("start", "end", "pause", "kategorie")
 
 
 class NoteError(ValueError):
@@ -28,23 +27,38 @@ class NoteError(ValueError):
         self.message = message
 
 
+# Zeilentrenner (`Zl`/`Zp`) zählen wie Steuerzeichen: die Notiz ist einzeilig.
+_REJECTED_CATEGORIES = ("Cc", "Cs", "Zl", "Zp")
+
+
 def _strip_control(text: str) -> str:
-    return "".join(c for c in text if unicodedata.category(c) not in ("Cc", "Cs"))
+    return "".join(c for c in text if unicodedata.category(c) not in _REJECTED_CATEGORIES)
+
+
+# Genau die Zeichen, die JavaScripts `trim()` entfernt (WhiteSpace und LineTerminator).
+# `str.strip()` ohne Argument weicht ab (U+FEFF bleibt, U+001C–U+001F und U+0085 gehen);
+# Python und die PWA müssen dieselbe Notiz und denselben Gruppierschlüssel rechnen.
+_TRIM_CHARS = ("\t\n\v\f\r \u00a0\u1680" + "".join(chr(c) for c in range(0x2000, 0x200B))
+               + "\u2028\u2029\u202f\u205f\u3000\ufeff")
+
+
+def _trim(text: str) -> str:
+    return text.strip(_TRIM_CHARS)
 
 
 def clean_note(value: object) -> str:
     """Bereinigt gespeicherte Daten: Steuerzeichen raus, trimmen, auf 200 kürzen."""
     if not isinstance(value, str):
         return ""
-    return _strip_control(value).strip()[:MAX_NOTE_LEN].strip()
+    return _trim(_trim(_strip_control(value))[:MAX_NOTE_LEN])
 
 
 def check_note(value: object) -> str:
     """Prüft eine Eingabe und liefert die getrimmte Notiz; sonst `NoteError`."""
     if not isinstance(value, str):
         raise NoteError("notiz muss Text sein.")
-    text = value.strip()
-    if any(unicodedata.category(c) in ("Cc", "Cs") for c in text):
+    text = _trim(value)
+    if any(unicodedata.category(c) in _REJECTED_CATEGORIES for c in text):
         raise NoteError("notiz darf keine Steuerzeichen enthalten.")
     if len(text) > MAX_NOTE_LEN:
         raise NoteError(f"notiz darf höchstens {MAX_NOTE_LEN} Zeichen haben.")
@@ -53,7 +67,7 @@ def check_note(value: object) -> str:
 
 def group_key(note: str) -> str:
     """Gruppierungsschlüssel für gleiche Notizen (bewusst `lower`, nicht `casefold`)."""
-    return note.strip().lower()
+    return _trim(note).lower()
 
 
 def has_key(entry: object) -> bool:
@@ -166,13 +180,21 @@ def supplement(entry: Mapping[str, Any], other: Mapping[str, Any]) -> dict[str, 
     return result
 
 
-def _slot_signature(slots: object) -> list[tuple[str, ...]] | None:
+def slot_fields(slot: Mapping[str, Any]) -> tuple[Any, Any, Any, Any]:
+    """Die vier Felder eines Slots mit den Vorgaben der Merge-Signatur (`pause` 0,
+    `kategorie` ""): `sync._slots_signature` und `resolution_notes` vergleichen gleich."""
+    return (slot.get("start"), slot.get("end"), slot.get("pause", 0), slot.get("kategorie", ""))
+
+
+def _slot_signature(slots: object) -> list[Any] | None:
     if not isinstance(slots, list):
         return None
-    sigs = [
-        tuple(repr(s.get(f)) if isinstance(s, Mapping) else "" for f in _SLOT_FIELDS) for s in slots
-    ]
-    return sorted(sigs)
+    rows = [slot_fields(s) if isinstance(s, Mapping) else None for s in slots]
+    try:
+        return sorted(rows)
+    except TypeError:
+        # Gemischte Typen (Fremddaten) lassen sich nicht ordnen; die Textform ordnet immer.
+        return sorted(rows, key=repr)
 
 
 def _order_key(entry: Mapping[str, Any]) -> tuple[str, str]:

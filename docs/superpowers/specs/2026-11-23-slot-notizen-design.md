@@ -125,7 +125,9 @@ Gegenstück `pwa/notes.js`; den Gleichlauf hält eine gemeinsame Fixture
 (`pwa/test/fixtures/note-cases.json`, Muster `slot-order-cases.json`).
 
 - Text, getrimmt, einzeilig: keine Zeichen der Unicode-Klassen `Cc`/`Cs` (wie bei
-  Kategorienamen), höchstens `MAX_NOTE_LEN` = 200 Zeichen.
+  Kategorienamen) und keine Zeilentrenner `Zl`/`Zp`, höchstens `MAX_NOTE_LEN` = 200
+  Zeichen (Code Points, nicht UTF-16-Einheiten). Getrimmt wird genau wie mit
+  JavaScripts `trim()`, also auch U+FEFF, das Pythons `strip()` stehen ließe.
 - **Eingaben** (lokale API, Handy) werden geprüft und bei Verstoß abgelehnt.
 - **Gespeicherte Daten** sind Fremddaten und werden an der Lese-Grenze bereinigt,
   nie abgelehnt: kein Text → keine Notiz, Steuerzeichen entfernt, Überlänge
