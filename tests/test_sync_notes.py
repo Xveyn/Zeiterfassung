@@ -697,3 +697,20 @@ def test_resolving_with_a_keyed_empty_candidate_on_a_keyless_day_needs_no_extra_
     peer = {**_doc({DAY: cand_b}), "conflicts": [_open_conflict(cand_a, cand_b)]}
     for merged in (merge(mine, peer, T0), merge(peer, mine, T0), merge(mine, mine, T0)):
         assert merged["entries"][DAY] == stored
+
+
+def test_two_old_resolutions_of_a_noted_day_with_the_same_stamp_are_idempotent():
+    """Zwei Auflösungen desselben Tages mit gleichem `resolved_at` und `resolved_by`, keine
+    trägt `notes` (ein altes Gerät hat beide gelöst). Welche gilt, entscheidet ihr eigener
+    Inhalt; ein zweiter Merge wechselt nicht zur anderen."""
+    entry = _entry(T1, "A", notes={"08:00": "K8"})
+    first = _resolved({"slots": [_slot(start="09:00")], "deleted": False},
+                      resolved_by="O", id_="c0")
+    second = _resolved({"slots": [_slot(pause=30)], "deleted": False},
+                       resolved_by="O", id_="c1")
+    for conflicts in ([first, second], [second, first]):
+        b = {**_doc({DAY: entry}), "conflicts": conflicts}
+        for ab in (merge(_doc(), b, T1), merge(b, _doc(), T1)):
+            again = merge(ab, ab, T1)
+            assert again["entries"] == ab["entries"]
+            assert merge(again, again, T1)["entries"] == ab["entries"]

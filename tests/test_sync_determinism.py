@@ -302,10 +302,11 @@ def _random_doc(rng, new_style=False):
 _PULLS = ["", T0, T1, T2]
 
 
+@pytest.mark.parametrize("seed", [142, 1, 7, 2024, 31337])
 @pytest.mark.parametrize("last_pull_at", _PULLS)
-def test_merge_is_commutative_and_idempotent_over_random_docs(last_pull_at):
+def test_merge_is_commutative_and_idempotent_over_random_docs(last_pull_at, seed):
     assert "recipient" in SYNCED_SETTING_KEYS
-    rng = random.Random(142)
+    rng = random.Random(seed)
     for _ in range(500):
         a, b = _random_doc(rng), _random_doc(rng)
         ab, ba = merge(a, b, last_pull_at), merge(b, a, last_pull_at)

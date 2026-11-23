@@ -294,14 +294,16 @@ def _text(value: Any) -> str:
     return value if isinstance(value, str) else ""
 
 
-def _resolution_candidate(conflict: Conflict, replaced: Entry | None) -> dict[str, Any] | None:
+def _resolution_candidate(conflict: Conflict, replaced: Entry | None,
+                          derive: bool = True) -> dict[str, Any] | None:
     """Der Stand, den ein gelöster Konflikt schreibt; `None` bei unbekannter Art.
 
     Eine Auflösung eines Eintrags bekommt `notes` nach `slot_notes.resolution_notes`;
     gelöscht trägt sie `notes: {}`, wenn sie selbst, `replaced` oder ein Kandidat den
     Schlüssel trägt (wie `Storage.delete`). `replaced` ist der Stand vor allen Auflösungen, nie
     ein Zwischenstand der Schleife, sonst hinge das Ergebnis an der Reihenfolge der
-    Konfliktliste."""
+    Konfliktliste. Mit `derive=False` nur, was die Auflösung selbst trägt (ohne Kandidaten
+    und `replaced`): danach werden die Auflösungen eines Tages geordnet."""
     resolution = conflict.get("resolution")
     if not isinstance(resolution, dict):
         resolution = {}
@@ -320,7 +322,9 @@ def _resolution_candidate(conflict: Conflict, replaced: Entry | None) -> dict[st
         "deleted": bool(resolution.get("deleted", False)),
     }
     candidates = conflict.get("candidates")
-    candidates = candidates if isinstance(candidates, list) else []
+    candidates = candidates if isinstance(candidates, list) and derive else []
+    if not derive:
+        replaced = None
     if candidate["deleted"]:
         if (slot_notes.has_key(resolution) or slot_notes.has_key(replaced)
                 or any(slot_notes.has_key(c) for c in candidates)):
@@ -362,20 +366,31 @@ def _apply_resolutions(merged: Doc) -> None:
     """Jeder gelöste Konflikt überschreibt seinen Eintrag bzw. seine Einstellung,
     wenn die Auflösung nach `_lww_key` jünger ist als der gemergte Wert. Je
     Schlüssel zählt nur die jüngste Auflösung, damit die Reihenfolge der Liste
-    nichts entscheidet (#142)."""
+    nichts entscheidet (#142).
+
+    Geordnet wird nach dem, was die Auflösung selbst trägt, nicht nach abgeleiteten
+    Notizen: die hängen am gemergten Eintrag, der sich durch das Anwenden ändert, und
+    ein zweiter Merge wählte sonst eine andere Auflösung. Bei gleichem eigenem Stand
+    entscheidet die Konflikt-ID."""
     base = dict(merged["entries"])
-    best: dict[tuple[str, str], dict[str, Any]] = {}
+    best: dict[tuple[str, str], tuple[tuple[tuple[str, str, str], str], Conflict]] = {}
     for c in merged["conflicts"]:
         key = c.get("key")
         if not c.get("resolved") or not isinstance(key, str):
             continue
-        candidate = _resolution_candidate(c, base.get(key))
-        if candidate is None:
+        own = _resolution_candidate(c, None, derive=False)
+        if own is None:
             continue
         target = (c["kind"], key)
-        if target not in best or _lww_key(candidate) > _lww_key(best[target]):
-            best[target] = candidate
-    for (kind, key), candidate in best.items():
+        # Die IDs der gemergten Liste sind eindeutig. Die Textform des ganzen Datensatzes
+        # ließe sich bei Fremddaten nicht bilden (Schlüssel verschiedener Typen sortieren nicht).
+        rank = (_lww_key(own), _canonical(c.get("id")))
+        if target not in best or rank > best[target][0]:
+            best[target] = (rank, c)
+    for (kind, key), (_rank, conflict) in best.items():
+        candidate = _resolution_candidate(conflict, base.get(key))
+        if candidate is None:
+            continue
         if kind == "entry":
             merged["entries"][key] = _resolve_entry(merged["entries"].get(key), candidate)
         else:
