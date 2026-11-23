@@ -35,6 +35,7 @@ ANNOTATED_MODULES = [
     "src/share_message.py",
     "src/workweek.py",
     "src/slot_order.py",
+    "src/slot_notes.py",
     "src/default_times.py",
     "src/conflict_view.py",
     "src/reminders.py",

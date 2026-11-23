@@ -1,0 +1,142 @@
+{
+ "max_len": 200,
+ "clean": [
+  {
+   "in": "",
+   "out": ""
+  },
+  {
+   "in": "   ",
+   "out": ""
+  },
+  {
+   "in": "  Kunde Mustermann  ",
+   "out": "Kunde Mustermann"
+  },
+  {
+   "in": "Zeile eins\nZeile zwei",
+   "out": "Zeile einsZeile zwei"
+  },
+  {
+   "in": "a\tb",
+   "out": "ab"
+  },
+  {
+   "in": "a\u0000b",
+   "out": "ab"
+  },
+  {
+   "in": "a\ud800b",
+   "out": "ab"
+  },
+  {
+   "in": "M\u00fcller, Gr\u00f6\u00dfe, \u00c4rger",
+   "out": "M\u00fcller, Gr\u00f6\u00dfe, \u00c4rger"
+  },
+  {
+   "in": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxy",
+   "out": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  },
+  {
+   "in": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "out": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  },
+  {
+   "in": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx y",
+   "out": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  },
+  {
+   "in": null,
+   "out": ""
+  },
+  {
+   "in": 5,
+   "out": ""
+  },
+  {
+   "in": true,
+   "out": ""
+  },
+  {
+   "in": [],
+   "out": ""
+  }
+ ],
+ "check": [
+  {
+   "in": "",
+   "ok": true,
+   "out": ""
+  },
+  {
+   "in": "   ",
+   "ok": true,
+   "out": ""
+  },
+  {
+   "in": "  Kunde  ",
+   "ok": true,
+   "out": "Kunde"
+  },
+  {
+   "in": "M\u00fcller \u00c4rger",
+   "ok": true,
+   "out": "M\u00fcller \u00c4rger"
+  },
+  {
+   "in": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "ok": true,
+   "out": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  },
+  {
+   "in": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxy",
+   "ok": false
+  },
+  {
+   "in": "a\nb",
+   "ok": false
+  },
+  {
+   "in": "a\tb",
+   "ok": false
+  },
+  {
+   "in": "a\u0000b",
+   "ok": false
+  },
+  {
+   "in": "a\ud800b",
+   "ok": false
+  },
+  {
+   "in": 5,
+   "ok": false
+  },
+  {
+   "in": null,
+   "ok": false
+  }
+ ],
+ "group": [
+  {
+   "in": "Kunde Mustermann",
+   "key": "kunde mustermann"
+  },
+  {
+   "in": "kunde mustermann ",
+   "key": "kunde mustermann"
+  },
+  {
+   "in": "\u0130",
+   "key": "i\u0307"
+  },
+  {
+   "in": "\u00df",
+   "key": "\u00df"
+  },
+  {
+   "in": "",
+   "key": ""
+  }
+ ]
+}
