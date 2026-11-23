@@ -338,8 +338,8 @@ def test_a_put_with_the_slots_of_a_deleted_day_revives_it(env):
     response = env.put(SLOTS_BODY)
 
     assert response.body["changed"] is True
-    assert [{k: v for k, v in s.items() if k != "notiz"} for s in response.body["slots"]] \
-        == env.storage.get(DAY)["slots"]
+    assert response.body["slots"] == [
+        {**stored, "notiz": ""} for stored in env.storage.get(DAY)["slots"]]
     assert env.changes == changes_before + 1
 
 
