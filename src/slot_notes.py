@@ -3,8 +3,10 @@
 
 Tk-frei und ohne Importe aus `src`. Am Slot heißt das Feld `notiz` (App-intern und
 auf dem Draht, nur vorhanden, wenn nicht leer); auf der Platte und im Sync-Doc
-stehen die Notizen am Eintrag unter `notes`, Schlüssel ist die Startzeit. Alle
-Eingaben können Fremddaten sein: nichts hier wirft außer `check_note`.
+stehen die Notizen am Eintrag unter `notes`, Schlüssel ist die Startzeit. Gespeicherte
+Einträge, Notizen und Auflösungen können Fremddaten sein: was sie liest, wirft nie;
+`check_note` wirft `NoteError`, und `with_notes`/`effective_slots`/`notes_from_slots`
+erwarten Slot-Listen aus der App.
 """
 
 import unicodedata

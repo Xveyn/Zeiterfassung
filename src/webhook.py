@@ -177,14 +177,13 @@ PAYLOAD_KIND = "zeiterfassung-report"
 
 
 def _project_slots(entries: dict[str, Any], slot_order: str = "chrono") -> dict[str, Any]:
-    """Reduziert jeden Slot auf die vier Felder des Wire-Formats.
+    """Reduziert jeden Slot auf die vier Felder des Wire-Formats, plus `notiz`, wenn er eine hat.
 
     Sieht überflüssig aus, ist es aber nicht: `Storage._load` repariert nur die
     Struktur (Slot-Liste, Metadaten), die Werte bereinigt erst die Lese-Grenze
     (`sanitize_slot`), und die behält Zusatzschlüssel. Ein Slot aus einer von
     Hand bearbeiteten oder von einer neueren App-Version geschriebenen
     zeiterfassung.json trägt seine Zusatzfelder sonst bis ins Webhook-Dokument.
-    Die Notiz kommt als fünftes Feld dazu, nur wenn der Slot eine hat.
     Diese Projektion ist die Stelle, an der das Wire-Format tatsächlich
     festgelegt wird.
 

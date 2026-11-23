@@ -371,9 +371,9 @@ def _apply_resolutions(merged: Doc) -> None:
         candidate = _resolution_candidate(c, base.get(key))
         if candidate is None:
             continue
-        slot = (c["kind"], key)
-        if slot not in best or _lww_key(candidate) > _lww_key(best[slot]):
-            best[slot] = candidate
+        target = (c["kind"], key)
+        if target not in best or _lww_key(candidate) > _lww_key(best[target]):
+            best[target] = candidate
     for (kind, key), candidate in best.items():
         if kind == "entry":
             merged["entries"][key] = _resolve_entry(merged["entries"].get(key), candidate)

@@ -157,16 +157,18 @@ def _foreign(path, entry):
     return Storage(path, device_id="dev")
 
 
-@pytest.mark.parametrize("notes", ["x", {"08:00": 5}, {"08:00": "a\nb"}, {"08:00": "y" * 300},
-                                   {"08:00": "\ud800"}])
-def test_foreign_notes_do_not_raise(path, notes):
+@pytest.mark.parametrize("notes, expected", [
+    ("x", ""),
+    ({"08:00": 5}, ""),
+    ({"08:00": "a\nb"}, "ab"),
+    ({"08:00": "y" * 300}, "y" * 200),
+    ({"08:00": "a\ud800b"}, "ab"),
+])
+def test_foreign_notes_do_not_raise(path, notes, expected):
     st = _foreign(path, {"slots": [_slot()], "notes": notes})
-    slots = st.get(D)["slots"]
-    note = slots[0].get("notiz", "")
-    assert "\n" not in note and len(note) <= 200
-    assert "\ud800" not in note
+    assert st.get(D)["slots"][0].get("notiz", "") == expected
     st.save(D, st.get(D)["slots"])
-    assert list(_disk(path)[D]["notes"]).count("08:00") <= 1
+    assert _disk(path)[D]["notes"] == ({"08:00": expected} if expected else {})
 
 
 def test_raw_slot_notiz_is_dropped(path):
