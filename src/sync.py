@@ -298,8 +298,8 @@ def _resolution_candidate(conflict: Conflict, replaced: Entry | None) -> dict[st
     """Der Stand, den ein gelöster Konflikt schreibt; `None` bei unbekannter Art.
 
     Eine Auflösung eines Eintrags bekommt `notes` nach `slot_notes.resolution_notes`;
-    gelöscht trägt sie `notes: {}`, wenn `replaced` oder ein Kandidat den Schlüssel
-    trägt (wie `Storage.delete`). `replaced` ist der Stand vor allen Auflösungen, nie
+    gelöscht trägt sie `notes: {}`, wenn sie selbst, `replaced` oder ein Kandidat den
+    Schlüssel trägt (wie `Storage.delete`). `replaced` ist der Stand vor allen Auflösungen, nie
     ein Zwischenstand der Schleife, sonst hinge das Ergebnis an der Reihenfolge der
     Konfliktliste."""
     resolution = conflict.get("resolution")
@@ -322,7 +322,8 @@ def _resolution_candidate(conflict: Conflict, replaced: Entry | None) -> dict[st
     candidates = conflict.get("candidates")
     candidates = candidates if isinstance(candidates, list) else []
     if candidate["deleted"]:
-        if slot_notes.has_key(replaced) or any(slot_notes.has_key(c) for c in candidates):
+        if (slot_notes.has_key(resolution) or slot_notes.has_key(replaced)
+                or any(slot_notes.has_key(c) for c in candidates)):
             candidate["notes"] = {}
         return candidate
     notes = slot_notes.resolution_notes(resolution, candidates, replaced)
@@ -703,8 +704,11 @@ def resolve_conflict(conflict_id: str, chosen_value: dict[str, Any],
     Für settings: {value}.
     Schreibt den Wert in den entsprechenden Store und markiert den Konflikt
     als resolved im ConflictsStore. Die Auflösung eines Eintrags speichert Slots
-    mit genau vier Feldern und die Notizen unter `notes`: ihre Slots landen über die
-    Schleife in `merge` auch im Bestand alter Geräte (s. `_slot_level_notes`).
+    mit genau vier Feldern: ihre Slots landen über die Schleife in `merge` auch im
+    Bestand alter Geräte (s. `_slot_level_notes`). Den Schlüssel `notes` schreibt der
+    Tag (`notes_known`), wenn der gespeicherte Stand oder ein Kandidat ihn trägt oder
+    die Wahl eine nicht leere Notiz hat; die Auflösung trägt ihn genau dann, wenn der
+    geschriebene Tag ihn trägt, mit dessen Notizen (`{}` beim Tombstone).
 
     data_lock: geteilter Store-RLock (Whole-Branch-Review-Finding). Die
     Read-Modify-Write-Spanne (get_all → mutieren → storage/settings-Write →
@@ -728,28 +732,40 @@ def resolve_conflict(conflict_id: str, chosen_value: dict[str, Any],
         target["resolved_by"] = device_id
 
         if target["kind"] == "entry":
-            given = _slot_level_notes(target["resolution"])
+            key = target["key"]
+            resolution = target["resolution"]
+            given = _slot_level_notes(resolution)
+            candidates = target.get("candidates")
+            candidates = candidates if isinstance(candidates, list) else []
+            stored = storage.get_all_raw().get(key)
+            known = (slot_notes.has_key(stored)
+                     or any(slot_notes.has_key(c) for c in candidates)
+                     or any(given.values() if given else ())
+                     or bool(slot_notes.notes_of({"slots": resolution.get("slots"),
+                                                   "notes": resolution.get("notes")})))
             if chosen_value.get("deleted"):
-                storage.delete(target["key"])
+                storage.delete(key, notes_known=known)
             else:
-                resolution = target["resolution"]
                 slots = resolution.get("slots", [])
-                candidates = target.get("candidates")
-                notes = slot_notes.resolution_notes(
-                    resolution, candidates if isinstance(candidates, list) else [],
-                    storage.get_all_raw().get(target["key"]))
+                notes = slot_notes.resolution_notes(resolution, candidates, stored)
                 if given is not None:
                     notes = {**{k: v for k, v in (notes or {}).items() if k not in given},
                              **{k: v for k, v in given.items() if v}}
                 if notes is not None:
-                    # Die Notiz steht in der Auflösung, nicht im Slot (sonst gelangte
-                    # sie über die Schleife in `merge` in den Bestand alter Geräte);
-                    # ausdrücklich je Slot, damit `Storage.save` nicht vom Bestand erbt.
-                    target["resolution"]["notes"] = notes
+                    # Ausdrücklich je Slot, damit `Storage.save` nicht vom Bestand erbt.
                     slots = [{**s, slot_notes.SLOT_KEY: notes.get(s.get("start"), "")}
                              if isinstance(s, dict) and isinstance(s.get("start"), str) else s
                              for s in slots]
-                storage.save(target["key"], slots)
+                storage.save(key, slots, notes_known=known)
+            # Die Notizen stehen in der Auflösung, nicht im Slot (sonst gelangten sie über
+            # die Schleife in `merge` in den Bestand alter Geräte), und genau dann, wenn
+            # der eben geschriebene Stand den Schlüssel trägt: sonst ergänzte der nächste
+            # Merge den Tag aus der Auflösung und höbe ihn auf jedem Gerät an.
+            resolution.pop(slot_notes.ENTRY_KEY, None)
+            written = storage.get_all_raw().get(key)
+            if written is not None and slot_notes.has_key(written):
+                resolution[slot_notes.ENTRY_KEY] = (
+                    {} if written.get("deleted") else slot_notes.notes_of(written))
         elif target["kind"] == "setting":
             settings.set_synced(target["key"], chosen_value.get("value"))
 

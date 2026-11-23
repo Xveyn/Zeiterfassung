@@ -292,7 +292,8 @@ def test_resolving_with_delete_keeps_working(tmp_path):
                           device_id="A")
 
     assert storage.get(DAY) is None
-    assert "notes" not in conflicts.get_all()[0]["resolution"]
+    assert storage.get_all_raw()[DAY]["notes"] == {}
+    assert conflicts.get_all()[0]["resolution"]["notes"] == {}
 
 
 def test_old_device_stripping_the_resolved_day_heals_after_one_merge():
@@ -602,3 +603,97 @@ def test_slots_without_a_note_key_still_inherit_next_to_given_ones(tmp_path):
     sync.resolve_conflict("c1", chosen, conflicts, storage, settings, device_id="A")
 
     assert conflicts.get_all()[0]["resolution"]["notes"] == {"08:00": "Neu", "13:00": "K13"}
+
+
+# --- Gespeicherter Tag und Auflösung stimmen im Schlüssel überein -----------------
+
+def _pin_clock(monkeypatch, stamp):
+    import src.storage as storage_mod
+    monkeypatch.setattr(storage_mod, "utc_now_iso", lambda: stamp)
+    monkeypatch.setattr(sync, "utc_now_iso", lambda: stamp)
+
+
+def _local_doc(storage, conflicts):
+    return {**_doc(storage.get_all_raw()), "conflicts": conflicts.get_all()}
+
+
+def test_resolving_as_deleted_takes_the_key_of_a_candidate_into_store_and_resolution(
+        tmp_path, monkeypatch):
+    """Der Tag am auflösenden Gerät hat keinen Schlüssel (ein Löschen ohne Notizen), der
+    andere Kandidat trägt eine Notiz. Tombstone und Auflösung tragen beide `{}`."""
+    storage, settings, conflicts = _stores(tmp_path)
+    keyed = _entry(T1, "B", notes={"08:00": "K"})
+    tomb = _entry(T2, "A", slots=[], deleted=True)
+    storage.apply_merge({DAY: tomb})
+    conflicts.save_all([_open_conflict(tomb, keyed)])
+    _pin_clock(monkeypatch, T3)
+
+    sync.resolve_conflict("c1", {"slots": [], "deleted": True}, conflicts, storage, settings,
+                          device_id="A")
+
+    stored = storage.get_all_raw()[DAY]
+    assert stored == {"slots": [], "modified_at": T3, "device_id": "A", "deleted": True,
+                      "notes": {}}
+    assert conflicts.get_all()[0]["resolution"]["notes"] == {}
+    mine = _local_doc(storage, conflicts)
+    peer = {**_doc({DAY: keyed}), "conflicts": [_open_conflict(tomb, keyed)]}
+    for merged in (merge(mine, peer, T0), merge(peer, mine, T0)):
+        assert merged["entries"][DAY] == stored
+
+    later = "2026-05-14T13:00:00Z"
+    _pin_clock(monkeypatch, later)
+    storage.save(DAY, [_slot()])
+    recreated = storage.get_all_raw()[DAY]
+    assert recreated["notes"] == {}
+    mine = _local_doc(storage, conflicts)
+    stale = _doc({DAY: keyed})
+    for merged in (merge(mine, stale, T2), merge(stale, mine, T2)):
+        assert merged["entries"][DAY] == recreated
+
+
+@pytest.mark.parametrize("chosen", [
+    {"slots": [{**_slot(pause=30), "notiz": ""}], "deleted": False},
+    {"slots": [_slot(pause=30)], "deleted": False, "notes": {}},
+    {"slots": [_slot(pause=30)], "deleted": False, "notes": {"09:00": "ohne Slot"}},
+])
+def test_resolving_with_empty_notes_on_a_never_noted_day_writes_no_key_and_bumps_nothing(
+        tmp_path, monkeypatch, chosen):
+    storage, settings, conflicts = _stores(tmp_path)
+    cand_a = _entry(T1, "A", slots=[_slot(pause=30)])
+    cand_b = _entry(T2, "B")
+    storage.apply_merge({DAY: cand_b})
+    conflicts.save_all([_open_conflict(cand_a, cand_b)])
+    _pin_clock(monkeypatch, T3)
+
+    sync.resolve_conflict("c1", chosen, conflicts, storage, settings, device_id="A")
+
+    stored = storage.get_all_raw()[DAY]
+    assert stored == {"slots": [_slot(pause=30)], "modified_at": T3, "device_id": "A",
+                      "deleted": False}
+    resolution = conflicts.get_all()[0]["resolution"]
+    assert "notes" not in resolution and resolution["slots"] == [_slot(pause=30)]
+    mine = _local_doc(storage, conflicts)
+    peer = {**_doc({DAY: cand_b}), "conflicts": [_open_conflict(cand_a, cand_b)]}
+    for merged in (merge(mine, peer, T0), merge(peer, mine, T0), merge(mine, mine, T0)):
+        assert merged["entries"][DAY] == stored
+
+
+def test_resolving_with_a_keyed_empty_candidate_on_a_keyless_day_needs_no_extra_round(
+        tmp_path, monkeypatch):
+    storage, settings, conflicts = _stores(tmp_path)
+    cand_a = _entry(T1, "A", slots=[_slot(pause=30)], notes={})
+    cand_b = _entry(T2, "B")
+    storage.apply_merge({DAY: cand_b})
+    conflicts.save_all([_open_conflict(cand_a, cand_b)])
+    _pin_clock(monkeypatch, T3)
+
+    sync.resolve_conflict("c1", {"slots": [_slot(pause=30)]}, conflicts, storage, settings,
+                          device_id="A")
+
+    stored = storage.get_all_raw()[DAY]
+    assert stored["notes"] == {} and stored["modified_at"] == T3
+    assert conflicts.get_all()[0]["resolution"]["notes"] == {}
+    mine = _local_doc(storage, conflicts)
+    peer = {**_doc({DAY: cand_b}), "conflicts": [_open_conflict(cand_a, cand_b)]}
+    for merged in (merge(mine, peer, T0), merge(peer, mine, T0), merge(mine, mine, T0)):
+        assert merged["entries"][DAY] == stored

@@ -143,6 +143,34 @@ def test_delete_and_recreate_without_notes_writes_todays_bytes(st, path, monkeyp
         assert fh.read() == _NOTELESS_RECREATED
 
 
+def test_save_with_notes_known_writes_the_key_on_a_never_noted_day(st, path):
+    st.save(D, [_slot()])
+    st.save(D, [_slot(pause=5)], notes_known=True)
+    assert _disk(path)[D]["notes"] == {}
+    st.save("2026-11-04", [_slot(notiz="x")], notes_known=True)
+    assert _disk(path)["2026-11-04"]["notes"] == {"08:00": "x"}
+
+
+def test_delete_with_notes_known_writes_a_keyed_tombstone(st, path):
+    st.save(D, [_slot()])
+    st.delete(D, notes_known=True)
+    entry = _disk(path)[D]
+    assert entry["deleted"] is True and entry["notes"] == {}
+
+
+def test_notes_known_false_writes_todays_bytes(st, path, monkeypatch):
+    import src.storage as storage_mod
+    stamps = iter(["2026-11-03T08:00:00Z", "2026-11-03T09:00:00Z", "2026-11-03T10:00:00Z"])
+    monkeypatch.setattr(storage_mod, "utc_now_iso", lambda: next(stamps))
+    st.save(D, [_slot()], notes_known=False)
+    st.delete(D, notes_known=False)
+    with open(path, encoding="utf-8") as fh:
+        assert fh.read() == _NOTELESS_TOMBSTONE
+    st.save(D, [_slot(notiz="")], notes_known=False)
+    with open(path, encoding="utf-8") as fh:
+        assert fh.read() == _NOTELESS_RECREATED
+
+
 def test_save_many_inherits(st, path):
     st.save_many({D: {"slots": [_slot(notiz="x")]}})
     assert _disk(path)[D]["notes"] == {"08:00": "x"}

@@ -329,12 +329,14 @@ class Storage:
         else:
             self._data[date_str] = previous
 
-    def _live_entry(self, slots: list[Slot], previous: Any, stamp: str) -> Entry:
+    def _live_entry(self, slots: list[Slot], previous: Any, stamp: str,
+                    notes_known: bool = False) -> Entry:
         """Der zu schreibende Eintrag: vier Felder je Slot, Notizen unter `notes`.
 
         Ein Slot ohne `notiz` erbt die des bisherigen lebenden Slots mit gleichem
-        `start`. `notes` steht, wenn es Notizen gibt oder der bisherige Eintrag den
-        Schlüssel trug, auch ein Tombstone; Notizen vererbt ein Tombstone nicht."""
+        `start`. `notes` steht, wenn es Notizen gibt, der bisherige Eintrag den
+        Schlüssel trug (auch ein Tombstone; Notizen vererbt er nicht) oder
+        `notes_known` gesetzt ist."""
         alive = isinstance(previous, dict) and not previous.get("deleted")
         old = self._user_shape(previous)["slots"] if alive else []
         eff = effective_slots(slots, old)
@@ -345,14 +347,18 @@ class Storage:
             "device_id": self.device_id,
             "deleted": False,
         }
-        if notes or has_key(previous):
+        if notes or notes_known or has_key(previous):
             entry["notes"] = notes
         return entry
 
-    def save(self, date_str: str, slots: list[Slot]) -> None:
+    def save(self, date_str: str, slots: list[Slot], *, notes_known: bool = False) -> None:
+        """Speichert einen Tag. `notes_known` schreibt den Schlüssel `notes` auch dann,
+        wenn der bisherige Stand ihn nicht trug (`sync.resolve_conflict`: Auflösung und
+        gespeicherter Tag müssen im Schlüssel übereinstimmen)."""
         with self._lock:
             previous = self._data.get(date_str)
-            self._data[date_str] = self._live_entry(slots, previous, utc_now_iso())
+            self._data[date_str] = self._live_entry(slots, previous, utc_now_iso(),
+                                                    notes_known)
             try:
                 self._save_to_disk()
             except BaseException:
@@ -363,7 +369,8 @@ class Storage:
                 self._restore_day(date_str, previous)
                 raise
 
-    def delete(self, date_str: str) -> None:
+    def delete(self, date_str: str, *, notes_known: bool = False) -> None:
+        """Schreibt einen Tombstone; `notes_known` wie bei `save`."""
         with self._lock:
             if date_str not in self._data:
                 return
@@ -379,7 +386,7 @@ class Storage:
             # Der Schlüssel `notes` überlebt das Löschen: ein später neu angelegter
             # Tag trägt ihn dann, und der Merge liest ihn nicht als Stand eines
             # Schreibers, der nichts von Notizen weiß (sonst erbte er die alte Notiz).
-            if has_key(previous):
+            if notes_known or has_key(previous):
                 tombstone["notes"] = {}
             self._data[date_str] = tombstone
             try:
