@@ -24,6 +24,7 @@ from urllib.parse import unquote, urlsplit
 
 from src.mail import is_offline_error
 from src.report import filter_categories, filter_period
+from src.slot_notes import clean_note
 from src.slot_order import sorted_slots
 from src.time_utils import calculate_hours, hours_to_minutes, utc_now_iso
 from src.vacations import cap_by_worktime
@@ -183,6 +184,7 @@ def _project_slots(entries: dict[str, Any], slot_order: str = "chrono") -> dict[
     (`sanitize_slot`), und die behält Zusatzschlüssel. Ein Slot aus einer von
     Hand bearbeiteten oder von einer neueren App-Version geschriebenen
     zeiterfassung.json trägt seine Zusatzfelder sonst bis ins Webhook-Dokument.
+    Die Notiz kommt als fünftes Feld dazu, nur wenn der Slot eine hat.
     Diese Projektion ist die Stelle, an der das Wire-Format tatsächlich
     festgelegt wird.
 
@@ -193,13 +195,22 @@ def _project_slots(entries: dict[str, Any], slot_order: str = "chrono") -> dict[
     """
     return {
         date_str: {"slots": [
-            {"start": slot.get("start"), "end": slot.get("end"),
-             "pause": slot.get("pause", 0) or 0,
-             "kategorie": slot.get("kategorie") or ""}
+            _project_slot(slot)
             for slot in sorted_slots(record.get("slots", []), slot_order)
         ]}
         for date_str, record in entries.items()
     }
+
+
+def _project_slot(slot: dict[str, Any]) -> dict[str, Any]:
+    """Ein Slot im Wire-Format; `notiz` steht nur da, wenn sie nicht leer ist."""
+    out = {"start": slot.get("start"), "end": slot.get("end"),
+           "pause": slot.get("pause", 0) or 0,
+           "kategorie": slot.get("kategorie") or ""}
+    note = clean_note(slot.get("notiz"))
+    if note:
+        out["notiz"] = note
+    return out
 
 
 def total_minutes(entries: dict[str, Any]) -> int:

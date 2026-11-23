@@ -671,3 +671,39 @@ def test_payload_slots_folgen_dem_modus():
     assert starts("chrono") == ["09:00", "13:00"]
     assert starts("category") == ["13:00", "09:00"]
     assert starts("custom") == ["09:00", "13:00"]
+
+
+# --- Notiz am Slot ---
+
+
+def test_payload_names_the_note_when_present():
+    entries = {"2026-07-01": {"slots": [
+        {**_slot("08:00", "16:00"), "notiz": "Kunde Mustermann"}]}}
+    slot = _payload(entries=entries)["entries"]["2026-07-01"]["slots"][0]
+    assert slot["notiz"] == "Kunde Mustermann"
+    assert set(slot) == {"start", "end", "pause", "kategorie", "notiz"}
+
+
+def test_payload_without_note_is_bit_identical():
+    plain = {"2026-07-01": {"slots": [_slot("08:00", "16:00", pause=30)]}}
+    empty = {"2026-07-01": {"slots": [{**_slot("08:00", "16:00", pause=30), "notiz": ""}]}}
+    a = json.dumps(_payload(entries=plain), sort_keys=True)
+    b = json.dumps(_payload(entries=empty), sort_keys=True)
+    assert a == b
+    for slot in _payload(entries=plain)["entries"]["2026-07-01"]["slots"]:
+        assert set(slot) == {"start", "end", "pause", "kategorie"}
+
+
+def test_payload_cleans_foreign_note():
+    entries = {"2026-07-01": {"slots": [
+        {**_slot("08:00", "16:00"), "notiz": 5},
+        {**_slot("17:00", "18:00"), "notiz": "  a\x00b  "},
+    ]}}
+    slots = _payload(entries=entries)["entries"]["2026-07-01"]["slots"]
+    assert "notiz" not in slots[0]
+    assert slots[1]["notiz"] == "ab"
+
+
+def test_payload_schema_version_stays_2():
+    from src.webhook import PAYLOAD_SCHEMA_VERSION
+    assert PAYLOAD_SCHEMA_VERSION == 2
