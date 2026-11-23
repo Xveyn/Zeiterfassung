@@ -462,7 +462,7 @@ def test_keyed_tombstone_does_not_pass_on_notes_and_loses_to_a_newer_day():
     newer_old = old_rewrite(_entry(T3, "C"), modified_at=T3, device_id="C")
     ab, ba = _both(tombstone, newer_old)
     assert ab["entries"] == ba["entries"]
-    assert ab["entries"][DAY] == newer_old
+    assert ab["entries"][DAY] == {**newer_old, "notes": {}, "modified_at": "2026-05-14T12:00:01Z"}
 
 
 def test_delete_and_recreate_without_a_note_does_not_bring_it_back_from_a_stale_device(
@@ -491,6 +491,34 @@ def test_delete_and_recreate_without_a_note_does_not_bring_it_back_from_a_stale_
         assert store.get_all_raw()[DAY]["notes"] == {}
         assert store.get_all_raw()[DAY]["modified_at"] == "2026-05-14T12:00:00Z"
     assert on_b["conflicts"] == [] and on_a["conflicts"] == []
+
+
+def test_day_recreated_without_the_key_over_a_keyed_tombstone_takes_the_marker():
+    """Ein Handy oder ein altes Gerät legt einen gelöschten Tag ohne `notes` neu an; der
+    Tombstone trägt den Schlüssel. Der neue Tag bekommt `{}`, und ein Gerät, das noch den
+    Stand vor dem Löschen hält, füllt die alte Notiz nicht nach."""
+    tombstone = _entry(T2, "A", slots=[], deleted=True, notes={})
+    recreated = old_rewrite(_entry(T3, "P"), modified_at=T3, device_id="P")
+    pulled = "2026-05-14T11:30:00Z"
+    ab, ba = _both(tombstone, recreated, pulled)
+    assert ab["entries"] == ba["entries"]
+    result = ab["entries"][DAY]
+    assert result == {**recreated, "notes": {}, "modified_at": "2026-05-14T12:00:01Z"}
+    assert ab["conflicts"] == ba["conflicts"] == []
+
+    stale = _entry(T1, "B", notes={"08:00": "K"})
+    ab, ba = _both(stale, result, pulled)
+    assert ab["entries"] == ba["entries"]
+    assert ab["entries"][DAY] == result
+
+
+def test_day_recreated_without_the_key_over_a_four_key_tombstone_is_unchanged():
+    tombstone = _entry(T2, "A", slots=[], deleted=True)
+    recreated = old_rewrite(_entry(T3, "P"), modified_at=T3, device_id="P")
+    ab, ba = _both(tombstone, recreated, "2026-05-14T11:30:00Z")
+    assert ab["entries"][DAY] == recreated
+    assert ba["entries"][DAY] == recreated
+    assert ab["entries"][DAY]["modified_at"] == T3
 
 
 def test_compaction_and_orphan_sweep_drop_keyed_tombstones(tmp_path):

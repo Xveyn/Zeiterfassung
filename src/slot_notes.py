@@ -168,17 +168,23 @@ def bump_stamp(stamp: object) -> str | None:
 
 
 def supplement(entry: Mapping[str, Any], other: Mapping[str, Any]) -> dict[str, Any] | None:
-    """Ergänzt einen Eintrag ohne Notizen-Schlüssel um die Notizen von `other`."""
+    """Ergänzt einen lebenden Eintrag ohne Notizen-Schlüssel um die Notizen von `other`.
+
+    Ist `other` ein Tombstone mit Schlüssel, bekommt der Eintrag `{}`: ein Tombstone
+    vererbt keine Notizen, nur die Markierung, dass der Tag Notizen hatte. `None` heißt:
+    nichts zu ergänzen (Eintrag gelöscht oder mit Schlüssel, `other` ohne Schlüssel,
+    Stempel nicht anhebbar)."""
     if not isinstance(entry, Mapping) or not isinstance(other, Mapping):
         return None
-    if has_key(entry) or not has_key(other):
-        return None
-    if entry.get("deleted") is True or other.get("deleted") is True:
+    if has_key(entry) or not has_key(other) or entry.get("deleted") is True:
         return None
     if bump_stamp(entry.get("modified_at")) is None:
         return None
     result = dict(entry)
-    result[ENTRY_KEY] = _restrict(notes_of(other), _starts(entry.get("slots")))
+    if other.get("deleted") is True:
+        result[ENTRY_KEY] = {}
+    else:
+        result[ENTRY_KEY] = _restrict(notes_of(other), _starts(entry.get("slots")))
     return result
 
 

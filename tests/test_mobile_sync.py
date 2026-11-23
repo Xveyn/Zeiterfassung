@@ -8,6 +8,7 @@ import types
 import pytest
 
 from src import mobile_sync, sync, sync_history, sync_journal
+from src import storage as storage_module
 from src.conflicts_store import ConflictsStore
 from src.mobile_sync import SyncError
 from src.reservations import ReservationStore
@@ -1086,6 +1087,28 @@ def test_phone_deletes_a_noted_day_and_a_stale_state_does_not_bring_the_note_bac
     for merged in (sync.merge(mine, doc, "2026-10-05T00:00:00Z"),
                    sync.merge(doc, mine, "2026-10-05T00:00:00Z")):
         assert merged["entries"]["2026-10-07"] == recreated
+
+
+@pytest.mark.parametrize("noted", [True, False])
+def test_a_day_the_phone_recreates_without_notiz_takes_the_key_of_the_desktop_tombstone(
+        env, noted, monkeypatch):
+    """Die ausgelieferte PWA schickt kein `notiz`. Ein Tag, den der Desktop mit Notiz gelöscht hat,
+    bekommt beim Neuanlegen `notes: {}`; sonst füllte ein Gerät mit dem alten Stand die Notiz nach."""
+    if noted:
+        put_desktop_notes(env, "2026-10-07", {"08:00": "Kunde Mustermann"})
+    else:
+        put_desktop(env, "2026-10-07", modified_at="2026-10-01T10:00:00Z")
+    monkeypatch.setattr(storage_module, "utc_now_iso", lambda: "2026-10-06T10:00:00Z")
+    env.storage.delete("2026-10-07")
+
+    run(env, {"2026-10-07": day()}, last_pull_at="2026-10-05T00:00:00Z")
+
+    stored = env.storage.get_all_raw()["2026-10-07"]
+    assert stored["deleted"] is False and stored["slots"] == [SLOT]
+    if noted:
+        assert stored["notes"] == {}
+    else:
+        assert "notes" not in stored
 
 
 def test_a_new_pwa_sets_a_note(env):

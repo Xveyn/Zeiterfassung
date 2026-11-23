@@ -146,9 +146,34 @@ def test_supplement_none_faelle():
     withn = _entry([_slot("08:00")], {"08:00": "K"})
     assert sn.supplement(withn, withn) is None
     assert sn.supplement(base, base) is None
-    assert sn.supplement(base, {**withn, "deleted": True}) is None
+    assert sn.supplement(base, {**withn, "deleted": True}) == {**base, "notes": {}}
     assert sn.supplement({**base, "deleted": True}, withn) is None
     assert sn.supplement({**base, "modified_at": ""}, withn) is None
+
+
+def test_supplement_gegen_tombstone_mit_schluessel_setzt_leere_notizen():
+    entry = _entry([_slot("08:00")])
+    tombstone = _entry([], {}, deleted=True)
+    out = sn.supplement(entry, tombstone)
+    assert out == {**entry, "notes": {}}
+    assert "notes" not in entry
+
+
+def test_supplement_gegen_tombstone_ohne_schluessel_gibt_nichts():
+    assert sn.supplement(_entry([_slot("08:00")]), _entry([], deleted=True)) is None
+
+
+def test_supplement_eines_geloeschten_eintrags_gibt_nichts():
+    tombstone = {**_entry([]), "deleted": True}
+    for other in (_entry([_slot("08:00")], {"08:00": "K"}), _entry([], {}, deleted=True),
+                  _entry([_slot("08:00")])):
+        assert sn.supplement(tombstone, other) is None
+
+
+def test_supplement_gegen_tombstone_mit_nicht_anhebbarem_stempel_gibt_nichts():
+    tombstone = _entry([], {}, deleted=True)
+    for stamp in ("", "9999-12-31T23:59:59Z", "0999-01-01T00:00:00Z", None):
+        assert sn.supplement({**_entry([_slot("08:00")]), "modified_at": stamp}, tombstone) is None
 
 
 def test_bump_stamp():
