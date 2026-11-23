@@ -321,13 +321,17 @@ def _resolution_candidate(conflict: Conflict, replaced: Entry | None) -> dict[st
 def _resolve_entry(current: Entry | None, candidate: Entry) -> Entry:
     """Auflösung gegen den gemergten Eintrag, mit der Erb-Regel aus `_merge_entry`.
 
-    Fehlt dem Eintrag `notes` (ein altes Gerät hat ihn in seiner Schleife aus vier
-    Schlüsseln neu gebaut), erbt er die Notizen der Auflösung; trägt das Ergebnis
-    danach seinen Stempel, wird es eine Sekunde jünger. Sonst ersetzte das alte
-    Gerät ihn beim nächsten Sync wieder durch seine Fassung ohne `notes`."""
+    Fehlt dem Eintrag `notes` und trägt er Stempel und Gerät der Auflösung (die Form,
+    die die Schleife eines alten Geräts aus vier Schlüsseln baut), erbt er ihre
+    Notizen und wird eine Sekunde jünger; sonst ersetzte das alte Gerät ihn beim
+    nächsten Sync wieder. Ein anders gestempelter Eintrag ohne `notes` erbt nicht:
+    er ist ein späterer Schreibvorgang, etwa ein gelöschter und neu angelegter Tag."""
     if current is None:
         return candidate
-    supplemented = slot_notes.supplement(current, candidate)
+    supplemented = None
+    if ((current.get("modified_at"), current.get("device_id"))
+            == (candidate.get("modified_at"), candidate.get("device_id"))):
+        supplemented = slot_notes.supplement(current, candidate)
     if supplemented is not None:
         current = supplemented
     winner = candidate if _lww_key(candidate) > _lww_key(current) else current

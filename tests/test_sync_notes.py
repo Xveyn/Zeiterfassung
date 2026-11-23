@@ -395,3 +395,24 @@ def test_bump_onto_the_resolution_stamp_is_decided_by_the_device_both_ways():
     assert ab["entries"][DAY]["modified_at"] == T2
     assert ab["entries"][DAY]["device_id"] == "Z"
     assert merge(ab, b, T0)["entries"] == ab["entries"]
+
+
+def test_resolution_does_not_refill_a_day_recreated_later_without_notes():
+    """Ein gelöster Konflikt bleibt bis zur Kompaktierung in der Liste; ein Tag, der
+    danach gelöscht und ohne Notiz neu angelegt wurde, bekommt die Notiz der
+    Auflösung nicht zurück und keinen angehobenen Stempel."""
+    conflict = _resolved({"slots": [_slot()], "deleted": False, "notes": {"08:00": "K"}},
+                         resolved_at=T2, resolved_by="A")
+    recreated = _entry(T3, "A")
+    a = {**_doc({DAY: recreated}), "conflicts": [conflict]}
+    b = {**_doc({DAY: recreated}), "conflicts": [conflict]}
+    for merged in (merge(a, b, T0), merge(b, a, T0), merge(a, _doc(), T0), merge(_doc(), a, T0)):
+        assert merged["entries"][DAY] == recreated
+
+
+def test_resolution_does_not_refill_a_keyless_day_of_another_device():
+    conflict = _resolved({"slots": [_slot()], "deleted": False, "notes": {"08:00": "K"}},
+                         resolved_at=T2, resolved_by="A")
+    other = _entry(T2, "B")
+    merged = merge({**_doc({DAY: other}), "conflicts": [conflict]}, _doc(), T0)
+    assert merged["entries"][DAY] == other
