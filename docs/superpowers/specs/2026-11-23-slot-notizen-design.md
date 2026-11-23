@@ -211,9 +211,9 @@ Eintrag dabei aus `resolution` neu. Das betrifft die Notizen an drei Stellen:
   der Rückgriff auf den ersetzten Stand liest den Eintrag, wie er **vor allen
   Auflösungen** war, nie einen Zwischenstand der Schleife. Sonst hinge das Ergebnis
   an der Reihenfolge zweier Auflösungen für denselben Tag; die Symmetrie ist bindend.
-- **Ein Eintrag ohne `notes` erbt von einer Auflösung, die Notizen trägt,** beim
-  gleichen Stempel und mit Anhebung um eine Sekunde, unter derselben Bedingung wie im
-  Eintrag-Merge. Nötig, wenn beide Seiten nur den Stand halten, den ein altes Gerät
+- **Ein Eintrag ohne `notes` erbt von der gewinnenden Auflösung, die Notizen trägt,**
+  unabhängig von den Stempeln (`sync._resolve_entry`); nur die Anhebung um eine Sekunde
+  hängt davon ab, dass der Eintrag danach noch mit seinem Stempel und Gerät gewinnt. Nötig, wenn beide Seiten nur den Stand halten, den ein altes Gerät
   gestrippt hat.
 - **Alte Geräte entfernen `notes` in dieser Schleife.** Sie bauen den Eintrag aus
   vier Schlüsseln und ersetzen den vorhandenen auch bei gleichem Stempel, und der

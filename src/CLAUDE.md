@@ -318,10 +318,10 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
   als UTF-8 schreiben lässt. Sonstige Wertfehler bleiben roh (der Sync soll keine spontane Änderung sehen) und
   werden an der Lese-Grenze bereinigt: `sanitize_slot` in `_user_shape` macht aus jedem Slot
   `start`/`end` Text-oder-`None`, `kategorie` Text, `pause` eine ganze Zahl 0–1440 (sonst 0).
-  Alle Leser (UI, Berichte, API) gehen über `get`/`get_all` und sehen die vier Felder eines Slots
+  Alle Leser (UI, Berichte, API) gehen über `get`/`get_all` und sehen die vier Felder eines Slots (plus `notiz`, s. u.)
   bereinigt; **beliebiger Text** in `start`/`end`/`kategorie` und mitgeführte **Zusatzschlüssel**
   passieren dagegen weiter (`sanitize_slot` behält sie). Wer ein festes Format ausgibt, projiziert
-  selbst auf die vier Felder (`webhook._project_slots`, `api_routes._wire_slots`).
+  selbst auf die vier Felder plus `notiz` (`webhook._project_slots`: nur wenn nicht leer, `api_routes._wire_slots`: immer).
   `get_all_raw` bleibt das Original für den Sync. `sync.validate_remote_doc` lehnt Slot-Listen
   mit Nicht-Objekten ab.
   **Slot-Notizen (Xveyn#519; Format und Begründung: Wurzel-`CLAUDE.md`, `slot_notes.py`):** die
