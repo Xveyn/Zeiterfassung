@@ -10,6 +10,7 @@ from typing import Any
 from src.json_store import (
     atomic_write_json, backup_corrupt, load_json_or_quarantine, quarantine_corrupt,
 )
+from src.slot_notes import effective_slots, has_key, notes_from_slots, notes_of, with_notes
 from src.time_utils import utc_now_iso
 
 # JSON-getragene Records (Audit N8): ein Slot {start, end, pause, kategorie};
@@ -296,7 +297,8 @@ class Storage:
         slots = entry.get("slots") if isinstance(entry, dict) else None
         if not isinstance(slots, list):
             return {"slots": []}
-        return {"slots": [clean for clean in map(sanitize_slot, slots) if clean is not None]}
+        clean = [c for c in map(sanitize_slot, slots) if c is not None]
+        return {"slots": with_notes(clean, notes_of(entry))}
 
     def get_all(self) -> dict[str, dict[str, Any]]:
         """Liefert {date: {slots: [...]}} ohne Tombstones."""
@@ -326,15 +328,30 @@ class Storage:
         else:
             self._data[date_str] = previous
 
+    def _live_entry(self, slots: list[Slot], previous: Any, stamp: str) -> Entry:
+        """Der zu schreibende Eintrag: vier Felder je Slot, Notizen unter `notes`.
+
+        Ein Slot ohne `notiz` erbt die des bisherigen lebenden Slots mit gleichem
+        `start`. `notes` steht nur, wenn es Notizen gibt oder der bisherige lebende
+        Eintrag den Schlüssel schon trug; ein Tombstone vererbt nichts."""
+        alive = isinstance(previous, dict) and not previous.get("deleted")
+        old = self._user_shape(previous)["slots"] if alive else []
+        eff = effective_slots(slots, old)
+        notes = notes_from_slots(eff)
+        entry: Entry = {
+            "slots": [_normalize_slot(s) for s in eff],
+            "modified_at": stamp,
+            "device_id": self.device_id,
+            "deleted": False,
+        }
+        if notes or (alive and has_key(previous)):
+            entry["notes"] = notes
+        return entry
+
     def save(self, date_str: str, slots: list[Slot]) -> None:
         with self._lock:
             previous = self._data.get(date_str)
-            self._data[date_str] = {
-                "slots": [_normalize_slot(s) for s in slots],
-                "modified_at": utc_now_iso(),
-                "device_id": self.device_id,
-                "deleted": False,
-            }
+            self._data[date_str] = self._live_entry(slots, previous, utc_now_iso())
             try:
                 self._save_to_disk()
             except BaseException:
@@ -398,12 +415,9 @@ class Storage:
             previous_data = dict(self._data)
             now = utc_now_iso()
             for date_str, payload in updates.items():
-                self._data[date_str] = {
-                    "slots": [_normalize_slot(s) for s in payload.get("slots", [])],
-                    "modified_at": now,
-                    "device_id": self.device_id,
-                    "deleted": False,
-                }
+                self._data[date_str] = self._live_entry(
+                    payload.get("slots", []), self._data.get(date_str), now
+                )
             try:
                 self._save_to_disk()
             except BaseException:
