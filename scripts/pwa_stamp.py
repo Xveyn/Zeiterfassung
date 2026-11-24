@@ -8,7 +8,7 @@ kann dort schon die nächste, noch unveröffentlichte Version stehen. Pre-Releas
 zählen nicht als Anker. Die PWA hat keine eigene Versionsnummer: Desktop-Release
 und PWA sind nur über diesen Anker verbunden. Der Platzhalter `__BUILD__` steht
 in `sw-core.js` (Cache-Name, Anzeige im Verbindungs-Dialog), in `sw.js` (Chrome
-startet keinen neuen Worker, wenn sich nur ein importiertes Modul ändert) und im
+startet keinen neuen Worker, wenn sich nur `sw-core.js` ändert) und im
 Manifest (`version`); ein Deploy bekommt dadurch immer einen eigenen Cache.
 
 Weil jede Änderung unter `pwa/` sofort live geht, zählt N sie einzeln; ein

@@ -1047,7 +1047,8 @@ Deploy mit demselben Cache, und Updates kämen nie an) und veröffentlicht per
 `deploy-pages`.
 
 **Warum auch `sw.js` die Kennung trägt:** Chrome 153/156 startet keinen neuen
-Worker, wenn sich nur ein importiertes Modul (`sw-core.js`) geändert hat. Die
+Worker, wenn sich nur das importierte `sw-core.js` geändert hat (ändert sich `sw.js`
+oder ein weiteres Modul mit, gelingt das Update). Die
 Update-Suche endet dann mit „ServiceWorker cannot be started“, es erscheint kein
 wartender Worker und die Seite bleibt auf dem alten Stand. Deshalb steht in `sw.js`
 die Zeile `// Build: __BUILD__`: jeder Deploy ändert die Bytes des Hauptskripts.

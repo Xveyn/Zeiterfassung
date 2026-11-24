@@ -3,7 +3,7 @@
 // Die Entscheidungen stehen in `sw-core.js` (getestet). Ein neuer Service Worker wartet, bis die
 // Seite „Neu laden“ bestätigt (Nachricht `SKIP_WAITING`) — nie mitten in einer Eingabe.
 // Die Build-Kennung steht auch im Hauptskript: Chrome startet keinen neuen Worker, wenn sich
-// nur ein importiertes Modul geändert hat. Jeder Deploy muss die Bytes von `sw.js` ändern.
+// nur das importierte `sw-core.js` geändert hat. Jeder Deploy muss die Bytes von `sw.js` ändern.
 // Build: __BUILD__
 import { CACHE_NAME, CACHE_PREFIX, PRECACHE, shouldHandle } from './sw-core.js';
 import { idbKeyStore, open } from './push-blob.js';
