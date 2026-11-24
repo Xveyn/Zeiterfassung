@@ -450,3 +450,14 @@ ein Minor.
    hatten. Tage ohne Notiz bleiben im Format unverändert.
 9. Eine Auflösung ohne Notizen erbt vom gewählten Kandidaten; die Rückkehr einer
    gelöschten Notiz in der Drei-Geräte-Reihenfolge ist als Grenze akzeptiert.
+10. Das Notizfeld im Tages-Dialog trägt die gedämpfte Beschriftung „Notiz:“ davor
+    (ein leeres Feld ohne Beschriftung erklärt sich nicht) und ist 24 Zeichen breit.
+    Eine ungültige Eingabe (über 200 Zeichen, Zeilenumbruch, Steuerzeichen) meldet der
+    Dialog beim Speichern mit einem Satz und speichert nichts; gekürzt wird nie still.
+11. Tooltip und Löschen-Dialog kürzen die Notiz auf 60 Zeichen mit „…“ (beide
+    brechen nicht um); Konfliktdialog und Bericht zeigen sie ganz.
+12. „Nach Notiz aufschlüsseln“ wird nur gebaut, wenn der Bestand überhaupt eine Notiz
+    hat (wie „Urlaub ausweisen“): wer keine Notizen benutzt, sieht den Dialog unverändert.
+13. Der Konfliktdialog übergibt beim Auflösen die Notizen der gewählten Karte
+    ausdrücklich. Ohne das gälte bei zwei Ständen, die sich nur in der Notiz
+    unterscheiden, immer der jüngere, auch wenn der Nutzer den älteren wählt.

@@ -275,3 +275,37 @@ def test_resolution_signature_with_mixed_value_types_does_not_raise():
             "notes": {"08:00": "K"}}
     res = {"slots": [{"start": "08:00", "end": "12:00"}, {"start": None, "end": 5}]}
     assert sn.resolution_notes(res, [cand], None) == {"08:00": "K"}
+
+
+def test_label_joins_category_and_note():
+    assert sn.label("Montage", "Kunde Mustermann") == "Montage · Kunde Mustermann"
+    assert sn.label("Montage", "") == "Montage"
+    assert sn.label("", "Kunde Mustermann") == "Kunde Mustermann"
+    assert sn.label(None, None) == ""
+    assert sn.label("Montage", "a\nb") == "Montage · ab"
+
+
+def test_shorten_counts_code_points():
+    assert sn.shorten("x" * 60) == "x" * 60
+    assert sn.shorten("x" * 61) == "x" * 59 + "…"
+    assert sn.shorten("😀" * 61) == "😀" * 59 + "…"
+
+
+def test_suggestions_newest_first_once_per_group_key():
+    entries = {
+        "2026-11-02": {"slots": [{"start": "08:00", "kategorie": "Montage", "notiz": "Kunde Müller"}]},
+        "2026-11-03": {"slots": [{"start": "08:00", "kategorie": "Montage", "notiz": "kunde müller"},
+                                 {"start": "13:00", "kategorie": "Büro", "notiz": "Ablage"}]},
+        "2026-11-04": {"slots": [{"start": "08:00", "kategorie": "Montage", "notiz": "Kunde Mustermann"},
+                                 {"start": "13:00", "kategorie": "Montage"}]},
+    }
+    assert sn.suggestions(entries, "Montage") == ["Kunde Mustermann", "kunde müller"]
+    assert sn.suggestions(entries, "") == []
+    assert sn.suggestions(entries, "Montage", limit=1) == ["Kunde Mustermann"]
+
+
+def test_suggestions_and_has_notes_survive_foreign_shapes():
+    entries = {"2026-11-02": {"slots": "kaputt"}, "2026-11-03": {}, "2026-11-04": {"slots": [None, {"notiz": 5}]}}
+    assert sn.suggestions(entries, "") == []
+    assert sn.has_notes(entries) is False
+    assert sn.has_notes({"2026-11-02": {"slots": [{"start": "08:00", "notiz": " x "}]}}) is True
