@@ -15,7 +15,7 @@ from src.time_utils import (
     calculate_hours, format_hours_colon, format_iso_date, format_minutes_hm,
     get_week_dates, get_week_label, hours_to_minutes, week_spans_months,
 )
-from src import send_reminder
+from src import send_reminder, slot_notes
 from src.holidays_de import get_holidays
 from src.slot_order import normalize_mode, sorted_slots
 from src.tooltip import attach_tooltip
@@ -370,10 +370,12 @@ class GridRenderer:
 
     @staticmethod
     def _fmt_slot_line(slot, with_pause=False):
-        """Eine Tooltip-Zeile für einen Slot: 'HH:MM-HH:MM  Kategorie'
-        (Kategorie weggelassen, wenn leer), mit `with_pause`
+        """Eine Tooltip-Zeile für einen Slot: 'HH:MM-HH:MM  Kategorie · Notiz'
+        (leere Teile entfallen, die Notiz ist gekürzt), mit `with_pause`
         (nur Reservierungen) bei Pause > 0 zusätzlich '  · N min Pause'."""
-        kat = f"  {slot['kategorie']}" if slot.get("kategorie") else ""
+        label = slot_notes.label(slot.get("kategorie", ""),
+                                 slot_notes.shorten(slot_notes.clean_note(slot.get("notiz", ""))))
+        kat = f"  {label}" if label else ""
         pause = (slot.get("pause", 0) or 0) if with_pause else 0
         pz = f"  \u00b7 {pause} min Pause" if pause > 0 else ""
         return f"{GridRenderer._fmt_slot_time(slot)}{kat}{pz}"

@@ -421,3 +421,24 @@ def test_tooltip_und_zelle_folgen_dem_slot_modus():
     assert custom.index("13:00") < custom.index("09:00")
     assert GridRenderer._cell_time_text(entry["slots"], "category") == "13:00-14:00  +1"
     assert GridRenderer._cell_time_text(custom_entry["slots"], "custom") == "13:00-14:00  +1"
+
+
+def test_fmt_slot_line_with_category_and_note():
+    slot = {"start": "08:00", "end": "12:00", "kategorie": "Montage", "notiz": "Kunde Mustermann"}
+    assert GridRenderer._fmt_slot_line(slot) == "08:00-12:00  Montage · Kunde Mustermann"
+
+
+def test_fmt_slot_line_note_without_category():
+    slot = {"start": "08:00", "end": "12:00", "kategorie": "", "notiz": "Kunde Mustermann"}
+    assert GridRenderer._fmt_slot_line(slot) == "08:00-12:00  Kunde Mustermann"
+
+
+def test_fmt_slot_line_shortens_long_note():
+    slot = {"start": "08:00", "end": "12:00", "kategorie": "A", "notiz": "x" * 200}
+    assert GridRenderer._fmt_slot_line(slot) == "08:00-12:00  A · " + "x" * 59 + "…"
+
+
+def test_tooltip_lists_notes():
+    entry = {"slots": [{"start": "08:00", "end": "12:00", "kategorie": "Montage", "notiz": "Kunde Mustermann"}]}
+    text = GridRenderer._build_tooltip_text(entry, None, None)
+    assert text == "Arbeitszeit:\n08:00-12:00  Montage · Kunde Mustermann"
