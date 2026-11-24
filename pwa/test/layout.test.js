@@ -445,5 +445,5 @@ test('the app wires the note display: week model option, settings section only w
   const app = readFileSync(new URL('../app.js', import.meta.url), 'utf8');
   assert.match(app, /noteDisplay: meta\.note_display/);
   assert.match(app, /notes: meta\.slot_notes \? \{ display: normalizeNoteDisplay\(meta\.note_display\), options: NOTE_DISPLAY_OPTIONS \} : null/);
-  assert.match(app, /setNoteDisplay: async[^]*?this\.store\.setMeta\(\{ note_display: display \}\)/);
+  assert.match(app, /setNoteDisplay: async[\s\S]*?this\.store\.setMeta\(\{ note_display: display \}\)/);
 });
