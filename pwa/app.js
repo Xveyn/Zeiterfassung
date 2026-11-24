@@ -28,7 +28,7 @@ import { normalizeShiftStep, shiftOptions } from './shift-policy.js';
 import { shouldApplyUpdate, shouldCheckForUpdate } from './update-policy.js';
 import { blockSignature, rowsToBlock } from './categories.js';
 import {
-  categoriesModel, conflictsModel, connectionLabel, dayChanged, dayTitle, desktopHint, editLock, editorRows, focusKeyToRestore, hintsModel, olderModel, pushModel, reservationRows,
+  categoriesModel, conflictsModel, connectionLabel, dayChanged, dayTitle, desktopHint, NOTE_DISPLAY_OPTIONS, normalizeNoteDisplay, editLock, editorRows, focusKeyToRestore, hintsModel, olderModel, pushModel, reservationRows,
   iosInstallHint, isSetupPhase, pairingAfterBack, reservationRowsToSlots, daySave, noteChoices, setupModel, statusModel, reachedAfterSyncError, unpairDialogModel, validateReservationRows, validateRows, weekModel,
 } from './view-model.js';
 import { BUILD, CACHE_PREFIX } from './sw-core.js';
@@ -602,7 +602,7 @@ class App {
       getDay: (date) => this.store.getDay(date), anchor: this.anchor, today: localIsoDate(new Date()),
       conflictDates: conflicts.map((conflict) => conflict.date), windowDays: meta.window_days, aheadDays: aheadDays(meta.window_ahead),
       getReservation: (date) => this.store.getReservation(date), reservationsEnabled: meta.reservations_enabled,
-      slotOrder: meta.slot_order,
+      slotOrder: meta.slot_order, noteDisplay: meta.note_display,
     });
     model.older = olderModel(olderState({
       firstDay: model.days[0].date, today: localIsoDate(new Date()), windowDays: meta.window_days,
@@ -834,6 +834,7 @@ class App {
         push,
         lock: this.lockModelNow(),
         shift: { step: normalizeShiftStep(meta.shift_step_minutes), options: shiftOptions() },
+        notes: meta.slot_notes ? { display: normalizeNoteDisplay(meta.note_display), options: NOTE_DISPLAY_OPTIONS } : null,
       },
       updates: { build: BUILD, update: { state: this.updateState, detail: this.updateDetail, auto: Boolean(meta.auto_update) } },
       categories: categoriesModel({
@@ -865,6 +866,11 @@ class App {
         const step = normalizeShiftStep(minutes);
         await this.store.setMeta({ shift_step_minutes: step });
         return step;
+      },
+      setNoteDisplay: async (value) => {
+        const display = normalizeNoteDisplay(value);
+        await this.store.setMeta({ note_display: display });
+        return display;
       },
       applyUpdate: () => this.reloadForUpdate(),
       setAutoUpdate: async (on) => {

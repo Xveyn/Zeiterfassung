@@ -151,6 +151,11 @@ export function pairView({ address, code, deviceName, busy, canScan, canCancel, 
 
 // --- Woche ---------------------------------------------------------------------------------------------
 
+/** Eine Zeile der Slot-Liste; die Notiz steht als zweite Zeile darunter. */
+function slotItem({ text, note }) {
+  return h('li', {}, text, note && h('span', { class: 'note' }, note));
+}
+
 function dayRow(day, handlers) {
   const classes = ['day', day.state, day.isWeekend && 'weekend', day.isToday && 'today', day.beyondWindow && 'future'];
   return h('li', {}, h('button', { type: 'button', class: classes.filter(Boolean).join(' '),
@@ -160,7 +165,7 @@ function dayRow(day, handlers) {
       day.isToday && h('div', { class: 'tag' }, 'heute')),
     h('div', { class: 'content' },
       day.addHint && h('div', { class: 'add muted' }, day.addHint),
-      h('ul', { class: 'slots' }, day.slots.map((text) => h('li', {}, text))),
+      h('ul', { class: 'slots' }, day.slots.map(slotItem)),
       day.reservation?.slots.length > 0 && h('ul', { class: 'slots reserved' },
         day.reservation.slots.map((text) => h('li', {}, `geplant ${text}`)))),
     h('span', { class: 'sum' }, day.minutesLabel, day.addHint && h('span', { class: 'plus', 'aria-hidden': 'true' }, '+')),
@@ -636,7 +641,7 @@ export function conflictsDialog(conflicts, handlers) {
       h('h2', {}, conflict.dateLabel),
       conflict.versions.map((version) => h('div', { class: 'version' },
         h('strong', {}, version.who), h('span', { class: 'muted' }, ` · ${version.when}`),
-        version.slots.length === 0 ? h('p', {}, 'gelöscht') : h('ul', {}, version.slots.map((text) => h('li', {}, text))),
+        version.slots.length === 0 ? h('p', {}, 'gelöscht') : h('ul', {}, version.slots.map(slotItem)),
         h('div', {}, `Summe ${version.minutesLabel}`))),
       button('Zu diesem Tag', () => { dialog.close(); handlers.openDay(conflict.date); }, 'link'))),
     h('div', { class: 'buttons' }, button('Schließen', () => dialog.close())));
@@ -646,7 +651,7 @@ export function conflictsDialog(conflicts, handlers) {
 // --- Einstellungen -----------------------------------------------------------------------------------
 
 /** Reiter „Verbindung“: Stand der Kopplung und des Desktops, Verlauf, Neu koppeln. */
-function connectionPanel({ desktopName, desktop, hint = '', address, transport = 'lan', persistent, tokenUntil, window: windowInfo, push, lock, shift,
+function connectionPanel({ desktopName, desktop, hint = '', address, transport = 'lan', persistent, tokenUntil, window: windowInfo, push, lock, shift, notes,
   online = true, lastSyncAt = '' }, { closeThen, handlers }) {
   const windowState = windowRow(windowInfo);
   const resetWindow = button('Auf 90 Tage zurücksetzen', () => closeThen(() => handlers.resetWindow()), '', { 'data-focus': 'reset-window' });
@@ -676,6 +681,7 @@ function connectionPanel({ desktopName, desktop, hint = '', address, transport =
     pushSection(push, handlers),
     lock && lockSection(lock, handlers),
     shift && shiftSection(shift, handlers),
+    notes && notesSection(notes, handlers),
     h('p', { class: 'muted' }, 'Relay und Benachrichtigungen: ', privacyLink(), '.'),
     h('details', { class: 'tech' },
       h('summary', {}, 'Technische Details'),
@@ -818,6 +824,22 @@ function shiftSection(model, handlers) {
     h('h3', {}, 'Zeiten verschieben'),
     h('label', { for: 'shift-step' }, 'Wischen auf den Zeitfeldern'), select,
     h('p', { class: 'muted' }, 'Im Tages-Editor verschiebt ein waagerechter Zug auf den Zeitfeldern Start und Ende gemeinsam: nach rechts später, nach links früher.'));
+}
+
+/** Abschnitt „Notizen“: wo die Wochenliste die Notiz eines Slots zeigt. */
+function notesSection(model, handlers) {
+  const select = h('select', { id: 'note-display', 'data-focus': 'note-display' },
+    model.options.map((option) => h('option', { value: option.value }, option.label)));
+  select.value = model.display;
+  select.addEventListener('change', async () => {
+    select.disabled = true;
+    select.value = await handlers.setNoteDisplay(select.value);
+    select.disabled = false;
+    select.focus();
+  });
+  return h('section', { class: 'notes-setting' },
+    h('h3', {}, 'Notizen'),
+    h('label', { for: 'note-display' }, 'In der Wochenliste'), select);
 }
 
 /** Die Sperre selbst: ein Dialog über allem, was offen ist (ein später geöffneter modaler Dialog liegt weiter oben in der

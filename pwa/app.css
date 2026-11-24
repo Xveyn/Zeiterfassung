@@ -143,6 +143,7 @@ label.check input { width: auto; min-height: 0; flex: none; }
 
 /* Reservierungen (zukünftige Soll-Zeiten) */
 .day .content { grid-column: 2; min-width: 0; }
+.day .slots .note, .version .note { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: .85rem; }
 .day .slots.reserved { color: var(--muted); font-style: italic; }
 .tabs { display: flex; gap: 8px; margin: 0 0 12px; }
 .tabs button { flex: 1; min-width: 0; padding-left: 4px; padding-right: 4px; }
@@ -211,7 +212,7 @@ label.check input { width: auto; min-height: 0; flex: none; }
 .slot .row.shiftable, .slot .row.shiftable input { touch-action: pan-y; }   /* waagerechte Züge gehören dem Verschieben (#500) */
 .slot .shift-hint { margin: -6px 0 10px; font-size: .8rem; color: var(--muted); overflow-wrap: anywhere; }
 .slot .shift-hint.live { color: var(--text); font-weight: 600; }
-.shift select { display: block; margin: 4px 0 8px; }
+.shift select, .notes-setting select { display: block; margin: 4px 0 8px; }
 .slot .net { display: flex; justify-content: space-between; font-size: .85rem; color: var(--muted); }
 .slot .net b { color: var(--ok); font-weight: 600; }
 .daysum { display: flex; justify-content: space-between; font-weight: 700; padding: 4px 2px 0; }
@@ -279,7 +280,7 @@ details.tech dl { margin-top: 0; }
 .lock-dialog { width: 100vw; max-width: none; height: 100dvh; max-height: none; margin: 0; border: 0; border-radius: 0; }
 .lock-dialog[open] { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
 .lock-dialog > .buttons { position: static; justify-content: center; margin: 12px 0 0; padding: 0; background: none; }
-.lock, .shift { margin-top: 16px; }
+.lock, .shift, .notes-setting { margin-top: 16px; }
 .lock select { display: block; margin: 4px 0 8px; }
 /* `display: flex` (`dialog .buttons`) überstimmt das `hidden` der Knopfgruppen. */
 .lock .buttons[hidden] { display: none; }

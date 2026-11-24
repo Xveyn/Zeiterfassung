@@ -434,3 +434,9 @@ test('app.js shows the note field only with slot_notes and saves through daySave
   // Der einzige Ort, der Ist-Zeiten speichert: ein zweiter müsste die Notizen genauso weiterreichen.
   assert.equal((app.match(/\.saveDay\(/g) || []).length, 1);
 });
+
+test('the note of a slot is a muted single line that is cut off with an ellipsis, in the week list and the conflict box (#519)', () => {
+  assert.match(css, /\.day \.slots \.note, \.version \.note \{[^}]*display: block[^}]*overflow: hidden[^}]*text-overflow: ellipsis[^}]*white-space: nowrap[^}]*\}/);
+  assert.match(css, /\.day \.content \{[^}]*min-width: 0/);
+  assert.match(views, /h\('li', \{\}, text, note && h\('span', \{ class: 'note' \}, note\)\)/);
+});

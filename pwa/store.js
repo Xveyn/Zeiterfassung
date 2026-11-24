@@ -49,6 +49,7 @@ import { checkNote } from './notes.js';
  * @property {boolean} lock_enabled
  * @property {string} lock_credential
  * @property {number} lock_delay_ms
+ * @property {string} note_display         Notiz in der Wochenliste: 'line' | 'inline' (#519)
  * @property {number} shift_step_minutes
  * @property {boolean} reservations_enabled
  * @property {boolean} reservation_pause
@@ -95,6 +96,7 @@ const DEFAULT_META = Object.freeze({
   lock_credential: '',     // Credential-ID (base64url) des Passkeys der Sperre; ohne sie gilt die Sperre nicht
   lock_delay_ms: 60000,    // Frist nach dem Verlassen der App, vor der gesperrt wird (0, 1 Minute, 5 Minuten)
   shift_step_minutes: 10,  // Schrittweite des Wischs auf den Zeitfeldern (#500): 0 = aus, sonst 5/10/15/30/60; gerätelokal
+  note_display: 'line',    // Notiz in der Wochenliste (#519): line (eigene Zeile) | inline (hinter der Kategorie); gerätelokal
   reservations_enabled: false, // Desktop bietet Reservierungen an (Feld in der Antwort); fehlt es, bleibt alles verborgen
   reservation_pause: false,   // Desktop versteht `pause` an Reservierungs-Slots (Feld `reservation_pause`, #455); sonst geht sie nie auf den Draht
   slot_order: 'chrono',       // Reihenfolge der Slots (Feld `slot_order` der Antwort, #520): chrono | category | custom

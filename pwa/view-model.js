@@ -35,6 +35,25 @@ export function slotText(slot) {
   return `${slot.start}–${slot.end}${pause}${category}`;
 }
 
+export const NOTE_DISPLAY_OPTIONS = [
+  { value: 'line', label: 'Eigene Zeile' },
+  { value: 'inline', label: 'Hinter der Kategorie' },
+];
+
+/** Wo die Wochenliste die Notiz eines Slots zeigt: `line` (eigene Zeile) oder `inline` (hinter der Kategorie).
+ *  Unbekanntes gilt als `line`. */
+export function normalizeNoteDisplay(value) {
+  return value === 'inline' ? 'inline' : 'line';
+}
+
+/** Ein Ist-Zeit-Slot für Wochenliste und Konflikte: `text` ist die Zeile, `note` die Notiz als eigene Zeile
+ *  (leer ohne Notiz oder im Modus `inline`, dort steht sie in `text`). */
+function slotEntry(slot, display = 'line') {
+  const note = typeof slot.notiz === 'string' ? slot.notiz : '';
+  const text = slotText(slot);
+  return display === 'inline' && note ? { text: `${text} · ${note}`, note: '' } : { text, note: display === 'inline' ? '' : note };
+}
+
 /** Zeilen des Kategorie-Modals: alle bekannten Kategorien in Server-Reihenfolge. Steht am Tag eine,
  *  die der Server nicht listet (frei eingegeben, vom Desktop), hängt sie hinten dran — sonst fehlte
  *  im Modal ausgerechnet die aktuelle Auswahl. */
@@ -78,7 +97,7 @@ function stampLabel(iso, timeZone) {
 // Abgleich wieder auf.
 /** @param {{ getDay: (date: string) => any, getReservation?: (date: string) => any, [key: string]: any }} options */
 export function weekModel({ getDay, anchor, today, conflictDates = [], windowDays = 0, aheadDays = LEGACY_AHEAD_DAYS,
-  getReservation = () => null, reservationsEnabled = false, slotOrder = DEFAULT_SLOT_ORDER }) {
+  getReservation = () => null, reservationsEnabled = false, slotOrder = DEFAULT_SLOT_ORDER, noteDisplay = 'line' }) {
   const conflicts = new Set(conflictDates);
   const dates = weekDays(anchor);
   const week = dates.map((date, index) => {
@@ -99,7 +118,7 @@ export function weekModel({ getDay, anchor, today, conflictDates = [], windowDay
       // Außerhalb dessen, was das Handy vom Desktop kennt: ein leer wirkender Tag kann dort Einträge
       // haben, und Speichern ersetzt sie (der Handy-Stand gewinnt ohne Konflikt).
       outsideWindow: date > addDays(today, aheadDays) || (windowDays > 0 && date < addDays(today, -windowDays)),
-      slots: sortedSlots(slots, slotOrder).map(slotText),
+      slots: sortedSlots(slots, slotOrder).map((slot) => slotEntry(slot, normalizeNoteDisplay(noteDisplay))),
       minutes,
       minutesLabel: minutes > 0 ? formatMinutes(minutes) : '',
       // Ein Tombstone (am Desktop oder hier geleert) sieht aus wie ein leerer Tag (#353).
@@ -198,7 +217,7 @@ export function conflictsModel(conflicts, timeZone) {
         return {
           who: version.name || String(version.device ?? '').slice(0, 8),
           when: stampLabel(String(version.modified_at ?? ''), timeZone),
-          slots: sortedSlots(slots).map(slotText),
+          slots: sortedSlots(slots).map((slot) => slotEntry(slot)),
           minutesLabel: formatMinutes(dayMinutes(slots)),
         };
       }),
