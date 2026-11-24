@@ -798,6 +798,11 @@ daraus folgt, ist in einer gemischten Flotte nicht ganz zu schließen.
   immer. Das ist symmetrisch und stabil und braucht eine gemischte Flotte mit Notizen am Tag.
   Möglicher Fix: die Anhebung erst nach den Auflösungen anwenden und nur, wenn der Eintrag danach noch
   der Gewinner ist.
+- **Handy: eine Notiz entfernt eine Desktop-Notiz, die das Handy nie sah.** Hat das Handy einen Tag geändert, bevor es
+  Notizen kannte, und ihn noch nicht gesendet, und speichert ihn dann mit einer Notiz, gehen die übrigen Slots mit `""`
+  hinaus. Hatte der Desktop dort eine Notiz, ist sie danach weg.
+- **Handy: nach einem Desktop-Downgrade lassen sich Notizen nicht ändern.** Das Handy zeigt die Notizen, die es hat,
+  weiter an, das Notizfeld im Editor fehlt aber, bis der Desktop wieder `slot_notes` nennt.
 
 ## Beschädigte oder fremde Daten (Storage)
 
