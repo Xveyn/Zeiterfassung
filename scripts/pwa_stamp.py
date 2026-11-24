@@ -7,8 +7,9 @@ X.Y.Z dessen Version — gelesen vom Tag, nicht aus `src/version.py`: auf master
 kann dort schon die nächste, noch unveröffentlichte Version stehen. Pre-Releases
 zählen nicht als Anker. Die PWA hat keine eigene Versionsnummer: Desktop-Release
 und PWA sind nur über diesen Anker verbunden. Der Platzhalter `__BUILD__` steht
-in `sw-core.js` (Cache-Name, Anzeige im Verbindungs-Dialog) und im Manifest
-(`version`); ein Deploy bekommt dadurch immer einen eigenen Cache.
+in `sw-core.js` (Cache-Name, Anzeige im Verbindungs-Dialog), in `sw.js` (Chrome
+startet keinen neuen Worker, wenn sich nur `sw-core.js` ändert) und im
+Manifest (`version`); ein Deploy bekommt dadurch immer einen eigenen Cache.
 
 Weil jede Änderung unter `pwa/` sofort live geht, zählt N sie einzeln; ein
 Release setzt N auf 0 zurück (der `publish`-Job stößt dafür `pages.yml` neu an).
@@ -24,7 +25,7 @@ import subprocess
 import sys
 
 PLACEHOLDER = "__BUILD__"
-STAMPED_FILES = ("sw-core.js", "manifest.webmanifest")
+STAMPED_FILES = ("sw.js", "sw-core.js", "manifest.webmanifest")
 _RELEASE_TAG = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
 
 

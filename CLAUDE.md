@@ -1710,7 +1710,7 @@ seinen Pfad, nicht per Import.
   Flag schreibt es, `--check` zeigt nur an. Idempotent, derselbe
   Root-Bootstrap, reine stdlib.
 - `scripts/pwa_stamp.py` — stempelt die Build-Kennung der Handy-PWA
-  `N/X.Y.Z (sha)` (#280, #359) in `sw-core.js` und Manifest (`pages.yml`):
+  `N/X.Y.Z (sha)` (#280, #359) in `sw.js`, `sw-core.js` und Manifest (`pages.yml`):
   N = Commits unter `pwa/` seit dem letzten echten Release-Tag,
   X.Y.Z = dessen Version (vom Tag, nicht aus `src/version.py`; Pre-Releases
   zählen nicht). Keine eigene PWA-Version, kein Bump im Release-PR. Braucht
