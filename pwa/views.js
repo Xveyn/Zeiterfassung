@@ -153,7 +153,7 @@ export function pairView({ address, code, deviceName, busy, canScan, canCancel, 
 
 /** Eine Zeile der Slot-Liste; die Notiz steht als zweite Zeile darunter. */
 function slotItem({ text, note }) {
-  return h('li', {}, text, note && h('span', { class: 'note' }, note));
+  return h('li', {}, text, note && h('span', { class: 'slot-note' }, note));
 }
 
 function dayRow(day, handlers) {

@@ -96,6 +96,6 @@ test('the note list: entries in normal text, the group heading muted, the highli
 
 test('the note under a slot is muted text on --entry, --weekend, --cell (conflict box) and --bg (#519)', () => {
   const rule = (selector) => (css.match(new RegExp(`${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} \\{([^}]*)\\}`)) || [])[1] || '';
-  assert.match(rule('.day .slots .note, .version .note'), /color: var\(--muted\)/);
+  assert.match(rule('.day .slots .slot-note, .version .slot-note'), /color: var\(--muted\)/);
   for (const name of ['entry', 'weekend', 'cell', 'bg']) atLeast(`muted auf ${name}`, token('muted'), surfaces()[name], 4.5);
 });

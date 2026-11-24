@@ -436,7 +436,14 @@ test('app.js shows the note field only with slot_notes and saves through daySave
 });
 
 test('the note of a slot is a muted single line that is cut off with an ellipsis, in the week list and the conflict box (#519)', () => {
-  assert.match(css, /\.day \.slots \.note, \.version \.note \{[^}]*display: block[^}]*overflow: hidden[^}]*text-overflow: ellipsis[^}]*white-space: nowrap[^}]*\}/);
+  assert.match(css, /\.day \.slots \.slot-note, \.version \.slot-note \{[^}]*margin: 0[^}]*display: block[^}]*overflow: hidden[^}]*text-overflow: ellipsis[^}]*white-space: nowrap[^}]*\}/);
   assert.match(css, /\.day \.content \{[^}]*min-width: 0/);
-  assert.match(views, /h\('li', \{\}, text, note && h\('span', \{ class: 'note' \}, note\)\)/);
+  assert.match(views, /h\('li', \{\}, text, note && h\('span', \{ class: 'slot-note' \}, note\)\)/);
+});
+
+test('the app wires the note display: week model option, settings section only with slot_notes, stored via setMeta (#519)', () => {
+  const app = readFileSync(new URL('../app.js', import.meta.url), 'utf8');
+  assert.match(app, /noteDisplay: meta\.note_display/);
+  assert.match(app, /notes: meta\.slot_notes \? \{ display: normalizeNoteDisplay\(meta\.note_display\), options: NOTE_DISPLAY_OPTIONS \} : null/);
+  assert.match(app, /setNoteDisplay: async[^]*?this\.store\.setMeta\(\{ note_display: display \}\)/);
 });

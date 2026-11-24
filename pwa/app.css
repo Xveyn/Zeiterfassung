@@ -143,7 +143,7 @@ label.check input { width: auto; min-height: 0; flex: none; }
 
 /* Reservierungen (zukünftige Soll-Zeiten) */
 .day .content { grid-column: 2; min-width: 0; }
-.day .slots .note, .version .note { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: .85rem; }
+.day .slots .slot-note, .version .slot-note { margin: 0; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: .85rem; }
 .day .slots.reserved { color: var(--muted); font-style: italic; }
 .tabs { display: flex; gap: 8px; margin: 0 0 12px; }
 .tabs button { flex: 1; min-width: 0; padding-left: 4px; padding-right: 4px; }
