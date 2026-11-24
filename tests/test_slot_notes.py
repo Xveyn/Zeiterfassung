@@ -299,9 +299,22 @@ def test_suggestions_newest_first_once_per_group_key():
         "2026-11-04": {"slots": [{"start": "08:00", "kategorie": "Montage", "notiz": "Kunde Mustermann"},
                                  {"start": "13:00", "kategorie": "Montage"}]},
     }
-    assert sn.suggestions(entries, "Montage") == ["Kunde Mustermann", "kunde müller"]
-    assert sn.suggestions(entries, "") == []
+    assert sn.suggestions(entries, "Montage") == ["Kunde Mustermann", "kunde müller", "Ablage"]
+    assert sn.suggestions(entries, "Büro") == ["Ablage", "Kunde Mustermann", "kunde müller"]
+    assert sn.suggestions(entries, "") == ["Kunde Mustermann", "kunde müller", "Ablage"]
     assert sn.suggestions(entries, "Montage", limit=1) == ["Kunde Mustermann"]
+
+
+def test_suggestions_offer_a_note_of_another_category_once():
+    # Dieselbe Notiz unter der gewählten und einer anderen Kategorie steht nur einmal da, in der
+    # Schreibweise und an der Stelle der gewählten Kategorie.
+    entries = {
+        "2026-11-02": {"slots": [{"start": "08:00", "kategorie": "Montage", "notiz": "Außendienst Kundentermin A"}]},
+        "2026-11-05": {"slots": [{"start": "08:00", "kategorie": "", "notiz": "außendienst kundentermin a"},
+                                 {"start": "13:00", "kategorie": "", "notiz": "Büro"}]},
+    }
+    assert sn.suggestions(entries, "Montage") == ["Außendienst Kundentermin A", "Büro"]
+    assert sn.suggestions(entries, "Service") == ["außendienst kundentermin a", "Büro"]
 
 
 def test_suggestions_and_has_notes_survive_foreign_shapes():

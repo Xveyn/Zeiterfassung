@@ -100,12 +100,15 @@ def _note_slots(entries: Mapping[str, Any], newest_first: bool) -> list[Mapping[
 
 
 def suggestions(entries: Mapping[str, Any], kategorie: str, limit: int = 20) -> list[str]:
-    """Bisherige Notizen der Kategorie, neueste zuerst, je `group_key` einmal."""
+    """Bisherige Notizen, je `group_key` einmal: erst die der Kategorie, dann alle übrigen, je
+    neueste zuerst. Die übrigen stehen mit da, weil eine Notiz (ein Kunde, ein Termin) an einem
+    anderen Tag oft unter einer anderen Kategorie wiederkommt."""
+    slots = _note_slots(entries, True)
+    own = [s for s in slots if (s.get("kategorie") or "") == kategorie]
+    rest = [s for s in slots if (s.get("kategorie") or "") != kategorie]
     seen: set[str] = set()
     result: list[str] = []
-    for slot in _note_slots(entries, True):
-        if (slot.get("kategorie") or "") != kategorie:
-            continue
+    for slot in own + rest:
         note = clean_note(slot.get(SLOT_KEY))
         key = group_key(note)
         if not note or key in seen:

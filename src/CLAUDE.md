@@ -1053,8 +1053,8 @@ einer Reservierung nimmt deren Pause, wenn > 0 — `ist_prefill_pause`; bei akti
 Kalender-Abgleich zeigt der Reservierungs-Block `RESERVATION_CALENDAR_NOTE`, weil der
 Termin die volle Spanne zeigt; `slot_category_display` bekommt für Reservierungen
 weiter `pause=None`, deren Pause setzt kein `*`; **Notiz** (Xveyn#519): jede Ist-Zeile hat ein
-Notizfeld (`Notiz:`, 24 Zeichen, `SlotRowList(note_suggestions=…)` mit `slot_notes.suggestions` zur
-gewählten Kategorie), die Reservierung keines. `save_all` übergibt `notiz` an **jedem** Ist-Slot, auch
+Notizfeld (`Notiz:`, 24 Zeichen, `SlotRowList(note_suggestions=…)` mit `slot_notes.suggestions`: die Notizen der
+gewählten Kategorie zuerst, dann alle übrigen), die Reservierung keines. `save_all` übergibt `notiz` an **jedem** Ist-Slot, auch
 als `""`: ein Slot ohne den Schlüssel erbt in `Storage.save` die gespeicherte Notiz, Leeren wäre
 unmöglich. `plan_entry_save` prüft über `slot_notes.check_note` und lehnt eine ungültige Notiz
 mit dem Fehlertext `NOTE_ERROR` ab, nichts wird still gekürzt. Tooltip und Lösch-Dialog der Zelle zeigen

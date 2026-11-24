@@ -298,9 +298,11 @@ importierter Tag behält deshalb die Notizen der Slots, deren Startzeit bleibt.
 ## Desktop-Oberfläche
 
 - **Tages-Dialog, Ist-Block:** jede Zeile bekommt hinter der Kategorie ein
-  Notizfeld (Breite in Zeichen, nicht in Pixeln). Es schlägt die Notizen vor, die
-  mit der gewählten Kategorie schon benutzt wurden (neueste zuerst, höchstens 20,
-  je Gruppierschlüssel einmal), freier Text bleibt möglich. Der
+  Notizfeld (Breite in Zeichen, nicht in Pixeln). Es schlägt die schon benutzten
+  Notizen vor: zuerst die der gewählten Kategorie, danach alle übrigen, je neueste
+  zuerst, zusammen höchstens 20, je Gruppierschlüssel einmal (eine Notiz wie ein
+  Kunde oder Termin kommt an einem anderen Tag oft unter einer anderen Kategorie
+  wieder); freier Text bleibt möglich. Der
   Reservierungs-Block bekommt kein Feld. Die Kategorie-Auswahl verändert die
   Notiz nicht (das wäre Etappe 2).
 - **Tooltip und Löschen-Dialog:** `08:00-12:00  Montage · Kunde Mustermann`.
@@ -444,7 +446,7 @@ ein Minor.
 3. Webhook nennt `notiz` nur, wenn nicht leer; die lokale API immer.
 4. Teilen ohne Notizen.
 5. Grenzen: einzeilig, 200 Zeichen.
-6. Vorschläge im Eingabefeld aus bereits benutzten Notizen der Kategorie.
+6. Vorschläge im Eingabefeld aus bereits benutzten Notizen, die der Kategorie zuerst.
 7. Auswertungen der lokalen API und Reservierungen bleiben ohne Notiz.
 8. Der Schlüssel `notes` wird nur an Tagen geschrieben, die Notizen haben oder
    hatten. Tage ohne Notiz bleiben im Format unverändert.
