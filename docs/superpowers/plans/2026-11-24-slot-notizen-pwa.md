@@ -10,7 +10,7 @@
 
 **Spec:** `docs/superpowers/specs/2026-11-23-slot-notizen-design.md`, Abschnitte „Handy-PWA“, „Ausgabewege“ (Handy-Abgleich), „Regeln der Notiz“. Repo-Regeln: `pwa/CLAUDE.md` (Kompatibilität, Regel 2 und 4; Tests; Kontrast; Übergänge), Wurzel-`CLAUDE.md` („Kommentare und Docstrings“).
 
-**Voraussetzung:** #530 (PR 2) ist gemergt — `slot_notes.suggestions` hat dort die Reihenfolge „Kategorie zuerst, dann alle übrigen“, die Task 1 in JavaScript nachbaut und über die Fixture prüft. Branch `feat/slot-notizen-pwa` vor Task 1 auf den aktuellen `master` bringen. PR-Text `Refs #519` (bzw. `Closes #519` als letzter Teil), kein `release:*`-Label.
+**Stapel:** der Branch `feat/slot-notizen-pwa` liegt auf `feat/slot-notizen-desktop` (#530, PR 2): dort hat `slot_notes.suggestions` die Reihenfolge „Kategorie zuerst, dann alle übrigen“, die Task 1 in JavaScript nachbaut und über die Fixture prüft. Der PR geht gegen `feat/slot-notizen-desktop` und wandert nach dem Merge von #530 von selbst auf `master`. Darauf folgt der Release-PR. PR-Text `Closes #519` (letzter Teil), kein `release:*`-Label.
 
 ## Global Constraints
 
