@@ -9,7 +9,7 @@ from src.dialogs.slot_rows import (
 )
 from src.holidays_de import get_holidays
 from src.settings import WEEKDAY_KEYS, parse_reminder_minutes
-from src.slot_notes import NoteError, check_note, suggestions
+from src.slot_notes import MAX_NOTE_LEN, NoteError, check_note, suggestions
 from src.slot_order import normalize_mode, sorted_slots
 from src.theme import (
     BG, CELL_BG, FONT, FONT_BOLD, FONT_SMALL,
@@ -70,7 +70,7 @@ def ist_prefill_pause(reservation_slot, default_pause):
     return pause if pause > 0 else default_pause
 
 
-NOTE_ERROR = "Notiz: höchstens 200 Zeichen, ohne Zeilenumbruch oder Steuerzeichen."
+NOTE_ERROR = f"Notiz: höchstens {MAX_NOTE_LEN} Zeichen, ohne Zeilenumbruch oder Steuerzeichen."
 
 
 def plan_entry_save(ist_slots, res_slots, show_reservation):

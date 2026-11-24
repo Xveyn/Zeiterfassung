@@ -404,6 +404,12 @@ def test_plan_entry_save_rejects_invalid_note(bad):
     assert plan == {"error": NOTE_ERROR, "save_ist": False, "save_reservation": False}
 
 
+def test_note_error_names_the_note_limit():
+    from src.slot_notes import MAX_NOTE_LEN
+    assert NOTE_ERROR == "Notiz: höchstens 200 Zeichen, ohne Zeilenumbruch oder Steuerzeichen."
+    assert f"höchstens {MAX_NOTE_LEN} Zeichen" in NOTE_ERROR
+
+
 def test_plan_entry_save_note_error_carries_block_prefix():
     assert plan_entry_save([_ist("x" * 201)], [], True)["error"] == "Arbeitszeit: " + NOTE_ERROR
 

@@ -1,5 +1,7 @@
 import datetime
 
+import pytest
+
 
 def test_selected_category_filter_empty_map_is_none():
     from src.dialogs.period_picker import selected_category_filter
@@ -201,9 +203,6 @@ def test_vacation_preview_without_vacation_is_zero():
         all_entries={}, categories=None, vacation_days={})
     assert minutes == 0
     assert notice == ""
-
-
-import pytest
 
 
 @pytest.mark.parametrize("category_on,note_on,expected",
