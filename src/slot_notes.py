@@ -75,8 +75,8 @@ def group_key(note: str) -> str:
 
 
 def label(kategorie: object, notiz: object) -> str:
-    """Beschriftung aus Kategorie und Notiz, mit `SEPARATOR`; fehlt eines, nur das andere."""
-    cat = _trim(kategorie) if isinstance(kategorie, str) else ""
+    """Beschriftung aus Kategorie (unverändert) und Notiz, mit `SEPARATOR`; fehlt eines, nur das andere."""
+    cat = kategorie if isinstance(kategorie, str) else ""
     return SEPARATOR.join(part for part in (cat, clean_note(notiz)) if part)
 
 

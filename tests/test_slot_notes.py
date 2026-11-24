@@ -309,3 +309,8 @@ def test_suggestions_and_has_notes_survive_foreign_shapes():
     assert sn.suggestions(entries, "") == []
     assert sn.has_notes(entries) is False
     assert sn.has_notes({"2026-11-02": {"slots": [{"start": "08:00", "notiz": " x "}]}}) is True
+
+
+def test_label_keeps_the_category_as_stored():
+    assert sn.label(" Büro ", "") == " Büro "
+    assert sn.label(5, "x") == "x"
