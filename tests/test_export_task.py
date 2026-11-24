@@ -67,3 +67,17 @@ def test_perform_export_reicht_den_slot_modus_an_den_bericht(monkeypatch):
     monkeypatch.setattr(st, "generate_pdf", lambda *a, **k: seen.update(k) or b"PDF")
     perform_export_pdf(**_kwargs(slot_order="category"))
     assert seen["slot_order"] == "category"
+
+
+def test_perform_export_reicht_note_breakdown_an_den_bericht(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(st, "generate_pdf", lambda *a, **k: seen.update(k) or b"PDF")
+    perform_export_pdf(**_kwargs(note_breakdown=True))
+    assert seen["note_breakdown"] is True
+
+
+def test_perform_export_ohne_note_breakdown_reicht_false_durch(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(st, "generate_pdf", lambda *a, **k: seen.update(k) or b"PDF")
+    perform_export_pdf(**_kwargs())
+    assert seen["note_breakdown"] is False

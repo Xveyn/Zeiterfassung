@@ -201,3 +201,14 @@ def test_vacation_preview_without_vacation_is_zero():
         all_entries={}, categories=None, vacation_days={})
     assert minutes == 0
     assert notice == ""
+
+
+import pytest
+
+
+@pytest.mark.parametrize("category_on,note_on,expected",
+                         [(True, True, True), (True, False, False),
+                          (False, True, False), (False, False, False)])
+def test_note_breakdown_needs_the_category_breakdown(category_on, note_on, expected):
+    from src.dialogs.period_picker import note_breakdown_active
+    assert note_breakdown_active(category_on, note_on) is expected

@@ -109,3 +109,19 @@ def test_perform_send_missing_credentials_delegates_to_classifier(monkeypatch):
     res = perform_send(**_kwargs())
     assert res["results"] == [
         {"channel": "mail", "name": "to@example.com", **sentinel}]
+
+
+def test_perform_send_reicht_note_breakdown_an_das_pdf(monkeypatch):
+    seen = {}
+    _patch_happy(monkeypatch)
+    monkeypatch.setattr(st, "generate_pdf", lambda *a, **k: seen.update(k) or b"PDF")
+    perform_send(**_kwargs(note_breakdown=True))
+    assert seen["note_breakdown"] is True
+
+
+def test_perform_send_ohne_note_breakdown_reicht_false_durch(monkeypatch):
+    seen = {}
+    _patch_happy(monkeypatch)
+    monkeypatch.setattr(st, "generate_pdf", lambda *a, **k: seen.update(k) or b"PDF")
+    perform_send(**_kwargs())
+    assert seen["note_breakdown"] is False
