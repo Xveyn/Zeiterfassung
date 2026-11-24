@@ -461,3 +461,5 @@ ein Minor.
 13. Der Konfliktdialog übergibt beim Auflösen die Notizen der gewählten Karte
     ausdrücklich. Ohne das gälte bei zwei Ständen, die sich nur in der Notiz
     unterscheiden, immer der jüngere, auch wenn der Nutzer den älteren wählt.
+    Eine Karte, deren Stand den Schlüssel `notes` nicht trägt (alte Version), zeigt die
+    Notizen, die sie beim Auflösen erbt: die der anderen Karte an gleicher Startzeit.

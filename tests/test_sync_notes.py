@@ -716,6 +716,36 @@ def test_two_old_resolutions_of_a_noted_day_with_the_same_stamp_are_idempotent()
             assert merge(again, again, T1)["entries"] == ab["entries"]
 
 
+
+@pytest.mark.parametrize("shape", ["noted", "empty", "keyless", "deleted"])
+def test_resolving_stores_the_note_the_chosen_card_shows(tmp_path, shape):
+    """Gleiche Slots, die jüngere Karte trägt „Neu“: gespeichert wird genau, was die
+    gewählte ältere Karte im Dialog zeigt."""
+    from src import conflict_view
+    storage, settings, conflicts = _stores(tmp_path)
+    older = {"noted": _entry(T1, "A", notes={"08:00": "Alt"}),
+             "empty": _entry(T1, "A", notes={}),
+             "keyless": _entry(T1, "A"),
+             "deleted": _entry(T1, "A", slots=[], deleted=True)}[shape]
+    younger = _entry(T2, "B", notes={"08:00": "Neu"})
+    storage.save(DAY, [{**_slot(), "notiz": "Neu"}])
+    conflict = _open_conflict(older, younger)
+    conflicts.save_all([conflict])
+    card = next(c for c in conflict_view.build_cards(conflict, {}, "A") if c.index == 0)
+    shown = [None if s.note is None or s.note.text == conflict_view.NO_NOTE else s.note.text
+             for s in card.slots]
+
+    sync.resolve_conflict("c1", conflict_view.entry_choice(older), conflicts, storage,
+                          settings, device_id="A")
+
+    day = storage.get(DAY)
+    stored = [] if day is None or day.get("deleted") else [
+        s.get("notiz") for s in day["slots"]]
+    assert stored == shown
+    assert shown == {"noted": ["Alt"], "empty": [None], "keyless": ["Neu"],
+                     "deleted": []}[shape]
+
+
 def test_resolving_with_the_older_card_keeps_its_notes(tmp_path):
     """Gleiche Slots, verschiedene Notizen: die gewählte (ältere) Karte bestimmt die Notiz,
     nicht der jüngere Kandidat."""

@@ -184,12 +184,27 @@ def _note_field(own: str | None, theirs: str | None, other_has_slot: bool) -> Fi
     return Field(own or NO_NOTE, not other_has_slot or own != theirs)
 
 
+def _card_notes(cand: dict[str, Any], other: dict[str, Any]) -> dict[str, str]:
+    """Die Notizen, die eine Karte zeigt: was ihre Wahl speichert.
+
+    Fehlt dem Stand der Schlüssel `notes` (eine Version ohne Notizen hat ihn
+    geschrieben), erbt er beim Auflösen die Notizen der anderen Karte an seinen
+    Startzeiten (`slot_notes.resolution_notes`); die Karte zeigt deshalb diese.
+    """
+    if slot_notes.has_key(cand):
+        return slot_notes.notes_of(cand)
+    if other.get("deleted") or not slot_notes.has_key(other):
+        return {}
+    return slot_notes.notes_of({"slots": cand.get("slots"),
+                                slot_notes.ENTRY_KEY: slot_notes.notes_of(other)})
+
+
 def _slot_views(mine: dict[str, Any], other: dict[str, Any]) -> tuple[SlotView, ...]:
     """Verglichen wird Slot gegen Slot an derselben Position der sortierten Listen;
-    die Notiz eines Slots steht in `notes` des Kandidaten unter seinem `start`."""
+    die Notiz eines Slots steht unter seinem `start` (s. `_card_notes`)."""
     other_slots = [] if other.get("deleted") else _slots_of(other)
-    own_notes = slot_notes.notes_of(mine)
-    other_notes = slot_notes.notes_of(other)
+    own_notes = _card_notes(mine, other)
+    other_notes = _card_notes(other, mine)
     views = []
     for pos, slot in enumerate(_slots_of(mine)):
         own = _slot_fields(slot)

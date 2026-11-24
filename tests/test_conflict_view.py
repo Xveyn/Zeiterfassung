@@ -254,10 +254,41 @@ def test_note_differs_is_marked_on_both_cards():
     assert own.slots[0].category == cv.Field("Montage", False)
 
 
-def test_missing_note_reads_keine_notiz():
+def test_keyless_card_shows_the_note_it_inherits():
     own, other = _note_cards(_note_cand("dev-a", "2026-11-03T10:00:00Z", "Kunde Mustermann"),
                              _note_cand("dev-b", "2026-11-03T11:00:00Z", None, key=False))
+    assert own.slots[0].note == cv.Field("Kunde Mustermann", False)
+    assert other.slots[0].note == cv.Field("Kunde Mustermann", False)
+
+
+def test_keyless_card_inherits_nothing_at_another_start():
+    keyless = _note_cand("dev-b", "2026-11-03T11:00:00Z", None, key=False)
+    keyless["slots"] = [{"start": "09:00", "end": "12:00", "pause": 0, "kategorie": "Montage"}]
+    own, other = _note_cards(_note_cand("dev-a", "2026-11-03T10:00:00Z", "Kunde Mustermann"),
+                             keyless)
     assert other.slots[0].note == cv.Field(cv.NO_NOTE, True)
+    assert own.slots[0].note == cv.Field("Kunde Mustermann", True)
+
+
+def test_keyless_card_against_empty_notes_has_no_note():
+    own, other = _note_cards(_note_cand("dev-a", "2026-11-03T10:00:00Z", None, key=True),
+                             _note_cand("dev-b", "2026-11-03T11:00:00Z", None, key=False))
+    assert own.slots[0].note is None and other.slots[0].note is None
+
+
+def test_keyless_card_against_deleted_card_has_no_note():
+    deleted = {"device_id": "dev-b", "modified_at": "2026-11-03T11:00:00Z", "deleted": True,
+               "slots": [], "notes": {}}
+    own, _other = _note_cards(_note_cand("dev-a", "2026-11-03T10:00:00Z", None, key=False),
+                              deleted)
+    assert own.slots[0].note is None
+
+
+def test_empty_notes_key_against_a_noted_card_reads_keine_notiz():
+    own, other = _note_cards(_note_cand("dev-a", "2026-11-03T10:00:00Z", "Kunde Mustermann"),
+                             _note_cand("dev-b", "2026-11-03T11:00:00Z", None, key=True))
+    assert other.slots[0].note == cv.Field(cv.NO_NOTE, True)
+    assert own.slots[0].note == cv.Field("Kunde Mustermann", True)
 
 
 def test_same_note_is_shown_unmarked():
