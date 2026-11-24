@@ -952,6 +952,15 @@ Reiter „Updates“ der Einstellungen („Nach Updates suchen“; Zustände wir
 Update verfügbar / offline). Ein neuer Worker wartet, bis die Seite ihn
 freigibt (`SKIP_WAITING`) — nie mitten in einer Eingabe.
 
+Der Worker wird mit `updateViaCache: 'none'` registriert: Update-Prüfungen holen
+auch seine importierten Module am HTTP-Cache vorbei. GitHub Pages sendet
+`max-age=600`; ohne die Option könnte ein neues `sw.js` bis zu 10 Minuten nach
+einem Deploy mit einem alten `sw-core.js` aus dem Cache zusammenkommen.
+**Bekannte Grenze des Übergangs:** ein Gerät, das in den 10 Minuten vor dem ersten
+Deploy mit dieser Änderung nach Updates gesucht hat, kann einmal eine neue Seite
+mit dem alten Cache-Namen des Workers behalten; seine Update-Suche meldet dann
+einen Fehler, bis der nächste Deploy es aufräumt.
+
 **Automatisch einspielen** ist ein Schalter im Reiter „Updates“ (Meta
 `auto_update`, gerätelokal, Standard **aus**; dann bleibt es beim Hinweis
 „Neue Version verfügbar“ mit „Neu laden“). Ist er an, spielt die PWA ein
@@ -1032,10 +1041,17 @@ Offen: andere Schreibwege eines veralteten Tabs (Tag speichern, Einstellungen) l
 
 `.github/workflows/pages.yml` (Push auf `master` mit Änderungen unter `pwa/**`,
 oder von Hand) kopiert die Laufzeitdateien nach `_site/` (ohne `test/`,
-`package.json` und Markdown; ebenso `package-lock.json` und `tsconfig.json`), ersetzt in `sw-core.js` den Platzhalter
+`package.json` und Markdown; ebenso `package-lock.json` und `tsconfig.json`), ersetzt in `sw-core.js`, `sw.js` und im Manifest den Platzhalter
 `__BUILD__` durch die Build-Kennung (`scripts/pwa_stamp.py`; sonst liefe jeder
 Deploy mit demselben Cache, und Updates kämen nie an) und veröffentlicht per
 `deploy-pages`.
+
+**Warum auch `sw.js` die Kennung trägt:** Chrome 153/156 startet keinen neuen
+Worker, wenn sich nur das importierte `sw-core.js` geändert hat (ändert sich `sw.js`
+oder ein weiteres Modul mit, gelingt das Update). Die
+Update-Suche endet dann mit „ServiceWorker cannot be started“, es erscheint kein
+wartender Worker und die Seite bleibt auf dem alten Stand. Deshalb steht in `sw.js`
+die Zeile `// Build: __BUILD__`: jeder Deploy ändert die Bytes des Hauptskripts.
 
 **Die Kennung heißt `N/X.Y.Z (sha)`** (#280, #359), z. B. `12/1.26.2 (abc123…)`:
 N ist die Zahl der Commits unter `pwa/` seit dem letzten echten Desktop-Release,
@@ -1080,7 +1096,7 @@ einen Koppel-Link mit frischem Code — auch für Browser-Tests mit Playwright.
 Die PWA lehnt Loopback-Adressen ab; der Server bindet deshalb an die
 LAN-Adresse (`--address` nur mit einer privaten Adresse).
 
-Der Dev-Server stempelt `__BUILD__` in `sw-core.js` beim Ausliefern selbst
+Der Dev-Server stempelt `__BUILD__` in `sw-core.js` und `sw.js` (dieselbe Kennung) beim Ausliefern selbst
 (`dev-<Hash>` aus Pfad, Größe und mtime der App-Dateien, #272). Eine Änderung
 unter `pwa/` löst damit den normalen Update-Weg aus: der neue Worker wartet,
 „Neu laden“ übernimmt ihn — ohne Worker abzumelden oder Caches zu leeren.

@@ -992,7 +992,9 @@ class App {
   async registerServiceWorker() {
     if (!('serviceWorker' in navigator)) return;
     try {
-      const registration = await navigator.serviceWorker.register('./sw.js', { type: 'module' });
+      // `updateViaCache: 'none'`: Update-Prüfungen holen auch die importierten Module am HTTP-Cache
+      // vorbei (GitHub Pages sendet max-age=600), sonst käme ein neues sw.js mit altem sw-core.js.
+      const registration = await navigator.serviceWorker.register('./sw.js', { type: 'module', updateViaCache: 'none' });
       this.registration = registration;
       const watch = (worker) => worker?.addEventListener('statechange', () => {
         if (worker.state === 'installed' && navigator.serviceWorker.controller) this.markUpdateReady();

@@ -44,16 +44,29 @@ def test_latest_release_tag_none():
     assert stamp.latest_release_tag(["v1.0.0-pre.1"]) is None
 
 
-def test_stamp_site_replaces_placeholder_in_sw_core_and_manifest(tmp_path):
+def _fake_site(tmp_path):
+    (tmp_path / "sw.js").write_text("// Build: __BUILD__\n", encoding="utf-8")
     (tmp_path / "sw-core.js").write_text("export const BUILD = '__BUILD__';\n", encoding="utf-8")
     (tmp_path / "manifest.webmanifest").write_text('{"version": "__BUILD__"}', encoding="utf-8")
+
+
+def test_stamp_site_replaces_placeholder_in_sw_core_and_manifest(tmp_path):
+    _fake_site(tmp_path)
     stamp.stamp_site(tmp_path, "4/1.24.0 (abc)")
+    assert (tmp_path / "sw.js").read_text(encoding="utf-8") == "// Build: 4/1.24.0 (abc)\n"
     assert "'4/1.24.0 (abc)'" in (tmp_path / "sw-core.js").read_text(encoding="utf-8")
     assert json.loads((tmp_path / "manifest.webmanifest").read_text(encoding="utf-8"))["version"] == "4/1.24.0 (abc)"
 
 
 def test_stamp_site_fails_when_placeholder_missing(tmp_path):
+    _fake_site(tmp_path)
     (tmp_path / "sw-core.js").write_text("nothing", encoding="utf-8")
-    (tmp_path / "manifest.webmanifest").write_text('{"version": "__BUILD__"}', encoding="utf-8")
+    with pytest.raises(SystemExit):
+        stamp.stamp_site(tmp_path, "x")
+
+
+def test_stamp_site_fails_when_placeholder_missing_in_sw_js(tmp_path):
+    _fake_site(tmp_path)
+    (tmp_path / "sw.js").write_text("// nothing", encoding="utf-8")
     with pytest.raises(SystemExit):
         stamp.stamp_site(tmp_path, "x")

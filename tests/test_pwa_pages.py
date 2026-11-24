@@ -12,9 +12,16 @@ WORKFLOW = (ROOT / ".github" / "workflows" / "pages.yml").read_text(encoding="ut
 def test_the_build_placeholder_is_replaced_by_the_workflow():
     core = (ROOT / "pwa" / "sw-core.js").read_text(encoding="utf-8")
     assert core.count("__BUILD__") == 1
+    main = (ROOT / "pwa" / "sw.js").read_text(encoding="utf-8")
+    assert main.count("__BUILD__") == 1, "sw.js muss sich bei jedem Deploy ändern (Chrome startet sonst keinen neuen Worker)"
     assert "scripts/pwa_stamp.py _site" in WORKFLOW
     assert "fetch-depth: 0" in WORKFLOW, "die Zählung seit dem letzten Release braucht die ganze Historie"
     assert re.search(r'grep -rq "__BUILD__" _site', WORKFLOW), "der Workflow muss prüfen, dass der Platzhalter ersetzt wurde"
+
+
+def test_the_page_registers_the_worker_past_the_http_cache():
+    app = (ROOT / "pwa" / "app.js").read_text(encoding="utf-8")
+    assert re.search(r"register\('\./sw\.js',\s*\{[^}]*updateViaCache:\s*'none'", app)
 
 
 def test_only_runtime_files_are_published():
