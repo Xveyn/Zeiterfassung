@@ -30,6 +30,13 @@ def test_entry_chosen_deleted_candidate():
     assert _entry_chosen(_cand(slots=[], deleted=True)) == {"slots": [], "deleted": True}
 
 
+def test_entry_chosen_carries_the_notes_of_the_card():
+    slots = [{"start": "08:00", "end": "12:00", "pause": 0, "kategorie": "A"}]
+    cand = {**_cand(slots=slots), "notes": {"08:00": "Kunde Mustermann"}}
+    assert _entry_chosen(cand) == {"slots": slots, "deleted": False,
+                                   "notes": {"08:00": "Kunde Mustermann"}}
+
+
 # --- Doppel-Resolve-Guard (Follow-up #134 / Audit H3) -----------------------
 # Seit #122 sind die A/B-Buttons nur noch OPTISCH disabled — der command feuert
 # weiter. Gegen einen zweiten Klick auf den bereits aufgelösten Konflikt schützt

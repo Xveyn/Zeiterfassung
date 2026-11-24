@@ -14,6 +14,7 @@ import datetime
 from dataclasses import dataclass
 from typing import Any
 
+from src import slot_notes
 from src.devices import sanitize_device_name, short_device_id
 from src.slot_order import MODE_LABELS, sorted_slots
 from src.time_utils import (
@@ -25,6 +26,7 @@ OTHER_TITLE = "Anderes Gerät"
 NO_CATEGORY = "ohne Kategorie"
 DELETED_TEXT = "Gelöscht"
 EMPTY_TEXT = "(leer)"
+NO_NOTE = "keine Notiz"
 
 # Klartext statt Schlüssel. Jeder Eintrag aus `settings.SYNCED_SETTING_KEYS`
 # braucht eine Beschriftung (ein Test hält das fest); unbekannte Schlüssel
@@ -64,6 +66,8 @@ class SlotView:
     end: Field
     category: Field
     pause: Field
+    # `None`: an dieser Position hat keine der beiden Karten eine Notiz.
+    note: Field | None = None
 
 
 @dataclass(frozen=True)
@@ -169,17 +173,49 @@ def _slots_of(cand: dict[str, Any]) -> list[Any]:
     return sorted_slots(slots) if isinstance(slots, list) else []
 
 
+def _note_for(slot: Any, notes: dict[str, str]) -> str | None:
+    start = _as_dict(slot).get("start")
+    return notes.get(start) if isinstance(start, str) else None
+
+
+def _note_field(own: str | None, theirs: str | None, other_has_slot: bool) -> Field | None:
+    if own is None and theirs is None:
+        return None
+    return Field(own or NO_NOTE, not other_has_slot or own != theirs)
+
+
 def _slot_views(mine: dict[str, Any], other: dict[str, Any]) -> tuple[SlotView, ...]:
+    """Verglichen wird Slot gegen Slot an derselben Position der sortierten Listen;
+    die Notiz eines Slots steht in `notes` des Kandidaten unter seinem `start`."""
     other_slots = [] if other.get("deleted") else _slots_of(other)
+    own_notes = slot_notes.notes_of(mine)
+    other_notes = slot_notes.notes_of(other)
     views = []
     for pos, slot in enumerate(_slots_of(mine)):
         own = _slot_fields(slot)
-        theirs = _slot_fields(other_slots[pos]) if pos < len(other_slots) else None
+        has_theirs = pos < len(other_slots)
+        theirs = _slot_fields(other_slots[pos]) if has_theirs else None
         flags = [theirs is None or own[i] != theirs[i] for i in range(4)]
+        their_note = _note_for(other_slots[pos], other_notes) if has_theirs else None
         views.append(SlotView(
             Field(own[0], flags[0]), Field(own[1], flags[1]),
-            Field(own[2], flags[2]), Field(own[3], flags[3])))
+            Field(own[2], flags[2]), Field(own[3], flags[3]),
+            _note_field(_note_for(slot, own_notes), their_note, has_theirs)))
     return tuple(views)
+
+
+def entry_choice(cand: dict[str, Any]) -> dict[str, Any]:
+    """Der Wert für `sync.resolve_conflict` aus einer gewählten Eintrags-Karte.
+
+    Trägt der Kandidat den Schlüssel `notes`, gehen seine Notizen mit: sonst nähme
+    `resolve_conflict` bei gleichen Slots die Notizen des jüngeren Kandidaten, auch
+    wenn die ältere Karte gewählt wurde. Ohne Schlüssel leitet `resolve_conflict` ab.
+    """
+    choice: dict[str, Any] = {"slots": cand.get("slots", []),
+                              "deleted": cand.get("deleted", False)}
+    if not choice["deleted"] and slot_notes.has_key(cand):
+        choice["notes"] = slot_notes.notes_of(cand)
+    return choice
 
 
 def _known_name(device_id: Any, registry: Any) -> str:

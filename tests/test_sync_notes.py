@@ -714,3 +714,20 @@ def test_two_old_resolutions_of_a_noted_day_with_the_same_stamp_are_idempotent()
             again = merge(ab, ab, T1)
             assert again["entries"] == ab["entries"]
             assert merge(again, again, T1)["entries"] == ab["entries"]
+
+
+def test_resolving_with_the_older_card_keeps_its_notes(tmp_path):
+    """Gleiche Slots, verschiedene Notizen: die gewählte (ältere) Karte bestimmt die Notiz,
+    nicht der jüngere Kandidat."""
+    from src import conflict_view
+    storage, settings, conflicts = _stores(tmp_path)
+    older = _entry(T1, "A", notes={"08:00": "Alt"})
+    younger = _entry(T2, "B", notes={"08:00": "Neu"})
+    storage.save(DAY, [{**_slot(), "notiz": "Neu"}])
+    conflicts.save_all([_open_conflict(older, younger)])
+
+    sync.resolve_conflict("c1", conflict_view.entry_choice(older), conflicts, storage,
+                          settings, device_id="A")
+
+    assert storage.get(DAY)["slots"][0]["notiz"] == "Alt"
+    assert conflicts.get_all()[0]["resolution"]["notes"] == {"08:00": "Alt"}
