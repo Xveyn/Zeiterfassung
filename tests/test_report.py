@@ -1,7 +1,15 @@
 import datetime
 from unittest.mock import patch, MagicMock
 
-from src.report import HTML_STYLE, _build_category_summary, _note_rows, generate_report
+from src.report import (
+    HTML_STYLE,
+    PDF_STYLE,
+    _build_category_summary,
+    _has_long_token,
+    _note_rows,
+    _week_block,
+    generate_report,
+)
 
 
 def _e(start, end, pause=0, kategorie=""):
@@ -839,3 +847,52 @@ def test_uncategorised_with_notes_gets_a_table_only_with_flag():
     assert _build_category_summary(entries, HTML_STYLE) == ""
     html = _build_category_summary(entries, HTML_STYLE, note_breakdown=True)
     assert "(ohne Kategorie)" in html and "Kunde Adam" in html and "(ohne Notiz)" in html
+
+
+# --- Lange Wörter im PDF (xhtml2pdf bricht ein Wort nicht um, das breiter als die Zelle ist) -------------
+
+WRAP = "-pdf-word-wrap:CJK;"
+LONG = "AB-2026-11-000123-MONTAGE-NORD"   # 30 Zeichen ohne Leerzeichen
+
+
+def _block(slot, style):
+    html, _ = _week_block(2026, 45, [("2026-11-02", {"slots": [slot]})], style)
+    return html
+
+
+def test_has_long_token_counts_code_points_per_word():
+    assert _has_long_token("x" * 25)
+    assert not _has_long_token("x" * 24)
+    assert not _has_long_token("Kunde Müller und noch ein paar kurze Wörter")
+    assert _has_long_token("kurz " + "ü" * 25)
+
+
+def test_long_note_wraps_in_pdf_only():
+    slot = {"start": "08:00", "end": "12:00", "pause": 0, "kategorie": "Montage", "notiz": LONG}
+    assert WRAP in _block(slot, PDF_STYLE)
+    assert "-pdf-word-wrap" not in _block(slot, HTML_STYLE)
+
+
+def test_note_of_short_words_does_not_wrap():
+    slot = {"start": "08:00", "end": "12:00", "pause": 0, "kategorie": "Montage",
+            "notiz": "Kunde Müller, Hauptstraße 12, zweiter Stock links"}
+    assert "-pdf-word-wrap" not in _block(slot, PDF_STYLE)
+
+
+def test_row_without_note_keeps_its_bytes_even_with_a_long_category():
+    slot = {"start": "08:00", "end": "12:00", "pause": 0, "kategorie": LONG}
+    assert "-pdf-word-wrap" not in _block(slot, PDF_STYLE)
+
+
+def test_long_sub_row_label_wraps_in_pdf_only():
+    entries = {"2026-11-02": _day(("08:00", "12:00", 0, "Montage", LONG))}
+    pdf = _build_category_summary(entries, PDF_STYLE, note_breakdown=True)
+    sub = next(row for row in pdf.split("<tr") if LONG in row)
+    assert WRAP in sub
+    assert pdf.count(WRAP) == 1
+    assert "-pdf-word-wrap" not in _build_category_summary(entries, HTML_STYLE, note_breakdown=True)
+
+
+def test_long_category_row_in_summary_does_not_wrap():
+    entries = {"2026-11-02": _day(("08:00", "12:00", 0, LONG, "kurz"))}
+    assert "-pdf-word-wrap" not in _build_category_summary(entries, PDF_STYLE, note_breakdown=False)

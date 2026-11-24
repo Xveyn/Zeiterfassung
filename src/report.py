@@ -66,6 +66,7 @@ HTML_STYLE = {
     "footnote":    "margin:6px 0 0 0;color:#94a3b8;font-size:12px;line-height:1.4;",
     "c_sub":       "color:#94a3b8;padding-left:32px;",
     "c_sub_hours": "color:#cbd5e1;",
+    "wrap_long":   "",
 }
 
 PDF_STYLE = {
@@ -93,7 +94,20 @@ PDF_STYLE = {
     "footnote":    "margin:6px 0 0 0;color:#475569;font-size:10px;line-height:1.4;",
     "c_sub":       "color:#4b5563;padding-left:28px;",
     "c_sub_hours": "color:#4b5563;",
+    "wrap_long":   "-pdf-word-wrap:CJK;",
 }
+
+
+# xhtml2pdf bricht kein Wort um, das breiter als seine Zelle ist: es läuft über die Nachbarspalten,
+# 200 Zeichen am Stück aus der Seite. `-pdf-word-wrap:CJK` lässt es zwischen beliebigen Zeichen
+# umbrechen. Gesetzt nur, wo ein Wort länger als `LONG_TOKEN` ist — die Kategorie-Spalte (25 %)
+# fasst rund 28 Zeichen —, damit Zellen ohne solches Wort wie bisher umbrechen.
+LONG_TOKEN = 24
+
+
+def _has_long_token(text: str) -> bool:
+    """Ob `text` ein Wort (durch Leerraum getrennt) mit mehr als `LONG_TOKEN` Code Points enthält."""
+    return any(len(word) > LONG_TOKEN for word in text.split())
 
 
 def _slot_hours(slot: dict[str, Any]) -> float:
@@ -221,11 +235,15 @@ def _week_block(iso_year: int, iso_week: int, week_entries: WeekEntries,
             week_minutes += minutes
             date_cell = day_fmt if sidx == 0 else ""
             day_cell = weekday if sidx == 0 else ""
+            note = slot_notes.clean_note(slot.get("notiz", ""))
+            label = slot_notes.label(slot.get("kategorie") or "", note)
+            # Nur Zeilen mit Notiz: eine Zeile ohne bleibt bytegleich, auch mit langer Kategorie.
+            wrap = s["wrap_long"] if note and _has_long_token(label) else ""
             rows.append(
                 f"<tr style='{row_bg}'>"
                 f"<td style='{td}{cw[0]}{s['c_date']}'>{date_cell}</td>"
                 f"<td style='{td}{cw[1]}{s['c_day']}'>{day_cell}</td>"
-                f"<td style='{td}{cw[2]}{s['c_kat']}'>{_esc(slot_notes.label(slot.get('kategorie') or '', slot.get('notiz', '')))}</td>"
+                f"<td style='{td}{cw[2]}{s['c_kat']}{wrap}'>{_esc(label)}</td>"
                 f"<td style='{td}{cw[3]}{s['c_time']}'>{_esc(slot['start'])}</td>"
                 f"<td style='{td}{cw[4]}{s['c_time']}'>{_esc(slot['end'])}</td>"
                 f"<td style='{td}{cw[5]}{s['c_hours']}'>{hours}h</td>"
@@ -384,9 +402,10 @@ def _build_category_summary(range_entries: dict[str, Any],
             f"</tr>"
         )
         for sub_label, sub_minutes in note_rows.get(kat, []):
+            wrap = s["wrap_long"] if _has_long_token(sub_label) else ""
             rows.append(
                 f"<tr style='{row_bg}'>"
-                f"<td style='{td}{s['c_sub']}'>{_esc(sub_label)}</td>"
+                f"<td style='{td}{s['c_sub']}{wrap}'>{_esc(sub_label)}</td>"
                 f"<td style='{td}{s['c_sub_hours']}'>{_minutes_as_hours(sub_minutes)}h</td>"
                 f"</tr>"
             )
