@@ -9,6 +9,7 @@ from src.dialogs.slot_rows import (
 )
 from src.holidays_de import get_holidays
 from src.settings import WEEKDAY_KEYS, parse_reminder_minutes
+from src.slot_notes import MAX_NOTE_LEN, NoteError, check_note, suggestions
 from src.slot_order import normalize_mode, sorted_slots
 from src.theme import (
     BG, CELL_BG, FONT, FONT_BOLD, FONT_SMALL,
@@ -30,7 +31,7 @@ from src.weekly_limit import check_week_limit
 # re-exportiert: sie gehören zur Oberfläche dieses Moduls und werden von
 # `tests/test_entry_dialog.py` sowie unten in `save_all` genutzt.
 __all__ = [
-    "NO_CATEGORY_LABEL", "OVERRIDE_MARKER", "category_choices",
+    "NOTE_ERROR", "NO_CATEGORY_LABEL", "OVERRIDE_MARKER", "category_choices",
     "category_from_display", "category_to_display", "slot_category_display",
     "open_entry_dialog", "plan_entry_save", "reminder_block_visible",
     "reminder_slot_labels", "apply_reminder_to_slots",
@@ -69,6 +70,9 @@ def ist_prefill_pause(reservation_slot, default_pause):
     return pause if pause > 0 else default_pause
 
 
+NOTE_ERROR = f"Notiz: höchstens {MAX_NOTE_LEN} Zeichen, ohne Zeilenumbruch oder Steuerzeichen."
+
+
 def plan_entry_save(ist_slots, res_slots, show_reservation):
     """Entscheidungslogik für den einen kombinierten Speichern-Button im
     Tages-Dialog: validiert Ist-Zeit- und (falls sichtbar) Reservierungs-
@@ -79,9 +83,17 @@ def plan_entry_save(ist_slots, res_slots, show_reservation):
 
     Liefert `{"error": str|None, "save_ist": bool, "save_reservation": bool}`.
     Ein leerer Slot-Block (Block ungenutzt oder nicht sichtbar) wird einfach
-    übersprungen, nicht als Fehler gewertet."""
+    übersprungen, nicht als Fehler gewertet. Die `notiz` der Ist-Slots wird
+    geprüft und in-place getrimmt; ein Slot ohne den Schlüssel bleibt ohne."""
     if ist_slots:
         ok, msg = validate_slots(ist_slots, with_pause=True)
+        if ok:
+            try:
+                for slot in ist_slots:
+                    if "notiz" in slot:
+                        slot["notiz"] = check_note(slot["notiz"])
+            except NoteError:
+                ok, msg = False, NOTE_ERROR
         if not ok:
             return {
                 "error": f"Arbeitszeit: {msg}" if show_reservation else msg,
@@ -209,6 +221,7 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
     )
 
     categories = settings.get("categories") or []
+    all_entries = storage.get_all()  # Quelle der Notiz-Vorschläge
     category_times = settings.get("category_times") or {}
     slot_order = normalize_mode(settings.get("slot_order_mode"))
     default_start = settings.get(f"default_start_{weekday_key}")
@@ -278,13 +291,15 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
         default_pause=default_pause,
         on_rows_changed=refresh_save_state,
         movable=slot_order == "custom",
+        note_suggestions=lambda kat: suggestions(all_entries, kat),
     )
-    ist_rows = ist_list.rows  # Liste von {frame, start, end, pause, kategorie}
+    ist_rows = ist_list.rows  # Liste von {frame, start, end, pause, kategorie, notiz}
 
-    def add_ist_row(start, end, pause, kategorie, removable=True, parent=None):
+    def add_ist_row(start, end, pause, kategorie, notiz="", removable=True,
+                    parent=None):
         # parent nur für die Breiten-Probe unten (ungepackter Holder) — sonst
         # landet die Zeile im sichtbaren Ist-Zeit-Block.
-        ist_list.add(start, end, kategorie, pause=pause,
+        ist_list.add(start, end, kategorie, pause=pause, notiz=notiz,
                      removable=removable, parent=parent)
 
     # Vorbelegung: vorhandene Ist-Slots → bestehende Reservierung (erste Slot-
@@ -293,7 +308,8 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
     if entry and entry["slots"]:
         for s in sorted_slots(entry["slots"], slot_order):
             add_ist_row(s["start"], s["end"], s.get("pause", 0),
-                        s.get("kategorie", ""), removable=False)
+                        s.get("kategorie", ""), s.get("notiz", ""),
+                        removable=False)
     elif existing_reservation and existing_reservation["slots"]:
         # Vorschlag aus der Reservierung (noch nicht als Ist-Zeit gespeichert)
         # → entfernbar. Kategorie wird mitvorgeschlagen (suggest_ist_category:
@@ -478,12 +494,14 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
         # ein später angelegter früherer Slot landet nicht hinter den
         # vorhandenen. Reservierungen bleiben in
         # Zeilenreihenfolge — `ReservationStore.save` übernimmt die
-        # `gcal_event_id` positionsweise.
+        # `gcal_event_id` positionsweise. `notiz` steht an jedem Ist-Slot, auch
+        # leer: ohne den Schlüssel erbte `Storage.save` die alte Notiz.
         ist_slots = sorted_slots([{
             "start": r["start"].get(),
             "end": r["end"].get(),
             "pause": int(r["pause"].get() or 0),
             "kategorie": category_from_display(r["kategorie"].get()),
+            "notiz": r["notiz"].get(),
         } for r in ist_rows], slot_order)
         res_slots = [{
             "start": r["start"].get(),

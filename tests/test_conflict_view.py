@@ -229,3 +229,99 @@ def test_slot_order_setting_is_shown_with_its_label():
     assert cv.SETTING_LABELS["slot_order_mode"] == "Reihenfolge der Slots"
     assert cv.format_setting_value("slot_order_mode", "category") == "Nach Kategorie"
     assert cv.format_setting_value("slot_order_mode", "chrono") == "Nach Uhrzeit"
+
+
+# --- Notizen -----------------------------------------------------------------
+
+def _note_cand(device, stamp, note=None, key=True):
+    cand = {"device_id": device, "modified_at": stamp, "deleted": False,
+            "slots": [{"start": "08:00", "end": "12:00", "pause": 0, "kategorie": "Montage"}]}
+    if key:
+        cand["notes"] = {"08:00": note} if note else {}
+    return cand
+
+
+def _note_cards(a, b):
+    conflict = {"kind": "entry", "key": "2026-11-03", "candidates": [a, b]}
+    return cv.build_cards(conflict, {}, "dev-a")
+
+
+def test_note_differs_is_marked_on_both_cards():
+    own, other = _note_cards(_note_cand("dev-a", "2026-11-03T10:00:00Z", "Kunde Mustermann"),
+                             _note_cand("dev-b", "2026-11-03T11:00:00Z", "Kunde Müller"))
+    assert own.slots[0].note == cv.Field("Kunde Mustermann", True)
+    assert other.slots[0].note == cv.Field("Kunde Müller", True)
+    assert own.slots[0].category == cv.Field("Montage", False)
+
+
+def test_keyless_card_shows_the_note_it_inherits():
+    own, other = _note_cards(_note_cand("dev-a", "2026-11-03T10:00:00Z", "Kunde Mustermann"),
+                             _note_cand("dev-b", "2026-11-03T11:00:00Z", None, key=False))
+    assert own.slots[0].note == cv.Field("Kunde Mustermann", False)
+    assert other.slots[0].note == cv.Field("Kunde Mustermann", False)
+
+
+def test_keyless_card_inherits_nothing_at_another_start():
+    keyless = _note_cand("dev-b", "2026-11-03T11:00:00Z", None, key=False)
+    keyless["slots"] = [{"start": "09:00", "end": "12:00", "pause": 0, "kategorie": "Montage"}]
+    own, other = _note_cards(_note_cand("dev-a", "2026-11-03T10:00:00Z", "Kunde Mustermann"),
+                             keyless)
+    assert other.slots[0].note == cv.Field(cv.NO_NOTE, True)
+    assert own.slots[0].note == cv.Field("Kunde Mustermann", True)
+
+
+def test_keyless_card_against_empty_notes_has_no_note():
+    own, other = _note_cards(_note_cand("dev-a", "2026-11-03T10:00:00Z", None, key=True),
+                             _note_cand("dev-b", "2026-11-03T11:00:00Z", None, key=False))
+    assert own.slots[0].note is None and other.slots[0].note is None
+
+
+def test_keyless_card_against_deleted_card_has_no_note():
+    deleted = {"device_id": "dev-b", "modified_at": "2026-11-03T11:00:00Z", "deleted": True,
+               "slots": [], "notes": {}}
+    own, _other = _note_cards(_note_cand("dev-a", "2026-11-03T10:00:00Z", None, key=False),
+                              deleted)
+    assert own.slots[0].note is None
+
+
+def test_empty_notes_key_against_a_noted_card_reads_keine_notiz():
+    own, other = _note_cards(_note_cand("dev-a", "2026-11-03T10:00:00Z", "Kunde Mustermann"),
+                             _note_cand("dev-b", "2026-11-03T11:00:00Z", None, key=True))
+    assert other.slots[0].note == cv.Field(cv.NO_NOTE, True)
+    assert own.slots[0].note == cv.Field("Kunde Mustermann", True)
+
+
+def test_same_note_is_shown_unmarked():
+    own, other = _note_cards(_note_cand("dev-a", "2026-11-03T10:00:00Z", "Kunde Mustermann"),
+                             _note_cand("dev-b", "2026-11-03T11:00:00Z", "Kunde Mustermann"))
+    assert own.slots[0].note == cv.Field("Kunde Mustermann", False)
+
+
+def test_cards_without_notes_have_no_note_field():
+    own, other = _note_cards(_note_cand("dev-a", "2026-11-03T10:00:00Z", None, key=False),
+                             _note_cand("dev-b", "2026-11-03T11:00:00Z", None, key=False))
+    assert own.slots[0].note is None and other.slots[0].note is None
+
+
+def test_foreign_notes_do_not_raise():
+    cand = _note_cand("dev-a", "2026-11-03T10:00:00Z")
+    cand["notes"] = ["kaputt"]
+    cards = _note_cards(cand, _note_cand("dev-b", "2026-11-03T11:00:00Z", "x"))
+    assert cards[0].slots[0].note == cv.Field(cv.NO_NOTE, True)
+
+
+def test_note_against_missing_slot_on_the_other_card_differs():
+    a = _note_cand("dev-a", "2026-11-03T10:00:00Z", "Kunde Mustermann")
+    b = _note_cand("dev-b", "2026-11-03T11:00:00Z", None, key=False)
+    b["slots"] = []
+    assert _note_cards(a, b)[0].slots[0].note == cv.Field("Kunde Mustermann", True)
+
+
+def test_entry_choice_carries_notes_only_with_key():
+    keyed = _note_cand("dev-a", "2026-11-03T10:00:00Z", "Kunde Mustermann")
+    assert cv.entry_choice(keyed) == {"slots": keyed["slots"], "deleted": False,
+                                      "notes": {"08:00": "Kunde Mustermann"}}
+    plain = _note_cand("dev-a", "2026-11-03T10:00:00Z", None, key=False)
+    assert cv.entry_choice(plain) == {"slots": plain["slots"], "deleted": False}
+    assert cv.entry_choice({"slots": [], "deleted": True, "notes": {}}) == {
+        "slots": [], "deleted": True}

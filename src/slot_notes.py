@@ -17,6 +17,8 @@ from typing import Any
 MAX_NOTE_LEN = 200
 SLOT_KEY = "notiz"
 ENTRY_KEY = "notes"
+SEPARATOR = " · "
+DISPLAY_LIMIT = 60
 
 _STAMP_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 
@@ -70,6 +72,57 @@ def check_note(value: object) -> str:
 def group_key(note: str) -> str:
     """Gruppierungsschlüssel für gleiche Notizen (bewusst `lower`, nicht `casefold`)."""
     return _trim(note).lower()
+
+
+def label(kategorie: object, notiz: object) -> str:
+    """Beschriftung aus Kategorie (unverändert) und Notiz, mit `SEPARATOR`; fehlt eines, nur das andere."""
+    cat = kategorie if isinstance(kategorie, str) else ""
+    return SEPARATOR.join(part for part in (cat, clean_note(notiz)) if part)
+
+
+def shorten(text: str, limit: int = DISPLAY_LIMIT) -> str:
+    """Kürzt auf `limit` Code Points; das Auslassungszeichen zählt mit."""
+    if len(text) <= limit:
+        return text
+    return text[: limit - 1] + "\u2026"
+
+
+def _note_slots(entries: Mapping[str, Any], newest_first: bool) -> list[Mapping[str, Any]]:
+    """Alle Slots als Objekte, Tage nach Datum, je Tag in gespeicherter Reihenfolge."""
+    slots: list[Mapping[str, Any]] = []
+    for day in sorted(entries, reverse=newest_first):
+        entry = entries[day]
+        day_slots = entry.get("slots") if isinstance(entry, Mapping) else None
+        if not isinstance(day_slots, list):
+            continue
+        slots.extend(s for s in day_slots if isinstance(s, Mapping))
+    return slots
+
+
+def suggestions(entries: Mapping[str, Any], kategorie: str, limit: int = 20) -> list[str]:
+    """Bisherige Notizen, je `group_key` einmal: erst die der Kategorie, dann alle übrigen, je
+    neueste zuerst. Die übrigen stehen mit da, weil eine Notiz (ein Kunde, ein Termin) an einem
+    anderen Tag oft unter einer anderen Kategorie wiederkommt."""
+    slots = _note_slots(entries, True)
+    own = [s for s in slots if (s.get("kategorie") or "") == kategorie]
+    rest = [s for s in slots if (s.get("kategorie") or "") != kategorie]
+    seen: set[str] = set()
+    result: list[str] = []
+    for slot in own + rest:
+        note = clean_note(slot.get(SLOT_KEY))
+        key = group_key(note)
+        if not note or key in seen:
+            continue
+        seen.add(key)
+        result.append(note)
+        if len(result) >= limit:
+            break
+    return result
+
+
+def has_notes(entries: Mapping[str, Any]) -> bool:
+    """Wahr, sobald irgendein Slot eine nicht leere Notiz trägt."""
+    return any(clean_note(s.get(SLOT_KEY)) for s in _note_slots(entries, False))
 
 
 def has_key(entry: object) -> bool:

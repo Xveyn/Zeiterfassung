@@ -1052,7 +1052,14 @@ freien Wert wie 37 in der Auswahl mit, statt ihn zu runden; die Ist-Vorbelegung 
 einer Reservierung nimmt deren Pause, wenn > 0 — `ist_prefill_pause`; bei aktivem
 Kalender-Abgleich zeigt der Reservierungs-Block `RESERVATION_CALENDAR_NOTE`, weil der
 Termin die volle Spanne zeigt; `slot_category_display` bekommt für Reservierungen
-weiter `pause=None`, deren Pause setzt kein `*`), `on_value_changed` hängt den Erinnerungs-Block an
+weiter `pause=None`, deren Pause setzt kein `*`; **Notiz** (Xveyn#519): jede Ist-Zeile hat ein
+Notizfeld (`Notiz:`, 24 Zeichen, `SlotRowList(note_suggestions=…)` mit `slot_notes.suggestions`: die Notizen der
+gewählten Kategorie zuerst, dann alle übrigen), die Reservierung keines. `save_all` übergibt `notiz` an **jedem** Ist-Slot, auch
+als `""`: ein Slot ohne den Schlüssel erbt in `Storage.save` die gespeicherte Notiz, Leeren wäre
+unmöglich. `plan_entry_save` prüft über `slot_notes.check_note` und lehnt eine ungültige Notiz
+mit dem Fehlertext `NOTE_ERROR` ab, nichts wird still gekürzt. Tooltip und Lösch-Dialog der Zelle zeigen
+`Kategorie · Notiz`; nur die Notiz wird dabei auf 60 Zeichen gekürzt (`slot_notes.shorten`), die
+Kategorie bleibt ganz, weil beide Anzeigen nicht umbrechen), `on_value_changed` hängt den Erinnerungs-Block an
 Zeit-/Kategorieänderungen. Dort liegen auch die Tk-freien Anzeige-Helfer
 `category_*`/`slot_category_display`, die `entry_dialog` re-exportiert),
 `send_dialog`, `export_dialog` (Zeitraum-Modal → PDF lokal speichern),
@@ -1174,7 +1181,15 @@ Die Zeile ergänzt „Berechtigungen" daneben: die sagt, **welche** Scopes
 gewährt sind, diese, **ob** der Token überhaupt noch trägt.
 Weitere Dialoge: `share_dialog`, `import_dialog`, `category_dialog`,
 `conflicts_dialog`, `scopes_dialog`. `period_picker` ist kein Dialog, sondern der von
-`send_dialog` + `export_dialog` geteilte Zeitraum+Kategorie+Vorschau-Baustein.
+`send_dialog` + `export_dialog` geteilte Zeitraum+Kategorie+Vorschau-Baustein. Er baut den Schalter
+„Nach Notiz aufschlüsseln“ nur, wenn der Bestand mindestens eine Notiz hat (`slot_notes.has_notes`);
+er steht unter „Nach Kategorie aufschlüsseln“ und ist ausgegraut, solange dieses aus ist, weil die
+Unterzeilen an der Kategorie-Tabelle hängen. Senden und Export reichen ihn als `note_breakdown` durch.
+
+`conflicts_dialog` wählt über `conflict_view.entry_choice(cand)` und gibt dabei die Notizen der
+gewählten Karte ausdrücklich an `sync.resolve_conflict`: zwei Stände, die sich nur in der Notiz
+unterscheiden, löste sie sonst immer zum jüngeren auf. Warum die Karte ohne `notes`-Schlüssel die
+erbenden Notizen zeigt: Docstring von `conflict_view._card_notes`.
 
 `share_dialog` wählt den Versandweg (Gmail oder eines der SMTP-Konten) über
 den **Index** der Combobox auf, nicht über den angezeigten Namen — ein Konto

@@ -60,6 +60,8 @@ def apply_combobox_style(dialog):
         # Wert am Rand und das Feld wirkt gequetscht. Über px(), damit es mit
         # der UI-Skalierung mitwächst.
         padding=(px(6), px(4)), arrowsize=px(16),
+        # Cursor im editierbaren Feld: sonst dunkel auf dunklem Grund.
+        insertcolor=ACCENT,
     )
     # background MUSS für readonly explizit gemappt werden — sonst rendert
     # clam den Pfeil-Button (Combobox.downarrow) im System-Default-Hell statt
@@ -166,10 +168,12 @@ def dark_entry(parent, textvariable, width=25, **kw):
     )
 
 
-def dark_combo(parent, textvariable, values, width=8, **kw):
+def dark_combo(parent, textvariable, values, width=8, editable=False, **kw):
+    """Combobox im Dark-Theme; `editable=True` erlaubt Freitext neben der Liste."""
     return ttk.Combobox(
         parent, textvariable=textvariable, values=values,
-        width=width, font=FONT, style="Dark.TCombobox", state="readonly", **kw,
+        width=width, font=FONT, style="Dark.TCombobox",
+        state="normal" if editable else "readonly", **kw,
     )
 
 

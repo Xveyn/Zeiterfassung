@@ -1,12 +1,15 @@
 import datetime
 
+import pytest
+
 from src.dialogs.entry_dialog import (
-    NO_CATEGORY_LABEL, RESERVATION_CALENDAR_NOTE, category_choices,
+    NO_CATEGORY_LABEL, NOTE_ERROR, RESERVATION_CALENDAR_NOTE, category_choices,
     category_from_display, category_to_display, ist_prefill_pause,
     plan_entry_save, reservation_block_visible, reservation_note_visible,
     slot_category_display, suggest_ist_category,
 )
 from src.dialogs.slot_rows import marker_pause, pause_choices
+from src.storage import Storage
 from src.theme import PAUSE_VALUES
 
 
@@ -373,3 +376,54 @@ def test_arrow_states_sperren_nur_die_randpfeile():
     assert arrow_states(0, 3) == (False, True)            # oben: kein ▲
     assert arrow_states(1, 3) == (True, True)
     assert arrow_states(2, 3) == (True, False)            # unten: kein ▼
+
+
+def _ist(notiz=None):
+    slot = {"start": "08:00", "end": "12:00", "pause": 0, "kategorie": "Montage"}
+    if notiz is not None:
+        slot["notiz"] = notiz
+    return slot
+
+
+def test_plan_entry_save_trims_notes_in_place():
+    slots = [_ist("  Kunde Mustermann  ")]
+    plan = plan_entry_save(slots, [], False)
+    assert plan["error"] is None and plan["save_ist"] is True
+    assert slots[0]["notiz"] == "Kunde Mustermann"
+
+
+def test_plan_entry_save_keeps_explicit_empty_note():
+    slots = [_ist("")]
+    assert plan_entry_save(slots, [], False)["error"] is None
+    assert slots[0]["notiz"] == ""            # Schlüssel bleibt: nur so löscht Storage.save die Notiz
+
+
+@pytest.mark.parametrize("bad", ["x" * 201, "a\nb", "a\tb"])
+def test_plan_entry_save_rejects_invalid_note(bad):
+    plan = plan_entry_save([_ist(bad)], [], False)
+    assert plan == {"error": NOTE_ERROR, "save_ist": False, "save_reservation": False}
+
+
+def test_note_error_names_the_note_limit():
+    from src.slot_notes import MAX_NOTE_LEN
+    assert NOTE_ERROR == "Notiz: höchstens 200 Zeichen, ohne Zeilenumbruch oder Steuerzeichen."
+    assert f"höchstens {MAX_NOTE_LEN} Zeichen" in NOTE_ERROR
+
+
+def test_plan_entry_save_note_error_carries_block_prefix():
+    assert plan_entry_save([_ist("x" * 201)], [], True)["error"] == "Arbeitszeit: " + NOTE_ERROR
+
+
+def test_plan_entry_save_without_note_key_is_unchanged():
+    slots = [_ist()]
+    assert plan_entry_save(slots, [], False)["error"] is None
+    assert "notiz" not in slots[0]
+
+
+def test_cleared_note_is_removed_by_storage(tmp_path):
+    storage = Storage(str(tmp_path / "z.json"), device_id="dev")
+    storage.save("2026-11-03", [_ist("Kunde Mustermann")])
+    slots = [_ist("")]
+    assert plan_entry_save(slots, [], False)["error"] is None
+    storage.save("2026-11-03", slots)
+    assert "notiz" not in storage.get("2026-11-03")["slots"][0]

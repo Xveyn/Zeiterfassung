@@ -23,9 +23,8 @@ NONE_FOR_DAY_TEXT = "Kein offener Konflikt mehr für diesen Tag."
 
 
 def _entry_chosen(cand):
-    """Baut den chosen-Wert für sync.resolve_conflict aus einem Entry-Kandidaten:
-    die Slot-Liste + das deleted-Flag (kein Top-Level start/end/pause mehr)."""
-    return {"slots": cand.get("slots", []), "deleted": cand.get("deleted", False)}
+    """Der chosen-Wert für sync.resolve_conflict (s. `conflict_view.entry_choice`)."""
+    return conflict_view.entry_choice(cand)
 
 
 class ConflictsDialog:
@@ -267,6 +266,11 @@ class ConflictsDialog:
         tk.Label(details, text=" · ", font=FONT, bg=CELL_BG,
                  fg=TEXT_MUTED).pack(side="left")
         self._field(details, slot.pause, FONT).pack(side="left")
+        if slot.note is not None:
+            tk.Label(box, text=slot.note.text, font=FONT, bg=CELL_BG,
+                     fg=STATUS_WARN if slot.note.differs else TEXT,
+                     wraplength=px(240), justify="left",
+                     anchor="w").pack(anchor="w")
 
     @staticmethod
     def _field(parent, field, font):

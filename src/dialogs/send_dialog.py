@@ -331,6 +331,7 @@ def open_send_dialog(parent, storage, settings, base_path, runner,
         entries = workweek.filter_for_report(storage.get_all(), settings)
         categories = picker.get_categories()
         category_breakdown = picker.get_category_breakdown()
+        note_breakdown = picker.get_note_breakdown()
 
         # Urlaubs-Snapshot läuft durch denselben Wochentags-Filter wie die
         # Einträge — sonst zählte ein Urlaubs-Samstag mit Stunden im
@@ -384,6 +385,7 @@ def open_send_dialog(parent, storage, settings, base_path, runner,
                 closing=settings.get("mail_closing"),
                 categories=categories,
                 category_breakdown=category_breakdown,
+                note_breakdown=note_breakdown,
                 vacation_days=vacation_days,
                 slot_order=normalize_mode(settings.get("slot_order_mode")),
             )
@@ -408,6 +410,7 @@ def open_send_dialog(parent, storage, settings, base_path, runner,
                 date_from=date_from, date_to=date_to, entries=entries,
                 name=settings.get("name"), categories=categories,
                 category_breakdown=category_breakdown,
+                note_breakdown=note_breakdown,
                 vacation_days=vacation_days,
                 send_mail=send_mail,
                 mail={

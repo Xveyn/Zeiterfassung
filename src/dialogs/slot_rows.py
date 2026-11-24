@@ -44,6 +44,9 @@ OVERRIDE_MARKER = "*"
 # Kategorien-Dialog und springt auf den vorherigen Wert zurück.
 NEW_CATEGORY_LABEL = "＋ Neue Kategorie"
 
+# Breite des Notizfelds der Ist-Zeilen in Zeichen (skaliert mit der Schrift).
+NOTE_WIDTH = 24
+
 
 def category_choices(categories):
     """Werte fürs readonly-Kategorie-Dropdown: '(ohne Kategorie)' zuerst, dann
@@ -131,6 +134,9 @@ class SlotRowList:
     `rows` ist die echte Liste (kein Snapshot) — der Dialog liest sie direkt
     für Vorschau, Erinnerungs-Block und Speichern.
 
+    `note_suggestions(kategorie)` liefert die Vorschläge des Notizfelds; nur
+    mit ihm bekommt eine Zeile ein Notizfeld (Ist-Zeiten), sonst nicht.
+
     Hooks:
       * `on_rows_changed()` — nach jedem Hinzufügen/Entfernen einer Zeile.
       * `on_value_changed()` — optional, zusätzlich bei jeder Änderung von
@@ -142,8 +148,9 @@ class SlotRowList:
     def __init__(self, frame, *, with_pause, categories, category_times,
                  weekday_key, default_start, default_end, default_pause,
                  on_rows_changed, on_value_changed=None, on_new_category=None,
-                 pause_in_marker=True, movable=False):
+                 pause_in_marker=True, movable=False, note_suggestions=None):
         self.rows = []
+        self._note_suggestions = note_suggestions
         # movable: ▲/▼ je Zeile (Modus „Eigene Reihenfolge", #520). Verschieben
         # ändert nur die Reihenfolge der Zeilen, nie ihren Inhalt — gespeicherte
         # Slots bleiben also unlöschbar, wie `removable` es verlangt.
@@ -200,14 +207,37 @@ class SlotRowList:
             for button, enabled in zip(r["arrows"], arrow_states(i, len(self.rows)), strict=True):
                 set_secondary_button_enabled(button, enabled)
 
-    def add(self, start, end, kategorie, *, pause=None, removable=True,
+    @staticmethod
+    def _add_note_field(row, kv, notiz, suggest):
+        """Baut „Notiz:" und das editierbare Feld; liefert dessen Variable."""
+        nv = tk.StringVar(value=notiz)
+        tk.Label(row, text="Notiz:", font=FONT, bg=BG, fg=TEXT_MUTED).pack(
+            side=tk.LEFT, padx=(4, 0))
+        note_combo = dark_combo(row, nv, [], width=NOTE_WIDTH, editable=True)
+        # Vorschläge erst beim Aufklappen: sie hängen an der gerade gewählten
+        # Kategorie. Die Kategorie-Auswahl selbst schreibt nie ins Feld.
+        note_combo.configure(postcommand=lambda: note_combo.configure(
+            values=suggest(category_from_display(kv.get()))))
+        note_combo.pack(side=tk.LEFT, padx=4)
+
+        # Das Mausrad schaltete ttk sonst durch die Vorschläge und überschriebe
+        # getippten Text; Instanz-Binding mit "break" unterdrückt das.
+        def no_wheel(_event):
+            return "break"
+
+        for sequence in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+            note_combo.bind(sequence, no_wheel)
+        return nv
+
+    def add(self, start, end, kategorie, *, pause=None, notiz="", removable=True,
             parent=None, extra=None):
         """Hängt eine Zeile an und liefert ihren Record.
 
         `parent` überschreibt den Ziel-Frame — gebraucht für die Breiten-Probe
         des Dialogs, die eine Zeile in einem nie gepackten Holder misst.
         `extra` ergänzt den Record um blockspezifische Felder (Reservierungen
-        führen dort `send_reminder_minutes` mit).
+        führen dort `send_reminder_minutes` mit). `notiz` belegt das Notizfeld
+        vor, sofern die Liste eines hat.
         """
         row = tk.Frame(parent if parent is not None else self._frame, bg=BG)
         row.pack(fill="x", pady=3)
@@ -280,6 +310,9 @@ class SlotRowList:
                   "combo": cat_combo}
         if pv is not None:
             record["pause"] = pv
+        suggest = self._note_suggestions
+        if suggest is not None:
+            record["notiz"] = self._add_note_field(row, kv, notiz, suggest)
         if extra:
             record.update(extra)
 

@@ -780,6 +780,11 @@ daraus folgt, ist in einer gemischten Flotte nicht ganz zu schließen.
   (s. „Last-Write-Wins hängt an den Geräte-Uhren“).
 - **Eine alte Version löst einen Konflikt, dessen Stände sich nur in der Notiz unterscheiden:** sie
   sieht zwei gleiche Karten, es gilt der jüngere Stand.
+- **Ein Konflikt zwischen zwei alten Ständen zeigt keine Notiz.** Tragen beide Stände eines Tages den
+  Schlüssel `notes` nicht (beide von einer älteren Version geschrieben), zeigen die Karten im
+  Konfliktdialog keine Notiz. Hat der Tag auf diesem Gerät eine Notiz zur selben Startzeit, bleibt sie
+  beim Auflösen trotzdem erhalten; die Karte zeigt sie nur nicht. Das ist hinnehmbar: es geht keine
+  Notiz verloren, und der Fall braucht zwei Schreiber in einer älteren Version.
 - **Geteilte Arbeitszeiten kommen ohne Notizen an.** Die Teilen-Datei bleibt bewusst bei den vier
   Slot-Feldern (v3).
 - **Eine Auflösung kann von einem alten Schreiber überholt werden.** Schreibt ein Gerät in der alten

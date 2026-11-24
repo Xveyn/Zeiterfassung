@@ -2,11 +2,12 @@ import calendar
 import datetime
 import tkinter as tk
 
-from src import workweek
+from src import slot_notes, workweek
 from src.dialogs.date_row import build_date_row
 from src.report import filter_categories, filter_period, total_hours
 from src.vacations import cap_by_worktime, cap_notice
-from src.theme import BG, CELL_BG, FONT, FONT_SMALL, TEXT, TEXT_MUTED, px
+from src.theme import (BG, CELL_BG, FONT, FONT_SMALL, TEXT, TEXT_MUTED,
+                       px, set_enabled)
 
 
 def vacation_preview(date_from, date_to, all_entries, categories,
@@ -26,6 +27,11 @@ def vacation_preview(date_from, date_to, all_entries, categories,
     in_range = filter_period(date_from, date_to, vacation_days) or {}
     capped, hits = cap_by_worktime(in_range, ranged)
     return sum(capped.values()), cap_notice(hits)
+
+
+def note_breakdown_active(category_on, note_on):
+    """Die Aufschlüsselung nach Notiz wirkt nur zusammen mit der nach Kategorie."""
+    return bool(category_on and note_on)
 
 
 def selected_category_filter(selected_map):
@@ -56,12 +62,13 @@ class _PeriodPickerHandle:
     Tk-Vars kennt."""
 
     def __init__(self, from_vars, to_vars, category_vars, breakdown_var,
-                vacation_var=None):
+                vacation_var=None, note_var=None):
         self._from = from_vars        # (day_var, month_var, year_var)
         self._to = to_vars            # (day_var, month_var, year_var)
         self._cats = category_vars    # {kategorie: BooleanVar}
         self._breakdown = breakdown_var  # BooleanVar
         self._vacation = vacation_var    # BooleanVar oder None
+        self._note = note_var            # BooleanVar oder None
 
     def get_range(self):
         try:
@@ -79,6 +86,13 @@ class _PeriodPickerHandle:
     def get_category_breakdown(self):
         """True = "Summe je Kategorie"-Tabelle in den Bericht aufnehmen."""
         return bool(self._breakdown.get())
+
+    def get_note_breakdown(self):
+        """True = Aufschlüsselung je Notiz. False, wenn der Schalter nicht
+        gebaut wurde oder "Nach Kategorie aufschlüsseln" aus ist."""
+        if self._note is None:
+            return False
+        return note_breakdown_active(self._breakdown.get(), self._note.get())
 
     def get_show_vacation(self):
         """True = Urlaubs-Block in den Bericht aufnehmen. False, wenn der
@@ -165,10 +179,32 @@ def build_period_picker(parent, storage, settings, on_change=None,
     breakdown_var = tk.BooleanVar(value=False)
     tk.Checkbutton(
         frame, text="Nach Kategorie aufschlüsseln", variable=breakdown_var,
+        command=lambda: _breakdown_toggled(),
         font=FONT, bg=BG, fg=TEXT, selectcolor=CELL_BG,
         activebackground=BG, activeforeground=TEXT,
         highlightthickness=0, bd=0, anchor="w",
     ).grid(row=3, column=0, columnspan=6, padx=10, pady=(0, 4), sticky="w")
+
+    # Unterschalter: je Notiz aufschlüsseln. Nur gebaut, wenn der Bestand
+    # überhaupt Notizen trägt; ausgegraut, solange die Kategorie-Aufschlüsselung
+    # aus ist (der Wert bleibt dabei erhalten).
+    note_var = None
+    note_check = None
+    if slot_notes.has_notes(all_entries):
+        note_var = tk.BooleanVar(value=False)
+        note_check = tk.Checkbutton(
+            frame, text="Nach Notiz aufschlüsseln", variable=note_var,
+            font=FONT, bg=BG, fg=TEXT, selectcolor=CELL_BG,
+            activebackground=BG, activeforeground=TEXT,
+            highlightthickness=0, bd=0, anchor="w",
+        )
+        note_check.grid(row=4, column=0, columnspan=6, padx=(30, 10),
+                        pady=(0, 4), sticky="w")
+        set_enabled(note_check, False)
+
+    def _breakdown_toggled():
+        if note_check is not None:
+            set_enabled(note_check, bool(breakdown_var.get()))
 
     # Schalter: Urlaub im Bericht ausweisen. Wird NUR gebaut, wenn überhaupt
     # Urlaub existiert — ein Schalter für ein ungenutztes Feature ist Rauschen.
@@ -189,20 +225,21 @@ def build_period_picker(parent, storage, settings, on_change=None,
             font=FONT, bg=BG, fg=TEXT, selectcolor=CELL_BG,
             activebackground=BG, activeforeground=TEXT,
             highlightthickness=0, bd=0, anchor="w",
-        ).grid(row=4, column=0, columnspan=6, padx=10, pady=(0, 4), sticky="w")
+        ).grid(row=5, column=0, columnspan=6, padx=10, pady=(0, 4), sticky="w")
 
     handle = _PeriodPickerHandle(
-        from_vars, to_vars, category_vars, breakdown_var, vacation_var)
+        from_vars, to_vars, category_vars, breakdown_var, vacation_var,
+        note_var)
 
     # Live-Vorschau (Gesamtstunden über den Build-Zeit-Snapshot all_entries).
     total_label = tk.Label(frame, text="", font=FONT, bg=BG, fg=TEXT)
-    total_label.grid(row=5, column=0, columnspan=6, padx=10, pady=(0, 8), sticky="w")
+    total_label.grid(row=6, column=0, columnspan=6, padx=10, pady=(0, 8), sticky="w")
 
     # Gedämpfte Hinweiszeile: nur im Nur-Werktage-Modus und nur, wenn im
     # gewählten Zeitraum tatsächlich Wochenend-Einträge liegen. Ohne sie
     # verlöre jemand mit Alt-Daten stillschweigend Stunden aus dem Bericht.
     weekend_hint = tk.Label(frame, text="", font=FONT_SMALL, bg=BG, fg=TEXT_MUTED)
-    weekend_hint.grid(row=6, column=0, columnspan=6, padx=10, pady=(0, 8), sticky="w")
+    weekend_hint.grid(row=7, column=0, columnspan=6, padx=10, pady=(0, 8), sticky="w")
     weekend_hint.grid_remove()  # startet unsichtbar; ein leeres Label würde trotzdem eine Zeile beanspruchen
 
     # Zweite gedämpfte Hinweiszeile, gleiche Machart: sie erscheint nur, wenn
@@ -211,7 +248,7 @@ def build_period_picker(parent, storage, settings, on_change=None,
     # und die Vorschau wiche unerklärt vom Urlaubs-Dialog ab.
     vacation_hint = tk.Label(frame, text="", font=FONT_SMALL, bg=BG,
                              fg=TEXT_MUTED, wraplength=px(460), justify="left")
-    vacation_hint.grid(row=7, column=0, columnspan=6, padx=10, pady=(0, 8), sticky="w")
+    vacation_hint.grid(row=8, column=0, columnspan=6, padx=10, pady=(0, 8), sticky="w")
     vacation_hint.grid_remove()
 
     def _update_total(*_):

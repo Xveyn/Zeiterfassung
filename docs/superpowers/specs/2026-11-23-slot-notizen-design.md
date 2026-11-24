@@ -298,9 +298,11 @@ importierter Tag behält deshalb die Notizen der Slots, deren Startzeit bleibt.
 ## Desktop-Oberfläche
 
 - **Tages-Dialog, Ist-Block:** jede Zeile bekommt hinter der Kategorie ein
-  Notizfeld (Breite in Zeichen, nicht in Pixeln). Es schlägt die Notizen vor, die
-  mit der gewählten Kategorie schon benutzt wurden (neueste zuerst, höchstens 20,
-  je Gruppierschlüssel einmal), freier Text bleibt möglich. Der
+  Notizfeld (Breite in Zeichen, nicht in Pixeln). Es schlägt die schon benutzten
+  Notizen vor: zuerst die der gewählten Kategorie, danach alle übrigen, je neueste
+  zuerst, zusammen höchstens 20, je Gruppierschlüssel einmal (eine Notiz wie ein
+  Kunde oder Termin kommt an einem anderen Tag oft unter einer anderen Kategorie
+  wieder); freier Text bleibt möglich. Der
   Reservierungs-Block bekommt kein Feld. Die Kategorie-Auswahl verändert die
   Notiz nicht (das wäre Etappe 2).
 - **Tooltip und Löschen-Dialog:** `08:00-12:00  Montage · Kunde Mustermann`.
@@ -444,9 +446,22 @@ ein Minor.
 3. Webhook nennt `notiz` nur, wenn nicht leer; die lokale API immer.
 4. Teilen ohne Notizen.
 5. Grenzen: einzeilig, 200 Zeichen.
-6. Vorschläge im Eingabefeld aus bereits benutzten Notizen der Kategorie.
+6. Vorschläge im Eingabefeld aus bereits benutzten Notizen, die der Kategorie zuerst.
 7. Auswertungen der lokalen API und Reservierungen bleiben ohne Notiz.
 8. Der Schlüssel `notes` wird nur an Tagen geschrieben, die Notizen haben oder
    hatten. Tage ohne Notiz bleiben im Format unverändert.
 9. Eine Auflösung ohne Notizen erbt vom gewählten Kandidaten; die Rückkehr einer
    gelöschten Notiz in der Drei-Geräte-Reihenfolge ist als Grenze akzeptiert.
+10. Das Notizfeld im Tages-Dialog trägt die gedämpfte Beschriftung „Notiz:“ davor
+    (ein leeres Feld ohne Beschriftung erklärt sich nicht) und ist 24 Zeichen breit.
+    Eine ungültige Eingabe (über 200 Zeichen, Zeilenumbruch, Steuerzeichen) meldet der
+    Dialog beim Speichern mit einem Satz und speichert nichts; gekürzt wird nie still.
+11. Tooltip und Löschen-Dialog kürzen die Notiz auf 60 Zeichen mit „…“ (beide
+    brechen nicht um); Konfliktdialog und Bericht zeigen sie ganz.
+12. „Nach Notiz aufschlüsseln“ wird nur gebaut, wenn der Bestand überhaupt eine Notiz
+    hat (wie „Urlaub ausweisen“): wer keine Notizen benutzt, sieht den Dialog unverändert.
+13. Der Konfliktdialog übergibt beim Auflösen die Notizen der gewählten Karte
+    ausdrücklich. Ohne das gälte bei zwei Ständen, die sich nur in der Notiz
+    unterscheiden, immer der jüngere, auch wenn der Nutzer den älteren wählt.
+    Eine Karte, deren Stand den Schlüssel `notes` nicht trägt (alte Version), zeigt die
+    Notizen, die sie beim Auflösen erbt: die der anderen Karte an gleicher Startzeit.

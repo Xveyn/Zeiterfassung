@@ -1,4 +1,5 @@
-from src.ui import _delete_action
+from src.grid_renderer import GridRenderer
+from src.ui import _delete_action, _delete_options
 
 
 def test_delete_action_none_when_type_not_selected():
@@ -67,3 +68,11 @@ def test_delete_options_folgen_dem_slot_modus_mit_gespeichertem_index():
         ("entry:1", "A  Alpha"), ("entry:0", "A  Zeta")]
     assert _delete_options(slots[::-1], "entry", "A", fmt, "custom") == [
         ("entry:0", "A  Alpha"), ("entry:1", "A  Zeta")]
+
+
+def test_delete_options_show_notes_and_keep_them():
+    slots = [{"start": "08:00", "end": "12:00", "pause": 0, "kategorie": "Montage", "notiz": "Kunde Mustermann"},
+             {"start": "13:00", "end": "17:00", "pause": 0, "kategorie": "Büro"}]
+    options = _delete_options(slots, "entry", "Arbeitszeit", GridRenderer._fmt_slot_line)
+    assert options[0] == ("entry:0", "Arbeitszeit  08:00-12:00  Montage · Kunde Mustermann")
+    assert _delete_action(slots, {"entry:1"}, "entry") == ("save", [slots[0]])

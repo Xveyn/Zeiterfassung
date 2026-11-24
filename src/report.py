@@ -7,6 +7,7 @@ import io
 from collections import OrderedDict
 from typing import Any, Collection
 
+from src import slot_notes
 from src.slot_order import sorted_slots
 from src.time_utils import DAYS_DE, calculate_hours, format_date, get_week_label, hours_to_minutes
 from src.vacations import CappedDay, cap_by_worktime, cap_notice
@@ -38,7 +39,8 @@ COLUMN_LABELS = ["Datum", "Tag", "Kategorie", "Start", "Ende", "Stunden"]
 _PDF_COL_WIDTHS = ["15%", "8%", "25%", "16%", "16%", "20%"]
 
 # Style-Dict pro Render-Ziel. Felder werden direkt als CSS-Strings in die
-# Inline-Styles der Zellen geschrieben.
+# Inline-Styles der Zellen geschrieben. `c_sub`/`c_sub_hours` stehen in der Zelle
+# nach `td_base`, damit ihr `padding-left` dessen `padding` überschreibt.
 HTML_STYLE = {
     "keep_together": False,
     "col_widths":  ["", "", "", "", "", ""],
@@ -62,6 +64,9 @@ HTML_STYLE = {
     "total_lbl":   "padding:12px 14px;color:#ffffff;font-weight:700;",
     "total_hrs":   "padding:12px 14px;color:#00D8A7;font-weight:700;font-size:15px;",
     "footnote":    "margin:6px 0 0 0;color:#94a3b8;font-size:12px;line-height:1.4;",
+    "c_sub":       "color:#94a3b8;padding-left:32px;",
+    "c_sub_hours": "color:#cbd5e1;",
+    "wrap_long":   "",
 }
 
 PDF_STYLE = {
@@ -87,7 +92,23 @@ PDF_STYLE = {
     "total_lbl":   "padding:10px 12px;color:#ffffff;font-weight:700;",
     "total_hrs":   "padding:10px 12px;color:#ffffff;font-weight:700;",
     "footnote":    "margin:6px 0 0 0;color:#475569;font-size:10px;line-height:1.4;",
+    "c_sub":       "color:#4b5563;padding-left:28px;",
+    "c_sub_hours": "color:#4b5563;",
+    "wrap_long":   "-pdf-word-wrap:CJK;",
 }
+
+
+# xhtml2pdf bricht kein Wort um, das breiter als seine Zelle ist: es läuft über die Nachbarspalten,
+# 200 Zeichen am Stück aus der Seite. `-pdf-word-wrap:CJK` lässt es zwischen beliebigen Zeichen
+# umbrechen. Gesetzt nur, wo ein Wort länger als `LONG_TOKEN` ist — die Kategorie-Spalte (25 %)
+# fasst rund 28 Zeichen —, damit Zellen ohne solches Wort wie bisher umbrechen.
+LONG_TOKEN = 24
+
+
+def _has_long_token(text: str) -> bool:
+    """Ob `text` ein Wort mit mehr als `LONG_TOKEN` Code Points enthält. Getrennt wird nur am
+    Leerzeichen: an U+00A0 bricht xhtml2pdf nicht um, Tabs und Zeilenumbrüche hat `clean_note` entfernt."""
+    return any(len(word) > LONG_TOKEN for word in text.split(" "))
 
 
 def _slot_hours(slot: dict[str, Any]) -> float:
@@ -215,11 +236,15 @@ def _week_block(iso_year: int, iso_week: int, week_entries: WeekEntries,
             week_minutes += minutes
             date_cell = day_fmt if sidx == 0 else ""
             day_cell = weekday if sidx == 0 else ""
+            note = slot_notes.clean_note(slot.get("notiz", ""))
+            label = slot_notes.label(slot.get("kategorie") or "", note)
+            # Nur Zeilen mit Notiz: eine Zeile ohne bleibt bytegleich, auch mit langer Kategorie.
+            wrap = s["wrap_long"] if note and _has_long_token(label) else ""
             rows.append(
                 f"<tr style='{row_bg}'>"
                 f"<td style='{td}{cw[0]}{s['c_date']}'>{date_cell}</td>"
                 f"<td style='{td}{cw[1]}{s['c_day']}'>{day_cell}</td>"
-                f"<td style='{td}{cw[2]}{s['c_kat']}'>{_esc(slot.get('kategorie') or '')}</td>"
+                f"<td style='{td}{cw[2]}{s['c_kat']}{wrap}'>{_esc(label)}</td>"
                 f"<td style='{td}{cw[3]}{s['c_time']}'>{_esc(slot['start'])}</td>"
                 f"<td style='{td}{cw[4]}{s['c_time']}'>{_esc(slot['end'])}</td>"
                 f"<td style='{td}{cw[5]}{s['c_hours']}'>{hours}h</td>"
@@ -303,12 +328,50 @@ def _keep_together(html: str, style: dict[str, Any]) -> str:
     return html
 
 
+NO_NOTE_LABEL = "(ohne Notiz)"
+
+
+def _note_rows(range_entries: dict[str, Any]) -> dict[str, list[tuple[str, int]]]:
+    """Unterzeilen je Kategorie für die Aufschlüsselung nach Notiz: (Anzeige, Minuten).
+
+    Nur Kategorien, in denen mindestens ein Slot eine Notiz trägt. Gruppiert nach
+    `slot_notes.group_key`, angezeigt in der Schreibweise des ersten Vorkommens (Tage
+    nach Datum, im Tag gespeicherte Reihenfolge), sortiert nach dem Schlüssel; Slots
+    ohne Notiz bilden die letzte Zeile `NO_NOTE_LABEL`. Summiert wird über Minuten,
+    damit die Unterzeilen genau die Kategorie-Zeile ergeben (CLAUDE.md).
+    """
+    groups: dict[str, dict[str, list[Any]]] = {}
+    no_note: dict[str, int] = {}
+    for date_str in sorted(range_entries):
+        for slot in range_entries[date_str]["slots"]:
+            kat = slot.get("kategorie") or ""
+            minutes = hours_to_minutes(_slot_hours(slot))
+            note = slot_notes.clean_note(slot.get("notiz", ""))
+            if not note:
+                no_note[kat] = no_note.get(kat, 0) + minutes
+                continue
+            group = groups.setdefault(kat, {}).setdefault(slot_notes.group_key(note), [note, 0])
+            group[1] += minutes
+    result: dict[str, list[tuple[str, int]]] = {}
+    for kat, by_key in groups.items():
+        rows = [(by_key[key][0], by_key[key][1]) for key in sorted(by_key)]
+        if kat in no_note:
+            rows.append((NO_NOTE_LABEL, no_note[kat]))
+        result[kat] = rows
+    return result
+
+
 def _build_category_summary(range_entries: dict[str, Any],
-                            style: dict[str, Any]) -> str:
+                            style: dict[str, Any],
+                            note_breakdown: bool = False) -> str:
     """„Summe je Kategorie"-Tabelle über den (gefilterten) Zeitraum. Leerer
     String ('' = keine Kategorie) wird als '(ohne Kategorie)' ans Ende
     sortiert. Liefert '' wenn keine Slots vorhanden — oder wenn alle Slots
-    unkategorisiert sind (dann wäre die Tabelle nur die Gesamtsumme).
+    unkategorisiert sind (dann wäre die Tabelle nur die Gesamtsumme), außer
+    `note_breakdown` schlüsselt sie nach Notiz auf.
+
+    `note_breakdown`: unter jeder Kategorie mit Notizen deren Unterzeilen
+    (`_note_rows`), im Zeilenhintergrund der Kategorie.
 
     Summiert wird über MINUTEN (hours_to_minutes je Slot), nicht über
     Dezimalstunden — sonst weicht die Kategorien-Summe von der Gesamtsumme
@@ -323,7 +386,8 @@ def _build_category_summary(range_entries: dict[str, Any],
     # Keine Slots, oder ausschließlich unkategorisierte: die Tabelle bestünde
     # dann nur aus der "(ohne Kategorie)"-Zeile = exakt die ohnehin gezeigte
     # Gesamtsumme. Weglassen, statt eine leere Pseudo-Aufschlüsselung zu zeigen.
-    if not totals or set(totals) == {""}:
+    note_rows = _note_rows(range_entries) if note_breakdown else {}
+    if not totals or (set(totals) == {""} and "" not in note_rows):
         return ""
 
     td = s["td_base"]
@@ -338,6 +402,14 @@ def _build_category_summary(range_entries: dict[str, Any],
             f"<td style='{td}{s['c_hours']}'>{hours}h</td>"
             f"</tr>"
         )
+        for sub_label, sub_minutes in note_rows.get(kat, []):
+            wrap = s["wrap_long"] if _has_long_token(sub_label) else ""
+            rows.append(
+                f"<tr style='{row_bg}'>"
+                f"<td style='{td}{s['c_sub']}{wrap}'>{_esc(sub_label)}</td>"
+                f"<td style='{td}{s['c_sub_hours']}'>{_minutes_as_hours(sub_minutes)}h</td>"
+                f"</tr>"
+            )
 
     return _keep_together(
         f'<table style="border-collapse:collapse;width:100%;margin-top:16px;{s["table_extra"]}">'
@@ -467,7 +539,8 @@ def generate_report(date_from: datetime.date, date_to: datetime.date,
                     categories: Collection[str] | None = None,
                     category_breakdown: bool = True,
                     vacation_days: dict[str, int] | None = None,
-                    slot_order: str = "chrono"
+                    slot_order: str = "chrono",
+                    note_breakdown: bool = False
                     ) -> tuple[str | None, float]:
     """Generate an HTML email report with greeting, content, table, category
     summary, and closing.
@@ -475,6 +548,8 @@ def generate_report(date_from: datetime.date, date_to: datetime.date,
     categories: None = alle; sonst Menge von Kategorie-Strings ('' = ohne).
     category_breakdown: True = "Summe je Kategorie"-Tabelle anhängen (Default,
     bisheriges Verhalten); False = weglassen, nur das Gesamt der Tagestabelle.
+    note_breakdown: die Kategorien-Tabelle zusätzlich nach Notiz aufschlüsseln;
+    wirkt nur mit `category_breakdown`. Ohne Notizen bitgleich zu False.
     vacation_days: {ISO: minutes} der Urlaubstage (bereits Snapshot des
     Stores, ungefiltert) oder None. Liegt im Zeitraum kein Urlaubstag mit
     Minuten, ist die Ausgabe bitgleich zur Variante ohne den Parameter.
@@ -503,7 +578,7 @@ def generate_report(date_from: datetime.date, date_to: datetime.date,
         groups = _group_by_week(range_entries)
         table, total_minutes = _build_table(groups, HTML_STYLE, slot_order)
         category_summary = (
-            _build_category_summary(range_entries, HTML_STYLE)
+            _build_category_summary(range_entries, HTML_STYLE, note_breakdown)
             if category_breakdown else ""
         )
     else:
@@ -543,11 +618,13 @@ def generate_pdf(date_from: datetime.date, date_to: datetime.date,
                  categories: Collection[str] | None = None,
                  category_breakdown: bool = True,
                  vacation_days: dict[str, int] | None = None,
-                 slot_order: str = "chrono") -> bytes | None:
+                 slot_order: str = "chrono",
+                 note_breakdown: bool = False) -> bytes | None:
     """Generate a PDF of the time tracking table. Returns PDF bytes, or None if no entries.
 
     category_breakdown: True = "Summe je Kategorie"-Tabelle anhängen (Default);
     False = weglassen, nur das Gesamt der Tagestabelle.
+    note_breakdown: wie bei `generate_report`.
     vacation_days: {ISO: minutes} der Urlaubstage (bereits Snapshot des
     Stores, ungefiltert) oder None. Liegt im Zeitraum kein Urlaubstag mit
     Minuten, ist die Ausgabe bitgleich zur Variante ohne den Parameter.
@@ -576,7 +653,7 @@ def generate_pdf(date_from: datetime.date, date_to: datetime.date,
         groups = _group_by_week(range_entries)
         table, total_minutes = _build_table(groups, PDF_STYLE, slot_order)
         category_summary = (
-            _build_category_summary(range_entries, PDF_STYLE)
+            _build_category_summary(range_entries, PDF_STYLE, note_breakdown)
             if category_breakdown else ""
         )
     else:
