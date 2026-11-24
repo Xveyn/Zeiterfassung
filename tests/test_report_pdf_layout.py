@@ -247,3 +247,26 @@ def test_a_week_longer_than_one_page_still_renders_and_may_split(tmp_path):
     pages = _render_pages(many, tmp_path)
     assert len(pages) >= 2
     assert "Summe KW" in "".join(pages)
+
+
+def _noted(entries):
+    """Hängt an jeden zweiten Tag eine Notiz an."""
+    return {day: {**e, "slots": [{**s, "notiz": "Kunde"} for s in e["slots"]]} if i % 2 else e
+            for i, (day, e) in enumerate(sorted(entries.items()))}
+
+
+def test_the_pdf_note_breakdown_is_kept_together_with_its_header():
+    html = _build_category_summary(_noted(_entries(4, ("Aream", "Intern"))), PDF_STYLE, note_breakdown=True)
+    assert html.startswith(report_mod._KEEP_WITH_NEXT + "<table")
+    assert "Kunde" in html and html.count("<table") == 1
+
+
+def test_both_styles_carry_the_sub_row_keys():
+    for style in (HTML_STYLE, PDF_STYLE):
+        assert "padding-left" in style["c_sub"]
+        assert style["c_sub_hours"]
+
+
+def test_generate_pdf_passes_the_note_breakdown_on():
+    html = _pdf_html(_noted(_entries(4, ("Aream",))), note_breakdown=True)
+    assert "(ohne Notiz)" in html and PDF_STYLE["c_sub"] in html

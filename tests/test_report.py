@@ -1,7 +1,7 @@
 import datetime
 from unittest.mock import patch, MagicMock
 
-from src.report import generate_report
+from src.report import HTML_STYLE, _build_category_summary, _note_rows, generate_report
 
 
 def _e(start, end, pause=0, kategorie=""):
@@ -762,3 +762,80 @@ def test_bericht_eigene_reihenfolge_bleibt_wie_gespeichert():
     html, _ = generate_report(datetime.date(2026, 3, 1), datetime.date(2026, 3, 31),
                               entries, slot_order="custom")
     assert html.index("13:00") < html.index("09:00")
+
+
+# --- Notizen (Xveyn#519) ----------------------------------------------------------------------------
+
+def _day(*slots):
+    return {"slots": [dict(zip(("start", "end", "pause", "kategorie", "notiz"), s, strict=True))
+                      if len(s) == 5
+                      else dict(zip(("start", "end", "pause", "kategorie"), s, strict=True))
+                      for s in slots]}
+
+
+NOTE_ENTRIES = {
+    "2026-11-02": _day(("08:00", "12:00", 0, "Montage", "Kunde Müller"), ("13:00", "17:00", 0, "Büro")),
+    "2026-11-03": _day(("08:00", "12:00", 0, "Montage", "kunde müller "), ("13:00", "15:00", 0, "Montage")),
+    "2026-11-04": _day(("08:00", "10:00", 0, "Montage", "Kunde Adam")),
+}
+
+
+def _without_notes(entries):
+    return {day: {"slots": [{k: v for k, v in s.items() if k != "notiz"} for s in e["slots"]]}
+            for day, e in entries.items()}
+
+
+def test_note_rows_group_sort_and_first_spelling():
+    assert _note_rows(NOTE_ENTRIES) == {
+        "Montage": [("Kunde Adam", 120), ("Kunde Müller", 480), ("(ohne Notiz)", 120)]}
+
+
+def test_note_rows_sum_to_category_minutes():
+    entries = {"2026-11-02": _day(("08:00", "08:20", 0, "A", "x"), ("09:00", "09:20", 0, "A", "y"),
+                                  ("10:00", "10:20", 0, "A"))}
+    assert sum(minutes for _, minutes in _note_rows(entries)["A"]) == 60
+
+
+def test_row_shows_category_and_note_escaped():
+    entries = {"2026-11-02": _day(("08:00", "12:00", 0, "Montage", "<b>Kunde</b> & Co"))}
+    html, _ = generate_report(datetime.date(2026, 11, 2), datetime.date(2026, 11, 2), entries)
+    assert "Montage · &lt;b&gt;Kunde&lt;/b&gt; &amp; Co" in html
+    assert "<b>Kunde</b>" not in html
+
+
+def test_summary_with_note_breakdown_lists_sub_rows_in_order():
+    html = _build_category_summary(NOTE_ENTRIES, HTML_STYLE, note_breakdown=True)
+    order = [html.index(text) for text in ("Büro", "Montage", "Kunde Adam", "Kunde Müller", "(ohne Notiz)")]
+    assert order == sorted(order)
+    assert "kunde müller" not in html
+
+
+def test_summary_sub_rows_take_the_background_of_their_category():
+    html = _build_category_summary(NOTE_ENTRIES, HTML_STYLE, note_breakdown=True)
+    rows = html.split("<tr")[2:]          # ohne Text vor der Tabelle und Kopfzeile
+    assert rows[0].startswith(f" style='{HTML_STYLE['row_a']}'") and "Büro" in rows[0]
+    assert all(r.startswith(f" style='{HTML_STYLE['row_b']}'") for r in rows[1:])
+    assert html.count(HTML_STYLE["c_sub"]) == 3
+
+
+def test_summary_without_flag_is_unchanged_by_notes():
+    assert (_build_category_summary(NOTE_ENTRIES, HTML_STYLE)
+            == _build_category_summary(_without_notes(NOTE_ENTRIES), HTML_STYLE))
+
+
+def test_note_breakdown_without_notes_is_bitgleich():
+    args = (datetime.date(2026, 11, 2), datetime.date(2026, 11, 4), _without_notes(NOTE_ENTRIES))
+    assert generate_report(*args, note_breakdown=True) == generate_report(*args)
+
+
+def test_note_breakdown_needs_the_category_breakdown():
+    args = (datetime.date(2026, 11, 2), datetime.date(2026, 11, 4), NOTE_ENTRIES)
+    html, _ = generate_report(*args, category_breakdown=False, note_breakdown=True)
+    assert "(ohne Notiz)" not in html
+
+
+def test_uncategorised_with_notes_gets_a_table_only_with_flag():
+    entries = {"2026-11-02": _day(("08:00", "12:00", 0, "", "Kunde Adam"), ("13:00", "14:00", 0, ""))}
+    assert _build_category_summary(entries, HTML_STYLE) == ""
+    html = _build_category_summary(entries, HTML_STYLE, note_breakdown=True)
+    assert "(ohne Kategorie)" in html and "Kunde Adam" in html and "(ohne Notiz)" in html
