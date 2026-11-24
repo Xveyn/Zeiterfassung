@@ -106,8 +106,9 @@ LONG_TOKEN = 24
 
 
 def _has_long_token(text: str) -> bool:
-    """Ob `text` ein Wort (durch Leerraum getrennt) mit mehr als `LONG_TOKEN` Code Points enthält."""
-    return any(len(word) > LONG_TOKEN for word in text.split())
+    """Ob `text` ein Wort mit mehr als `LONG_TOKEN` Code Points enthält. Getrennt wird nur am
+    Leerzeichen: an U+00A0 bricht xhtml2pdf nicht um, Tabs und Zeilenumbrüche hat `clean_note` entfernt."""
+    return any(len(word) > LONG_TOKEN for word in text.split(" "))
 
 
 def _slot_hours(slot: dict[str, Any]) -> float:

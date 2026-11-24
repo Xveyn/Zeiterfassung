@@ -867,6 +867,11 @@ def test_has_long_token_counts_code_points_per_word():
     assert _has_long_token("kurz " + "ü" * 25)
 
 
+def test_has_long_token_does_not_split_at_non_breaking_spaces():
+    # xhtml2pdf bricht an U+00A0 nicht um: so verbundene Wörter sind ein Wort.
+    assert _has_long_token(" ".join(["Müller", "GmbH", "Hauptstraße", "Zwölf"]))
+
+
 def test_long_note_wraps_in_pdf_only():
     slot = {"start": "08:00", "end": "12:00", "pause": 0, "kategorie": "Montage", "notiz": LONG}
     assert WRAP in _block(slot, PDF_STYLE)
