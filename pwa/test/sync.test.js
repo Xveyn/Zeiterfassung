@@ -387,12 +387,26 @@ test('a sync sends bearer, request shape and the dirty days, then applies the an
   assert.deepEqual(store.dirtyDates(), []);
 });
 
-test('the request fixture matches what the store builds', async () => {
+test('a day whose notes the phone does not know is sent exactly as before slot_notes (frozen request)', async () => {
   const { store, client, fetchFn } = await make();
-  await store.saveDay('2026-10-07', [SLOT]);
   await client.sync();
-  const sent = fetchFn.calls[0].plain.entries['2026-10-07'];
+  assert.equal(store.getMeta().slot_notes, true);
+  await store.saveDay('2026-10-09', [SLOT]);                        // nie vom Desktop erhalten, ohne Notiz gespeichert: unbekannt
+  await client.sync();
+  const sent = fetchFn.calls[1].plain.entries['2026-10-09'];
+  const example = fixture('compat/sync-request-pre-notes.json').entries['2026-10-07'];
+  assert.deepEqual(Object.keys(sent).sort(), Object.keys(example).sort());
+  assert.deepEqual(sent.slots, example.slots);
+});
+
+test('a day whose notes the phone knows is sent like the live request example', async () => {
+  const { store, client, fetchFn } = await make();
+  await client.sync();                                              // der Desktop-Stand mit Notiz ersetzt den Tag
+  assert.equal(store.getDay('2026-10-07').notes_known, true);
   const example = fixture('sync-request.json').entries['2026-10-07'];
+  await store.saveDay('2026-10-07', example.slots, { notesKnown: store.getDay('2026-10-07').notes_known });
+  await client.sync();
+  const sent = fetchFn.calls[1].plain.entries['2026-10-07'];
   assert.deepEqual(Object.keys(sent).sort(), Object.keys(example).sort());
   assert.deepEqual(sent.slots, example.slots);
 });
@@ -913,21 +927,17 @@ test('foreign values in slots, stamps and conflict versions never reach the stor
   const parsed = parseSyncResponse(doc);
 
   assert.equal(parsed.entries['2026-10-07'].modified_at, '');
-  assert.deepEqual(parsed.entries['2026-10-07'].slots, [{ start: '', end: '', pause: 0, kategorie: '' }]);
+  assert.deepEqual(parsed.entries['2026-10-07'].slots, [{ start: '', end: '', pause: 0, kategorie: '', notiz: '' }]);
   assert.deepEqual(parsed.conflicts[0].versions, [{ device: '', name: '', modified_at: '', slots: [] }]);
 });
 
 test('valid values pass through unchanged', () => {
   const doc = fixture('sync-response.json');
-  // `notiz` (#519) liest diese PWA noch nicht; sie lässt das Feld fallen.
-  const withoutNote = (slots) => slots.map(({ notiz: _notiz, ...slot }) => slot);
 
   const parsed = parseSyncResponse(doc);
 
-  const day = doc.entries['2026-10-07'];
-  assert.deepEqual(parsed.entries['2026-10-07'], { ...day, slots: withoutNote(day.slots) });
-  assert.deepEqual(parsed.conflicts[0].versions,
-    doc.conflicts[0].versions.map((v) => ({ ...v, slots: withoutNote(v.slots) })));
+  assert.deepEqual(parsed.entries['2026-10-07'], doc.entries['2026-10-07']);
+  assert.deepEqual(parsed.conflicts[0].versions, doc.conflicts[0].versions);
 });
 
 for (const [name, change] of [
@@ -1375,6 +1385,41 @@ test('the have of the current box is still remembered (#425)', async () => {
   endpoint.onHave(5);
   await settle();
   assert.equal(store.getMeta().box_have, 5);
+});
+
+// --- Notiz am Slot (#519) -----------------------------------------------------------------------------
+
+test('parseSyncResponse reads slot_notes and the notiz of entries and conflict versions', () => {
+  const live = fixture('sync-response.json');
+  const parsed = parseSyncResponse(live);
+  assert.equal(parsed.slot_notes, true);
+  assert.deepEqual(parsed.entries['2026-10-07'].slots, live.entries['2026-10-07'].slots);
+  assert.equal(parsed.entries['2026-10-07'].slots[0].notiz, 'Kunde Mustermann');
+  for (const [i, version] of parsed.conflicts[0].versions.entries()) {
+    assert.deepEqual(version.slots, live.conflicts[0].versions[i].slots);
+    for (const slot of version.slots) assert.equal(typeof slot.notiz, 'string');
+  }
+});
+
+test('without slot_notes no slot carries notiz, even if the desktop sent one', () => {
+  const { slot_notes: _flag, ...raw } = fixture('sync-response.json');
+  const parsed = parseSyncResponse(raw);
+  assert.equal(parsed.slot_notes, false);
+  for (const entry of Object.values(parsed.entries)) for (const slot of entry.slots) assert.ok(!('notiz' in slot));
+  for (const version of parsed.conflicts[0].versions) for (const slot of version.slots) assert.ok(!('notiz' in slot));
+  assert.equal(parseSyncResponse({ ...raw, slot_notes: 'yes' }).slot_notes, false);
+});
+
+test('an unusable notiz in the response is cleaned, never thrown', () => {
+  const raw = fixture('sync-response.json');
+  const day = raw.entries['2026-10-07'];
+  const { notiz: _notiz, ...bare } = day.slots[0];
+  day.slots = [{ ...bare, notiz: '  a\nb  ' }, { ...bare, start: '13:00', end: '14:00', notiz: 5 },
+    { ...bare, start: '15:00', end: '16:00' }];
+  raw.conflicts[0].versions[0].slots[0].notiz = 'x'.repeat(250);
+  const parsed = parseSyncResponse(raw);
+  assert.deepEqual(parsed.entries['2026-10-07'].slots.map((s) => s.notiz), ['ab', '', '']);
+  assert.equal(parsed.conflicts[0].versions[0].slots[0].notiz, 'x'.repeat(200));
 });
 
 // --- Pause an Reservierungen (#455): Übergang mit und ohne Fähigkeit --------------------------------

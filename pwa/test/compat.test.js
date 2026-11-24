@@ -8,6 +8,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import { parseSyncResponse } from '../sync.js';
+import { Store } from '../store.js';
+import { createMemoryAdapter } from '../memory-adapter.js';
 
 const frozen = (name) => JSON.parse(readFileSync(new URL(`./fixtures/compat/${name}`, import.meta.url)));
 
@@ -96,4 +98,26 @@ test('the response of a desktop before slot notes (#519) is still understood', (
   const parsed = parseSyncResponse(doc);
   assert.deepEqual(Object.keys(parsed.entries).sort(), Object.keys(doc.entries).sort());
   assert.equal(parsed.conflicts.length, doc.conflicts.length);
+});
+
+test('the frozen request before slot notes is still what the phone sends without slot_notes', async () => {
+  const example = frozen('sync-request-pre-notes.json');
+  const store = new Store(createMemoryAdapter(), () => new Date(example.client_time));
+  await store.load();                                               // nie eine Antwort mit slot_notes gesehen
+  await store.setMeta({ device_id: example.entries['2026-10-07'].device_id });
+  for (const [date, entry] of Object.entries(example.entries)) {
+    if (entry.deleted) {
+      await store.saveDay(date, [{ start: '08:00', end: '09:00', pause: 0, kategorie: '' }]);
+      await store.clearDay(date);
+    } else {
+      await store.saveDay(date, entry.slots, { notesKnown: true });   // auch ein bekannter Tag: ohne Fähigkeit keine Notiz
+    }
+  }
+  const { entries } = store.snapshotDirty();
+  assert.deepEqual(Object.keys(entries).sort(), Object.keys(example.entries).sort());
+  for (const [date, entry] of Object.entries(example.entries)) {
+    assert.deepEqual(Object.keys(entries[date]).sort(), Object.keys(entry).sort(), date);
+    assert.deepEqual(entries[date].slots, entry.slots, date);
+    assert.equal(entries[date].deleted, entry.deleted, date);
+  }
 });

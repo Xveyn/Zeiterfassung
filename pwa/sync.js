@@ -12,6 +12,7 @@ import { normalizeSlotOrder } from './slot-order.js';
 import { CryptoFailure, b64d, deviceKeys, isEnvelope, openEnvelope, pairKeys, seal } from './crypto.js';
 import { parseDefaults, parseDesktopInfo } from './defaults.js';
 import { isIsoDate, localIsoDate, utcStamp } from './minutes.js';
+import { cleanNote } from './notes.js';
 import {
   PROTOCOL, isBoxSecret, isLanAddress, isValidDeviceId, newDeviceId, normalizeCode, pairRequestBody,
 } from './pairing.js';
@@ -40,13 +41,13 @@ const SEALED_ONLY_CODES = new Set(['invalid_entry', 'clock_skew', 'busy']);
 const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 const protocolError = (message) => new SyncError({ kind: 'protocol', message });
 
-function parseEntry(date, raw) {
+function parseEntry(date, raw, notes) {
   if (!isIsoDate(date)) throw protocolError(`Ungültiger Tag in der Antwort: ${String(date).slice(0, 20)}`);
   if (!isObject(raw) || !Array.isArray(raw.slots) || typeof raw.modified_at !== 'string'
     || typeof raw.device_id !== 'string' || typeof raw.deleted !== 'boolean') {
     throw protocolError(`Ungültiger Eintrag in der Antwort: ${date}`);
   }
-  return { slots: cleanSlots(raw.slots), modified_at: cleanStamp(raw.modified_at), device_id: raw.device_id, deleted: raw.deleted };
+  return { slots: cleanSlots(raw.slots, notes), modified_at: cleanStamp(raw.modified_at), device_id: raw.device_id, deleted: raw.deleted };
 }
 
 /** Ein Zeitstempel wie ihn der Desktop schreibt, sonst leer (der Desktop schickt `""` für einen
@@ -55,12 +56,14 @@ const cleanStamp = (value) => (typeof value === 'string' && STAMP_RE.test(value)
 
 /** Nur die vier Felder des Protokolls, mit ihren Typen; Unbrauchbares wird zu einem leeren
  *  Wert (die Anzeige rendert die Slots). Eine Ablehnung der ganzen Antwort wegen eines
- *  Slots wäre schlimmer: der Abgleich scheiterte dann bei jedem Versuch. */
-function cleanSlots(slots) {
+ *  Slots wäre schlimmer: der Abgleich scheiterte dann bei jedem Versuch. Mit `notes` (die
+ *  Antwort nennt `slot_notes`) trägt jeder Slot `notiz`, bereinigt; ohne keiner. */
+function cleanSlots(slots, notes) {
   const text = (value) => (typeof value === 'string' ? value : '');
   return slots.filter(isObject).map((slot) => ({
     start: text(slot.start), end: text(slot.end),
     pause: Number.isInteger(slot.pause) ? slot.pause : 0, kategorie: text(slot.kategorie),
+    ...(notes ? { notiz: cleanNote(slot.notiz) } : {}),
   }));
 }
 
@@ -119,14 +122,15 @@ export function parseSyncResponse(raw) {
     throw protocolError('Antwort mit ungültigen Kategorien.');
   }
   if (!Array.isArray(raw.conflicts)) throw protocolError('Antwort ohne Konfliktliste.');
+  const notes = raw.slot_notes === true;               // fehlt bei älterem Desktop: keine Notizen (#519)
   const entries = {};
-  for (const [date, entry] of Object.entries(raw.entries)) entries[date] = parseEntry(date, entry);
+  for (const [date, entry] of Object.entries(raw.entries)) entries[date] = parseEntry(date, entry, notes);
   const conflicts = raw.conflicts.map((conflict) => {
     if (!isObject(conflict) || typeof conflict.id !== 'string' || !isIsoDate(conflict.date)
       || !Array.isArray(conflict.versions)) throw protocolError('Ungültiger Konflikt in der Antwort.');
     return { id: conflict.id, date: conflict.date, versions: conflict.versions.filter(isObject).map((v) => ({
       device: typeof v.device === 'string' ? v.device : '', name: typeof v.name === 'string' ? v.name : '',
-      modified_at: cleanStamp(v.modified_at), slots: Array.isArray(v.slots) ? cleanSlots(v.slots) : [] })) };
+      modified_at: cleanStamp(v.modified_at), slots: Array.isArray(v.slots) ? cleanSlots(v.slots, notes) : [] })) };
   });
   const max = raw.window_max_days;
   const windowMax = Number.isInteger(max) && max >= 1 && max <= MAX_WINDOW_DAYS ? max : null;   // fehlt bei älterem Desktop
@@ -139,6 +143,7 @@ export function parseSyncResponse(raw) {
     defaults: parseDefaults(raw.defaults), desktop: parseDesktopInfo(raw.desktop),
     reservations: parseReservations(raw.reservations), reservation_pause: raw.reservation_pause === true,
     unpair: raw.unpair === true,
+    slot_notes: notes,
     slot_order: normalizeSlotOrder(raw.slot_order),      // fehlt bei älterem Desktop: chronologisch (#520)
     reminders: parseReminders(raw.reminders),
     writable_settings: Array.isArray(raw.writable_settings) ? raw.writable_settings.filter((key) => typeof key === 'string') : [],
