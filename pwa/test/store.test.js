@@ -7,6 +7,7 @@ import { parseSyncResponse } from '../sync.js';
 import { pendingReservationMinutes } from '../reservations.js';
 import { Store } from '../store.js';
 import { createMemoryAdapter } from '../memory-adapter.js';
+import { daySave, editorRows } from '../view-model.js';
 
 const SLOT = { start: '08:00', end: '12:00', pause: 0, kategorie: 'Projekt' };
 const OTHER = { start: '13:00', end: '17:00', pause: 0, kategorie: '' };
@@ -1239,4 +1240,28 @@ test('without slot_notes in the meta no day sends notiz, even a known one', asyn
 
   assert.equal(store.getMeta().slot_notes, false);
   assert.deepEqual(store.snapshotDirty().entries['2026-10-07'].slots, [{ ...SLOT, pause: 5 }]);
+});
+
+test('the editor path keeps a desktop note when only the pause changes (rows → slots → saveDay → request)', async () => {
+  const { store } = await make();
+  await store.applyResponse(notesOn({ entries: { '2026-10-07': remoteDay([NOTED, { ...OTHER, notiz: '' }]) } }),
+    store.snapshotDirty(), TODAY);
+  const day = store.getDay('2026-10-07');
+  const rows = editorRows(day);
+  rows[0].pause = '15';
+
+  const { slots, notesKnown } = daySave(rows, day, { notes: store.getMeta().slot_notes });
+  await store.saveDay('2026-10-07', slots, { notesKnown });
+
+  assert.deepEqual(store.snapshotDirty().entries['2026-10-07'].slots,
+    [{ ...NOTED, pause: 15 }, { ...OTHER, notiz: '' }]);
+});
+
+test('saveDay rejects a note that is no valid single line', async () => {
+  const { store } = await make();
+  await assert.rejects(store.saveDay('2026-10-07', [{ ...SLOT, notiz: 'eins\nzwei' }], { notesKnown: true }),
+    /Nur eine Zeile/);
+  await assert.rejects(store.saveDay('2026-10-07', [{ ...SLOT, notiz: 'x'.repeat(201) }], { notesKnown: true }),
+    /Höchstens 200 Zeichen/);
+  assert.equal(store.getDay('2026-10-07'), null);
 });

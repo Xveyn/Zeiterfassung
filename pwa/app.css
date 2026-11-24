@@ -221,6 +221,21 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 .daysum[hidden], .slot .net[hidden] { display: none; }
 
+/* Notiz am Slot (#519): ein Rahmen wie die übrigen Felder, darin Eingabe und ▾. Die Liste der bisherigen Notizen liegt im
+   Fluss unter dem Feld (kein schwebendes Popup: im <dialog> und auf iOS unzuverlässig), der Rahmen läuft um sie herum. */
+.combo { border: 1px solid var(--line); border-radius: 8px; background: var(--cell); margin-bottom: 12px; min-width: 0; }
+.combo.bad { border-color: var(--accent); }
+.combo-field { display: flex; align-items: stretch; }
+.combo-field input { flex: 1; min-width: 0; margin: 0; border: 0; border-radius: 8px 0 0 8px; background: none; }
+.combo-field input::placeholder { color: var(--muted); opacity: 1; }
+.combo-toggle { flex: none; min-width: var(--tap); padding: 0; border-radius: 0 8px 8px 0; background: none; color: var(--muted); }
+/* Etwa fünf Einträge, dann scrollt die Liste in sich; der halbe sechste zeigt, dass es weitergeht. */
+.combo-list { max-height: calc(5.5 * var(--tap)); overflow-y: auto; overscroll-behavior: contain; background: #101a30; border-top: 1px solid #2a3a5a; border-radius: 0 0 7px 7px; }
+.combo-head { padding: 8px 10px 2px; font-size: .75rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.combo-list button { display: block; width: 100%; min-height: var(--tap); padding: 0 10px; border-radius: 0; background: none; color: var(--text); text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.combo-list button[aria-selected="true"] { background: var(--cell-hover); }
+.combo-list button:focus-visible { outline-offset: -2px; }
+
 /* Einstellungen › Kategorien (#461): Leiste „nicht gespeichert“; Knöpfe außerhalb von Dialogen mit Abstand (Koppel-Seite). */
 .dirty { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 8px; background: #3a2f10; border-left: 4px solid var(--warn); margin-bottom: 10px; font-size: .9rem; }
 .dirty[hidden] { display: none; }

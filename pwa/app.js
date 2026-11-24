@@ -29,7 +29,7 @@ import { shouldApplyUpdate, shouldCheckForUpdate } from './update-policy.js';
 import { blockSignature, rowsToBlock } from './categories.js';
 import {
   categoriesModel, conflictsModel, connectionLabel, dayChanged, dayTitle, desktopHint, editLock, editorRows, focusKeyToRestore, hintsModel, olderModel, pushModel, reservationRows,
-  iosInstallHint, isSetupPhase, pairingAfterBack, reservationRowsToSlots, rowsToSlots, setupModel, statusModel, reachedAfterSyncError, unpairDialogModel, validateReservationRows, validateRows, weekModel,
+  iosInstallHint, isSetupPhase, pairingAfterBack, reservationRowsToSlots, daySave, noteChoices, setupModel, statusModel, reachedAfterSyncError, unpairDialogModel, validateReservationRows, validateRows, weekModel,
 } from './view-model.js';
 import { BUILD, CACHE_PREFIX } from './sw-core.js';
 import { describeRepair, repairServiceWorker } from './sw-repair.js';
@@ -891,6 +891,16 @@ class App {
     dialog.addEventListener('close', () => { focusByKey(this.root, returnKey); });
   }
 
+  /** Alle gespeicherten Tage in der Form von `Store.getDay` (Vorschläge der Notiz). */
+  storedDays() {
+    return Object.fromEntries(this.store.days().map((date) => [date, this.store.getDay(date)]));
+  }
+
+  /** Trägt irgendein gespeicherter Tag eine Notiz? Ohne bleibt ▾ ausgegraut. */
+  hasNotes() {
+    return this.store.days().some((date) => this.store.getDay(date)?.slots.some((slot) => typeof slot.notiz === 'string' && slot.notiz !== ''));
+  }
+
   /** Ein später geöffneter modaler Dialog läge über der Sperre: gesperrt wird der Tag erst nach dem Entsperren geöffnet. */
   openDay(date) {
     this.lockCtl.openDay(date, (day) => this.showDay(day));
@@ -914,6 +924,8 @@ class App {
     // An Tagen nach heute öffnet der Editor bei der Reservierung: die Ist-Zeilen sind mit den
     // Standardzeiten vorbelegt, ein Speichern dort legte sonst still eine Ist-Zeit an.
     const startWith = reservationOn && date > today ? 'reservation' : 'work';
+    // Notizfeld nur, wenn der Desktop Notizen versteht (#519); ohne bleibt alles wie vorher, kein `notiz` im Slot.
+    const notes = Boolean(meta.slot_notes);
     const dialog = editorDialog({
       title: dayTitle(date),
       rows: editorRows(day, meta.defaults, weekdayKey(date), reservation, { order: meta.slot_order }),
@@ -923,7 +935,7 @@ class App {
       errors: { work: day?.error ?? null, reservation: reservation?.error ?? null },
       lock,
       canClear: Boolean(day && !day.deleted),
-      validate: (rows) => validateRows(rows),
+      validate: (rows) => validateRows(rows, { notes }),
       reservation: reservationOn ? {
         rows: reservationRows(reservation, meta.defaults, weekdayKey(date), { pauseEnabled }),
         canClear: Boolean(reservation && !reservation.deleted),
@@ -932,6 +944,7 @@ class App {
       startWith,
       pauseEnabled,
       shiftStep: normalizeShiftStep(meta.shift_step_minutes),
+      notes: notes ? { available: this.hasNotes(), suggest: (kategorie) => noteChoices(this.storedDays(), kategorie) } : null,
     }, {
       loadOlder: () => { dialog.close(); void this.loadOlder(lock.wish); },
       save: async (kind, rows) => {
@@ -954,7 +967,10 @@ class App {
             return 'Dieser Tag wurde inzwischen aktualisiert (Abgleich). Nochmaliges Speichern überschreibt die neuere Fassung.';
           }
           try {
-            await this.store.saveDay(date, rowsToSlots(rows));
+            // Jede Zeile trägt ihre Notiz (auch eine unveränderte vom Desktop): ein bekannter Tag geht mit `notiz` an
+            // jedem Slot hinaus, eine verlorene Notiz hieße dort „entfernt“.
+            const { slots, notesKnown } = daySave(rows, current, { notes });
+            await this.store.saveDay(date, slots, { notesKnown });
           } catch (error) {
             return String(error?.message ?? error);
           }

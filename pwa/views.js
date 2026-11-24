@@ -7,13 +7,14 @@ import { focusByKey, h } from './dom.js';
 import { MAX_CATEGORY_LENGTH, TIME_STEP_MINUTES, formatMinutes, snapPause, snapTime } from './minutes.js';
 import { mayStartShift, shiftLabel, shiftWindow, stepsForDistance } from './shift-policy.js';
 import { updateStatusText } from './update-policy.js';
+import { groupKey } from './notes.js';
 import { createDialogHistory } from './dialog-history.js';
 import { PRIVACY_URL } from './relay-client.js';
 import { RESERVATION_CALENDAR_NOTE } from './messages.js';
 import { MAX_NAME_LENGTH, blockSignature, moveRow, rowsToBlock, timesSummary, validateCategoryRows } from './categories.js';
 import {
   QUICK_END_MINUTES, QUICK_PAUSES, SETTINGS_TABS, addToTime, categoryDisplay, categoryOptions, categoryRemovalText,
-  categoryRenameHint, connectionSummary, dayNetMinutes, editorTitle, hintKey, nextRow, pickCategory, pairFields, rowNetMinutes, rowProblems,
+  categoryRenameHint, connectionSummary, dayNetMinutes, editorTitle, hintKey, nextRow, noteListModel, pickCategory, pairFields, rowNetMinutes, rowProblems,
   retentionLabel, settingsTabLabel, storageNotice, windowRow,
 } from './view-model.js';
 
@@ -216,7 +217,7 @@ const SHIFT_HINT = '↔ Ziehen verschiebt beide Zeiten';
 const SHIFT_LABEL_MS = 900;          // so lange bleibt „+20 min“ nach dem Loslassen stehen
 const SHIFT_CLICK_GUARD_MS = 400;    // ein Klick direkt nach dem Zug öffnete sonst die Zeitauswahl
 
-function slotSection({ rows, categories, defaults, weekday, withPause, pauseEnabled = false, shiftStep = 0, onChange }) {
+function slotSection({ rows, categories, defaults, weekday, withPause, pauseEnabled = false, shiftStep = 0, notes = null, onChange }) {
   const list = h('div', {});
   const state = rows.map((row) => ({ ...row, base: row.base && { ...row.base } }));
   const prefix = withPause ? 'slot' : 'res';       // die Ids beider Abschnitte dürfen nicht kollidieren
@@ -232,11 +233,18 @@ function slotSection({ rows, categories, defaults, weekday, withPause, pauseEnab
     state.forEach((row, index) => {
       const ref = refs[index];
       if (!ref) return;
-      const problems = revealed || touched.has(row) ? rowProblems(row) : {};
+      // Ein Fehler der Notiz steht sofort (Länge, Zeilenumbruch); fehlende Zeiten erst nach dem Verlassen eines Zeitfelds.
+      const all = rowProblems(row, { notes: Boolean(notes) });
+      const problems = revealed || touched.has(row) ? all : { notiz: all.notiz };
       ref.start.setAttribute('aria-invalid', String(Boolean(problems.start)));
       ref.end.setAttribute('aria-invalid', String(Boolean(problems.end)));
       ref.error.textContent = problems.start ?? problems.end ?? '';
       ref.fieldset.classList.toggle('bad', Boolean(problems.start || problems.end));
+      if (ref.note) {
+        ref.note.input.setAttribute('aria-invalid', String(Boolean(problems.notiz)));
+        ref.note.combo.classList.toggle('bad', Boolean(problems.notiz));
+        ref.note.error.textContent = problems.notiz ?? '';
+      }
       const net = rowNetMinutes(showPause ? row : { ...row, pause: '0' });
       ref.net.hidden = net === null;
       ref.netValue.textContent = net === null ? '' : `${formatMinutes(net)} h`;
@@ -327,6 +335,77 @@ function slotSection({ rows, categories, defaults, weekday, withPause, pauseEnab
     }, 'picker', { id });
     return h('div', {}, h('label', { for: id }, 'Kategorie'), picker);
   };
+  // Notiz (#519): Eingabe mit ▾, darunter im Fluss die bisherigen Notizen. Auf- und Zuklappen baut die Zeile nicht
+  // neu (der Fokus bliebe sonst nicht). Die Vorschläge kommen erst beim ersten Öffnen (`notes.suggest`).
+  const noteField = (index, ref) => {
+    const row = state[index];
+    const id = `${prefix}-${index}-notiz`;
+    const listId = `${id}-list`;
+    let choices = null;
+    const input = h('input', { id, type: 'text', value: row.notiz ?? '', placeholder: 'optional', autocomplete: 'off',
+      role: 'combobox', 'aria-expanded': 'false', 'aria-controls': listId, 'aria-autocomplete': 'list' });
+    const list = h('div', { id: listId, class: 'combo-list', role: 'listbox', 'aria-label': 'Bisherige Notizen', hidden: true });
+    const isOpen = () => !list.hidden;
+    const toggle = button(h('span', { 'aria-hidden': 'true' }, '▾'), () => (isOpen() ? closeList() : openList('')), 'combo-toggle',
+      { 'aria-label': 'Bisherige Notizen zeigen', 'aria-controls': listId, 'aria-expanded': 'false', disabled: !notes.available });
+    const combo = h('div', { class: 'combo' }, h('div', { class: 'combo-field' }, input, toggle), list);
+    // Ein Tipp außerhalb schließt; Safari gibt angetippten Knöpfen keinen Fokus, `focusout` allein reicht dort nicht.
+    const outside = (event) => { if (!combo.contains(event.target)) closeList(); };
+    const setOpen = (open) => {
+      list.hidden = !open;
+      input.setAttribute('aria-expanded', String(open));
+      toggle.setAttribute('aria-expanded', String(open));
+      if (open) document.addEventListener('pointerdown', outside, true);
+      else document.removeEventListener('pointerdown', outside, true);
+    };
+    const closeList = () => setOpen(false);
+    const entries = () => [...list.querySelectorAll('button')];
+    // Vor dem Zuklappen: ein Fokus in der verborgenen Liste ginge sonst verloren.
+    const focusInput = () => { if (list.contains(document.activeElement)) input.focus(); };
+    const pick = (note) => {
+      focusInput();
+      row.notiz = note;
+      input.value = note;
+      closeList();
+      update();
+      onChange();
+    };
+    const openList = (text) => {
+      choices ??= notes.suggest(row.kategorie);
+      const groups = noteListModel(choices, row.kategorie, text);
+      if (groups.length === 0) { closeList(); return; }
+      const current = groupKey(row.notiz ?? '');
+      list.replaceChildren(...groups.map((group, number) => h('div', { role: 'group', 'aria-labelledby': group.heading ? `${listId}-${number}` : null },
+        group.heading && h('div', { id: `${listId}-${number}`, class: 'combo-head' }, group.heading),
+        ...group.items.map((note) => button(note, () => pick(note), '',
+          { role: 'option', 'aria-selected': String(current !== '' && groupKey(note) === current), title: note })))));
+      setOpen(true);
+    };
+    input.addEventListener('input', () => {
+      row.notiz = input.value;
+      update();
+      onChange();
+      if (input.value.trim() === '') closeList(); else openList(input.value);
+    });
+    // Ein Eintrag nimmt dem Feld beim Antippen nicht den Fokus: die Tastatur bliebe sonst nicht offen.
+    list.addEventListener('mousedown', (event) => { if (event.target.closest('button')) event.preventDefault(); });
+    combo.addEventListener('focusout', (event) => { if (event.relatedTarget && !combo.contains(event.relatedTarget)) closeList(); });
+    combo.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && isOpen()) { event.preventDefault(); event.stopPropagation(); focusInput(); closeList(); return; }
+      if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+      if (!isOpen()) {
+        if (event.key === 'ArrowDown' && !toggle.disabled) { event.preventDefault(); openList(''); }
+        if (!isOpen()) return;
+      }
+      event.preventDefault();
+      const items = entries();
+      const at = items.indexOf(document.activeElement);
+      const next = event.key === 'ArrowDown' ? Math.min(at + 1, items.length - 1) : at - 1;
+      if (next < 0) input.focus(); else items[next].focus();
+    });
+    ref.note = { input, combo, error: h('div', { class: 'field-error', role: 'status' }, '') };
+    return h('div', {}, h('label', { for: id }, 'Notiz'), combo, ref.note.error);
+  };
   // Eine Schnellwahl schreibt in die Zeile und baut neu; die Felder zeigen den neuen Wert.
   const chipLabel = (minutes) => (minutes < 60 ? `+${minutes} min` : `+${minutes / 60} h`);
   const build = () => {
@@ -374,6 +453,7 @@ function slotSection({ rows, categories, defaults, weekday, withPause, pauseEnab
           showPause && field(index, 'pause', 'Pause (Min)', { type: 'number', inputmode: 'numeric', min: 0, step: TIME_STEP_MINUTES }),
           categoryField(index)),
         pauseChips.length > 0 && h('div', { class: 'chips', role: 'group', 'aria-label': 'Pause setzen' }, ...pauseChips),
+        notes && noteField(index, ref),
         ref.net);
       return ref.fieldset;
     }));
@@ -389,11 +469,12 @@ function slotSection({ rows, categories, defaults, weekday, withPause, pauseEnab
 }
 
 /** Tag bearbeiten. Mit `reservation` hat der Dialog zwei Reiter (Arbeitszeit / Reservierung); jeder
- *  hält seinen eigenen Zustand, „Speichern“ und „Tag leeren“ wirken auf den aktiven.
+ *  hält seinen eigenen Zustand, „Speichern“ und „Tag leeren“ wirken auf den aktiven. `notes`
+ *  (`{suggest(kategorie) → {own, other}, available}`, nur wenn der Desktop Notizen versteht) zeigt das Notizfeld der Arbeitszeit.
  *  `handlers.save(kind, rows)` liefert `null` bei Erfolg oder eine Fehlermeldung; `kind` ist
  *  `'work'` oder `'reservation'`. */
 export function editorDialog({ title, rows, categories, defaults = null, weekday = '', errors = {}, lock = null, canClear, validate,
-  reservation = null, startWith = 'work', pauseEnabled = false, shiftStep = 0 }, handlers) {
+  reservation = null, startWith = 'work', pauseEnabled = false, shiftStep = 0, notes = null }, handlers) {
   const message = h('div', { class: 'error-text', role: 'alert' }, '');
   const save = h('button', { type: 'submit', class: 'primary' }, 'Speichern');
   const dialog = h('dialog', { 'aria-labelledby': 'editor-title' });
@@ -412,7 +493,7 @@ export function editorDialog({ title, rows, categories, defaults = null, weekday
     else if (errors[active] && !edited[active]) message.textContent = errors[active];
     else message.textContent = attempted[active] && !result.ok ? result.message : '';
   };
-  const work = slotSection({ rows, categories, defaults, weekday, withPause: true, shiftStep,
+  const work = slotSection({ rows, categories, defaults, weekday, withPause: true, shiftStep, notes,
     onChange: () => { edited.work = true; refresh(); } });
   const res = reservation && slotSection({ rows: reservation.rows, categories, defaults, weekday,
     withPause: false, pauseEnabled, shiftStep, onChange: () => { edited.reservation = true; refresh(); } });

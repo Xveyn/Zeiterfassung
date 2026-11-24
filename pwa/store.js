@@ -23,6 +23,7 @@ import {
 } from './reservations.js';
 import { aheadDays } from './window-policy.js';
 import { blockSignature, categoryRows, validateCategoryRows } from './categories.js';
+import { checkNote } from './notes.js';
 
 /** Die Meta des Stores. `null` heißt bei den markierten Feldern „älterer Desktop“ (Feature-Erkennung), nie „leer“.
  * @typedef {object} Meta
@@ -301,6 +302,11 @@ export class Store {
     const normalized = sortedSlots(normalizeSlots(slots), this._meta.slot_order);
     const check = validateSlots(normalized);
     if (!check.ok) throw new Error(check.message);
+    for (const slot of normalized) {
+      if (slot.notiz === undefined) continue;
+      const note = checkNote(slot.notiz);
+      if (!note.ok) throw new Error(`Notiz: ${note.message}`);
+    }
     const old = this._days.get(date);
     const known = notesKnown || old?.notes_known === true;
     if (old && !old.entry.deleted && signature(old.entry.slots) === signature(normalized)) {
