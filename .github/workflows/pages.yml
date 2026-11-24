@@ -44,7 +44,7 @@ jobs:
           rsync -a --exclude 'test/' --exclude 'package.json' --exclude 'package-lock.json' --exclude 'tsconfig.json' --exclude '*.md' --exclude 'memory-adapter.js' --exclude 'node_modules/' pwa/ _site/
           # Die Datenschutzseite liest docs/datenschutz.md zur Laufzeit (eine Quelle für Desktop und Web-App).
           cp docs/datenschutz.md _site/datenschutz.md
-          # Build-Kennung „N/X.Y.Z (sha)“ einsetzen (Platzhalter __BUILD__ in sw-core.js und
+          # Build-Kennung „N/X.Y.Z (sha)“ einsetzen (Platzhalter __BUILD__ in sw.js, sw-core.js und
           # Manifest); jeder Deploy bekommt damit einen eigenen Cache.
           python3 scripts/pwa_stamp.py _site
           if grep -rq "__BUILD__" _site; then echo "Platzhalter nicht ersetzt" >&2; exit 1; fi

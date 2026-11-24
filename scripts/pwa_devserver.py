@@ -62,9 +62,10 @@ class _Handler(http.server.SimpleHTTPRequestHandler):
                       ".mjs": "text/javascript", ".json": "application/json", ".png": "image/png"}
 
     def do_GET(self) -> None:
-        if self.path.split("?", 1)[0] != "/sw-core.js":
+        route = self.path.split("?", 1)[0]
+        if route not in ("/sw-core.js", "/sw.js"):
             return super().do_GET()
-        body = (PWA / "sw-core.js").read_text(encoding="utf-8").replace(
+        body = (PWA / route.lstrip("/")).read_text(encoding="utf-8").replace(
             "__BUILD__", build_id(PWA)).encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "text/javascript")

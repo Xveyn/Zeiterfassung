@@ -45,6 +45,7 @@ test('the build id is a placeholder in the repository and part of the cache name
   assert.equal(BUILD, '__BUILD__');
   assert.equal(CACHE_NAME, `${CACHE_PREFIX}${BUILD}`);
   assert.equal(read('sw-core.js').split('__BUILD__').length - 1, 1, 'der Platzhalter muss genau einmal vorkommen');
+  assert.equal(read('sw.js').split('__BUILD__').length - 1, 1, 'sw.js trägt den Platzhalter ebenfalls genau einmal');
 });
 
 // --- Welche Anfragen der Service Worker anfasst ---------------------------------------------------

@@ -40,6 +40,13 @@ def test_the_dev_worker_gets_a_build_id_instead_of_the_placeholder(devserver, tm
         assert devserver.build_id(devserver.PWA).startswith("dev-")
 
 
+def test_the_dev_main_script_carries_the_same_build_id_as_the_core(devserver, tmp_path):
+    with devserver.running(tmp_path, web_port=0, api_port=0, address="127.0.0.1") as dev:
+        body = get(f"http://127.0.0.1:{dev.web_port}/sw.js")[2].decode()
+        assert "__BUILD__" not in body
+        assert f"// Build: {devserver.build_id(devserver.PWA)}" in body
+
+
 def test_the_build_id_changes_with_the_files_and_only_then(devserver, tmp_path):
     (tmp_path / "app.js").write_text("a")
     (tmp_path / "test").mkdir()

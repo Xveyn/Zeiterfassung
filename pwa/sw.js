@@ -2,6 +2,9 @@
 // Service Worker: legt die App-Dateien in einen versionierten Cache und liefert sie offline aus.
 // Die Entscheidungen stehen in `sw-core.js` (getestet). Ein neuer Service Worker wartet, bis die
 // Seite „Neu laden“ bestätigt (Nachricht `SKIP_WAITING`) — nie mitten in einer Eingabe.
+// Die Build-Kennung steht auch im Hauptskript: Chrome startet keinen neuen Worker, wenn sich
+// nur ein importiertes Modul geändert hat. Jeder Deploy muss die Bytes von `sw.js` ändern.
+// Build: __BUILD__
 import { CACHE_NAME, CACHE_PREFIX, PRECACHE, shouldHandle } from './sw-core.js';
 import { idbKeyStore, open } from './push-blob.js';
 import { logFailure, setLogSink } from './diagnose.js';
