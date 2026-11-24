@@ -1187,7 +1187,7 @@ test('a note saved on an unknown day marks it known; without notesKnown it stays
   assert.deepEqual(store.snapshotDirty().entries['2026-10-04'].slots, [NOTED]);
 });
 
-test('notesKnown on an unchanged day is stored without making it dirty, and an earlier true is kept', async () => {
+test('notesKnown on an unchanged day is stored without making it dirty, and an earlier true is kept while slots carry notiz', async () => {
   const { store, adapter } = await make();
   await store.applyResponse(notesOn(), store.snapshotDirty(), TODAY);
   await store.saveDay('2026-10-05', [SLOT]);
@@ -1198,7 +1198,7 @@ test('notesKnown on an unchanged day is stored without making it dirty, and an e
   assert.equal(store.snapshotDirty().versions['2026-10-05'], version);
   assert.deepEqual(store.snapshotDirty().entries['2026-10-05'].slots, [{ ...SLOT, notiz: '' }]);
 
-  await store.saveDay('2026-10-05', [{ ...SLOT, pause: 10 }]);       // ohne Flag: bleibt bekannt
+  await store.saveDay('2026-10-05', [{ ...SLOT, pause: 10, notiz: '' }]);   // ohne Flag, Slots mit notiz: bleibt bekannt
   assert.equal(store.getDay('2026-10-05').notes_known, true);
 
   const again = new Store(adapter, clock());
@@ -1264,4 +1264,23 @@ test('saveDay rejects a note that is no valid single line', async () => {
   await assert.rejects(store.saveDay('2026-10-07', [{ ...SLOT, notiz: 'x'.repeat(201) }], { notesKnown: true }),
     /Höchstens 200 Zeichen/);
   assert.equal(store.getDay('2026-10-07'), null);
+});
+
+test('a save without notes after slot_notes was lost resets the knowledge: the day later goes out without notiz', async () => {
+  const { store } = await make();
+  await store.applyResponse(notesOn({ entries: { '2026-10-07': remoteDay([NOTED], { modified_at: '2026-10-01T00:00:00Z' }) } }),
+    store.snapshotDirty(), TODAY);
+  await store.saveDay('2026-10-07', [{ ...NOTED, pause: 5 }], { notesKnown: true });     // bekannt, noch nicht gesendet
+  await store.applyResponse(parsedResponse(), { entries: {}, versions: {} }, TODAY);     // Desktop ohne slot_notes
+  assert.equal(store.getMeta().slot_notes, false);
+  assert.equal(store.getDay('2026-10-07').notes_known, true);
+  const day = store.getDay('2026-10-07');
+  const rows = editorRows(day);
+  rows[0].pause = '15';
+  const { slots, notesKnown } = daySave(rows, day, { notes: store.getMeta().slot_notes });
+  await store.saveDay('2026-10-07', slots, { notesKnown });
+  assert.equal(store.getDay('2026-10-07').notes_known, false);
+
+  await store.applyResponse(notesOn(), { entries: {}, versions: {} }, TODAY);           // Desktop wieder mit slot_notes
+  assert.deepEqual(store.snapshotDirty().entries['2026-10-07'].slots, [{ ...SLOT, pause: 15 }]);
 });

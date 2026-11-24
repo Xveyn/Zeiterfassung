@@ -1387,3 +1387,24 @@ test('the list names the own category only when other notes follow; others alway
   assert.deepEqual(noteListModel(both, 'Projekt', 'kun'), [{ heading: null, items: ['Kunde'] }]);
   assert.deepEqual(noteListModel(both, 'Projekt', 'zzz'), []);
 });
+
+test('typing searches all previous notes, not only the newest 20; without text at most 20 are shown', () => {
+  const stored = {};
+  for (let i = 0; i < 25; i += 1) {
+    const iso = `2026-09-${String(i + 1).padStart(2, '0')}`;
+    stored[iso] = live([{ ...SLOT, notiz: i === 0 ? 'Altlast Archiv' : `Notiz ${i}` }]);
+  }
+  const choices = noteChoices(stored, 'Projekt');
+  assert.deepEqual(noteListModel(choices, 'Projekt', 'altlast'), [{ heading: null, items: ['Altlast Archiv'] }]);
+  const all = noteListModel(choices, 'Projekt');
+  assert.equal(all.reduce((sum, group) => sum + group.items.length, 0), 20);
+  assert.equal(all[0].items[0], 'Notiz 24');
+});
+
+test('the 20-entry cap counts both groups: the own ones first, the others fill up', () => {
+  const own = Array.from({ length: 15 }, (_, i) => `eigen ${i}`);
+  const other = Array.from({ length: 10 }, (_, i) => `fremd ${i}`);
+  const groups = noteListModel({ own, other }, 'Projekt');
+  assert.equal(groups[0].items.length, 15);
+  assert.equal(groups[1].items.length, 5);
+});

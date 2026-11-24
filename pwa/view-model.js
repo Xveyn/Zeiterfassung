@@ -340,13 +340,14 @@ export function daySave(rows, day, { notes = false } = {}) {
 }
 
 /** Bisherige Notizen für die Auswahl unter dem Feld: die der Kategorie (`own`) und die übrigen (`other`),
- *  je höchstens einmal, in der Reihenfolge von `noteSuggestions`.
+ *  je höchstens einmal, in der Reihenfolge von `noteSuggestions`, ohne Obergrenze: die Eingabe durchsucht
+ *  alle, gekürzt wird erst die Liste (`noteListModel`).
  * @param {unknown} days  `{ISO: Tag wie Store.getDay}`
  * @param {string} kategorie
  * @returns {{ own: string[], other: string[] }}
  */
 export function noteChoices(days, kategorie) {
-  const all = noteSuggestions(days, kategorie);
+  const all = noteSuggestions(days, kategorie, Infinity);
   /** @type {Record<string, unknown>} */
   const ownDays = {};
   if (isObject(days)) {
@@ -366,16 +367,17 @@ export function filterSuggestions(list, text) {
   return needle === '' ? list : list.filter((note) => groupKey(note).includes(needle));
 }
 
-/** Die Gruppen der Liste unter dem Notizfeld. Der Kopf mit dem Kategorienamen steht nur, wenn danach
- *  „Weitere Notizen“ folgen; leere Gruppen entfallen.
+/** Die Gruppen der Liste unter dem Notizfeld, nach dem Filtern höchstens `limit` Einträge (eigene zuerst).
+ *  Der Kopf mit dem Kategorienamen steht nur, wenn danach „Weitere Notizen“ folgen; leere Gruppen entfallen.
  * @param {{ own: string[], other: string[] }} choices
  * @param {string} kategorie
  * @param {string} [text]  Filter (Feldinhalt), leer = alle
+ * @param {number} [limit]
  * @returns {Array<{ heading: string | null, items: string[] }>}
  */
-export function noteListModel(choices, kategorie, text = '') {
-  const own = filterSuggestions(choices.own, text);
-  const other = filterSuggestions(choices.other, text);
+export function noteListModel(choices, kategorie, text = '', limit = 20) {
+  const own = filterSuggestions(choices.own, text).slice(0, limit);
+  const other = filterSuggestions(choices.other, text).slice(0, limit - own.length);
   const groups = [];
   if (own.length > 0) groups.push({ heading: other.length > 0 ? kategorie || 'Ohne Kategorie' : null, items: own });
   if (other.length > 0) groups.push({ heading: 'Weitere Notizen', items: other });

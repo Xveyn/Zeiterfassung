@@ -288,14 +288,15 @@ export class Store {
     ops.push({ store: storeName, op: 'put', key: date, value: record });
   }
 
-  /** `notesKnown`: kennt die PWA die Notizen des Tages (s. `_wireSlots`)? Einmal wahr, bleibt es wahr. */
+  /** `notesKnown`: kennt die PWA die Notizen des Tages (s. `_wireSlots`)? */
   _put(date, entry, ops, notesKnown) {
     this._putIn(this._days, 'entries', date, entry, ops, { notes_known: notesKnown });
   }
 
   /** Speichert einen Tag (geprüfte Slots). Wirft bei ungültigen Slots oder Datum. `notesKnown`
-   *  sagt, dass die Slots die Notizen des Tages tragen (Editor mit Notizfeld); ein bisheriges
-   *  Wissen geht dabei nie verloren. */
+   *  sagt, dass die Slots die Notizen des Tages tragen (Editor mit Notizfeld). Ein bisheriges Wissen
+   *  bleibt nur, wenn die Slots `notiz` tragen: ohne (Desktop ohne `slot_notes`) ist es verloren,
+   *  der Tag geht dann ohne `notiz` hinaus und der Desktop behält seine Notizen. */
   async saveDay(date, slots, { notesKnown = false } = {}) {
     if (!isIsoDate(date)) throw new Error(`Ungültiges Datum: ${date}`);
     // In der Reihenfolge des Desktop-Modus gespeichert (#520; „custom“ = wie eingegeben); Reservierungen (`saveReservation`) bleiben in Zeilenreihenfolge.
@@ -308,7 +309,8 @@ export class Store {
       if (!note.ok) throw new Error(`Notiz: ${note.message}`);
     }
     const old = this._days.get(date);
-    const known = notesKnown || old?.notes_known === true;
+    const carries = normalized.some((slot) => typeof slot.notiz === 'string');
+    const known = notesKnown || (carries && old?.notes_known === true);
     if (old && !old.entry.deleted && signature(old.entry.slots) === signature(normalized)) {
       // Unverändert: nicht dirty machen, aber erneut versuchen (Fehler weg) und das Wissen ablegen.
       if (old.error || old.notes_known !== known) {

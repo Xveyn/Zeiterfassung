@@ -415,6 +415,8 @@ test('the note field is a combobox with a list below it, without maxlength (the 
   assert.match(views, /autocomplete: 'off'/);
   assert.match(views, /placeholder: 'optional'/);
   assert.match(views, /'aria-label': 'Bisherige Notizen zeigen'/);
+  // Der Name folgt dem Zustand: offen blendet derselbe Knopf die Liste aus.
+  assert.match(views, /toggle\.setAttribute\('aria-label', open \? 'Bisherige Notizen ausblenden' : 'Bisherige Notizen zeigen'\)/);
   assert.match(views, /role: 'listbox'/);
 });
 

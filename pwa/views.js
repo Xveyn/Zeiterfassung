@@ -355,6 +355,7 @@ function slotSection({ rows, categories, defaults, weekday, withPause, pauseEnab
       list.hidden = !open;
       input.setAttribute('aria-expanded', String(open));
       toggle.setAttribute('aria-expanded', String(open));
+      toggle.setAttribute('aria-label', open ? 'Bisherige Notizen ausblenden' : 'Bisherige Notizen zeigen');
       if (open) document.addEventListener('pointerdown', outside, true);
       else document.removeEventListener('pointerdown', outside, true);
     };
