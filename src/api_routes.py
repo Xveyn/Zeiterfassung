@@ -47,6 +47,7 @@ from src.api_vacation_write import parse_vacation_body
 from src.api_summary import (
     category_names, holidays_for, parse_month, parse_week, parse_year, summarize,
 )
+from src.slot_notes import effective_slots
 from src.reservations import inherit_pause, normalize_pause, reservations_active
 from src.time_utils import utc_now_iso
 from src.vacation_plan import blocking_days, plan_vacation_save
@@ -181,10 +182,12 @@ def _status(request: ApiRequest, ctx: ApiContext, _match: re.Match[str]) -> ApiR
 
 
 def _wire_slots(slots: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Nur die vier Felder des Protokolls. `sanitize_slot` behält Zusatzschlüssel
-    (Plan-Ruling), und ein gespeichertes `NaN`/`-Infinity` darin verließe die API als
-    nicht-striktes JSON. Die Werte der vier Felder hat die Lese-Grenze schon bereinigt."""
-    return [{key: slot[key] for key in ("start", "end", "pause", "kategorie")} for slot in slots]
+    """Nur die Felder des Protokolls der Ist-Zeiten, `notiz` immer (leer ohne Notiz).
+    `sanitize_slot` behält Zusatzschlüssel (Plan-Ruling), und ein gespeichertes
+    `NaN`/`-Infinity` darin verließe die API als nicht-striktes JSON. Die Werte hat die
+    Lese-Grenze schon bereinigt."""
+    return [{**{key: slot[key] for key in ("start", "end", "pause", "kategorie")},
+             "notiz": slot.get("notiz", "")} for slot in slots]
 
 
 def _query_range(query: Mapping[str, list[str]]) -> tuple[datetime.date | None, datetime.date | None]:
@@ -310,7 +313,8 @@ def _put_entry(request: ApiRequest, ctx: ApiContext, match: re.Match[str]) -> Ap
         check_day_writable(day_key, conflicts_store=ctx.conflicts_store,
                            vacation_store=ctx.vacation_store, for_save=True)
         existing = ctx.storage.get(day_key)
-        changed = existing is None or existing["slots"] != slots
+        effective = effective_slots(slots, existing["slots"] if existing else [])
+        changed = existing is None or existing["slots"] != effective
         warnings = warnings_for(ctx.settings, ctx.storage.get_all(), day_key, slots)
         if changed:
             ctx.storage.save(day_key, slots)
@@ -318,7 +322,7 @@ def _put_entry(request: ApiRequest, ctx: ApiContext, match: re.Match[str]) -> Ap
     if changed:
         _notify(ctx)
     return ApiResponse(200, {"date": day_key,
-                             "slots": stored["slots"] if stored else slots,
+                             "slots": _wire_slots(stored["slots"] if stored else effective),
                              "changed": changed, "warnings": warnings})
 
 

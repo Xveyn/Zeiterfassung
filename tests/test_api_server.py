@@ -614,10 +614,11 @@ def test_put_get_delete_roundtrip_over_http(tmp_path):
         slots = [{"start": "08:00", "end": "12:00", "pause": 0, "kategorie": "X"}]
         response, body, _ = http_call(srv, "PUT", "/v1/entries/2026-10-07", JSON_HEADERS,
                                       put_body(slots))
-        assert response.status == 200 and body["changed"] is True and body["slots"] == slots
+        wire = [{**slots[0], "notiz": ""}]
+        assert response.status == 200 and body["changed"] is True and body["slots"] == wire
 
         got, got_body, _ = http_call(srv, "GET", "/v1/entries/2026-10-07")
-        assert got.status == 200 and got_body["slots"] == slots
+        assert got.status == 200 and got_body["slots"] == wire
 
         deleted, deleted_body, _ = http_call(srv, "DELETE", "/v1/entries/2026-10-07")
         assert deleted.status == 200 and deleted_body["deleted"] is True

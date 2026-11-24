@@ -86,3 +86,14 @@ test('the slot order of the response is read, anything unknown counts as chronol
     assert.equal(parseSyncResponse({ ...doc, slot_order: raw }).slot_order, expected, String(raw));
   }
 });
+
+test('the response of a desktop before slot notes (#519) is still understood', () => {
+  const doc = frozen('sync-response-pre-notes.json');
+  assert.ok(!('slot_notes' in doc));
+  for (const day of Object.values(doc.entries)) {
+    for (const slot of day.slots) assert.ok(!('notiz' in slot));
+  }
+  const parsed = parseSyncResponse(doc);
+  assert.deepEqual(Object.keys(parsed.entries).sort(), Object.keys(doc.entries).sort());
+  assert.equal(parsed.conflicts.length, doc.conflicts.length);
+});

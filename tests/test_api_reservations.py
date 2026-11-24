@@ -169,6 +169,15 @@ def test_put_creates_the_day_and_triggers_refresh_then_calendar_reconcile(env):
     assert env.events == ["change", "reconcile"]
 
 
+def test_put_with_notiz_in_a_slot_is_still_invalid_slot(env):
+    body = json.dumps({"slots": [{"start": "08:00", "end": "12:00", "notiz": "K"}]}).encode()
+
+    response = env.put(body)
+
+    assert response.status == 422 and response.body["error"]["code"] == "invalid_slot"
+    assert env.reservations.get(DAY) is None
+
+
 def test_put_replaces_the_whole_day(env):
     env.put()
     two = json.dumps({"slots": [{"start": "09:00", "end": "10:00"},

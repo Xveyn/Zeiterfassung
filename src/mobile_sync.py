@@ -31,8 +31,8 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from src import (
-    mobile_pairing, mobile_reminders, mobile_reservations, mobile_settings, sync, sync_history,
-    sync_journal,
+    mobile_pairing, mobile_reminders, mobile_reservations, mobile_settings, slot_notes, sync,
+    sync_history, sync_journal,
 )
 from src.api_entry_write import WriteError, check_date_range, load_json_body, parse_slots
 from src.api_summary import category_names
@@ -77,8 +77,8 @@ class SyncError(Exception):
 @dataclass(frozen=True)
 class SyncRequest:
     client_time: str
-    # {date: {slots, modified_at, deleted}} — bewusst ohne `device_id`: die setzt
-    # `perform_sync` aus dem Token, nie aus dem Body.
+    # {date: {slots, modified_at, deleted}}, dazu `notes`, wenn das Handy `notiz` an allen Slots des
+    # Tages schickte — bewusst ohne `device_id`: die setzt `perform_sync` aus dem Token, nie aus dem Body.
     entries: dict[str, dict[str, Any]]
     window_days: int | None = None      # Wunsch des Handys (#250); `None` = keiner/ungültig
     # {date: {slots, modified_at, deleted}} der Reservierungen; leer, wenn das Handy keine
@@ -139,6 +139,7 @@ def _parse_entry(date: str, raw: object, now_dt: datetime.datetime) -> dict[str,
     if not isinstance(slots_raw, list):
         raise bad("slots muss eine Liste sein.")
     slots: list[dict[str, Any]] = []
+    notes: dict[str, str] | None = None
     if deleted:
         if slots_raw:
             raise bad("Ein gelöschter Tag darf keine Slots tragen.")
@@ -146,10 +147,21 @@ def _parse_entry(date: str, raw: object, now_dt: datetime.datetime) -> dict[str,
         if not slots_raw:
             raise bad("Ein Tag ohne Slots ist gelöscht (deleted: true).")
         try:
-            slots = parse_slots(slots_raw)
+            slots = parse_slots(slots_raw, allow_note=True)
         except WriteError as error:
             raise bad(error.message) from None
-    return {"slots": slots, "modified_at": str(raw["modified_at"]), "deleted": deleted}
+        # Eine PWA, die Notizen kennt, schickt `notiz` an jedem Slot; ohne `notiz` erbt der Tag im
+        # Merge die Notizen des Desktops. Gemischt wäre nicht zu entscheiden, welche gelten.
+        noted = [slot_notes.SLOT_KEY in slot for slot in slots]
+        if any(noted):
+            if not all(noted):
+                raise bad("notiz muss an allen Slots eines Tages stehen oder an keinem.")
+            notes = slot_notes.notes_from_slots(slots)
+            slots = [{key: slot[key] for key in ("start", "end", "pause", "kategorie")} for slot in slots]
+    entry: dict[str, Any] = {"slots": slots, "modified_at": str(raw["modified_at"]), "deleted": deleted}
+    if notes is not None:
+        entry[slot_notes.ENTRY_KEY] = notes
+    return entry
 
 
 def parse_request(body: bytes, *, now: str, today: datetime.date | None = None,
@@ -243,16 +255,21 @@ def fit_window(sizes: Mapping[str, int], *, today: datetime.date, window_days: i
     return window_days
 
 
-def _clean_slots(raw: object) -> list[dict[str, Any]]:
+def _clean_slots(raw: object, notes: Mapping[str, str] | None = None) -> list[dict[str, Any]]:
     """Gespeicherte Slots sind Fremddaten (Drive-Sync, Handbearbeitung): bereinigen
-    und auf die vier Felder des Protokolls beschränken."""
+    und auf die fünf Felder des Protokolls beschränken. `notiz` steht immer da (`""`
+    ohne Notiz); `notes` sind die bereinigten Notizen des Tages (`slot_notes.notes_of`)."""
     if not isinstance(raw, list):
         return []
+    notes = notes or {}
     slots = []
     for item in raw:
         clean = sanitize_slot(item)
         if clean is not None:
-            slots.append({key: clean[key] for key in ("start", "end", "pause", "kategorie")})
+            slot = {key: clean[key] for key in ("start", "end", "pause", "kategorie")}
+            start = slot["start"]
+            slot[slot_notes.SLOT_KEY] = notes.get(start, "") if isinstance(start, str) else ""
+            slots.append(slot)
     return slots
 
 
@@ -264,7 +281,7 @@ def _clean_entry(entry: Mapping[str, Any]) -> dict[str, Any] | None:
     lebender Tag ohne brauchbare Slots entfällt — als Tombstone gesendet, würde er
     am Handy einen Tag löschen, nur weil die Desktop-Datei beschädigt ist."""
     deleted = entry.get("deleted") is True
-    slots = [] if deleted else _clean_slots(entry.get("slots"))
+    slots = [] if deleted else _clean_slots(entry.get("slots"), slot_notes.notes_of(entry))
     if not deleted and not slots:
         return None
     return {
@@ -294,7 +311,7 @@ def _conflict_views(merged: Mapping[str, Any], visible: Any) -> list[dict[str, A
                 "device": device,
                 "name": registry.get(device, {}).get("name", ""),
                 "modified_at": str(candidate.get("modified_at") or ""),
-                "slots": _clean_slots(candidate.get("slots")),
+                "slots": _clean_slots(candidate.get("slots"), slot_notes.notes_of(candidate)),
             })
         views.append({"id": str(conflict.get("id") or ""), "date": key, "versions": versions})
     return sorted(views, key=lambda view: view["date"])
@@ -386,6 +403,8 @@ def build_response(merged: Mapping[str, Any], *, sent_dates: Iterable[str],
         "writable_settings": list(mobile_settings.SETTING_KEYS),
         # Fähigkeit: der Desktop kennt `POST /v1/unpair` (die PWA warnt sonst vor dem Trennen).
         "unpair": True,
+        # Fähigkeit: Slots tragen `notiz`, der Desktop nimmt sie an (die PWA sendet sie nur dann).
+        "slot_notes": True,
         # Reihenfolge der Slots eines Tages (#520): die PWA zeigt danach (`chrono`, `category`,
         # `custom`); ein älterer Desktop schickt das Feld nicht, dann gilt `chrono`.
         "slot_order": normalize_mode(slot_order),
@@ -399,7 +418,8 @@ def build_response(merged: Mapping[str, Any], *, sent_dates: Iterable[str],
 
 
 def _phone_doc(request: SyncRequest, device_id: str, device_name: str, now: str,
-               changed_since: str = "") -> dict[str, Any]:
+               changed_since: str = "",
+               desktop_entries: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """Das Handy als `local` des Merges: nur die geschickten Tage, die Geräte-ID aus
     dem Token. So wirkt die Self-Heal-Regel (`excluded`) für das Handy richtig.
 
@@ -410,13 +430,16 @@ def _phone_doc(request: SyncRequest, device_id: str, device_name: str, now: str,
     nachgehenden Handy läge der Stempel vor `last_pull_at`, und die Änderung verlöre
     still gegen die Desktop-Version, ohne Konflikt. Deshalb wird der Stempel auf
     `last_pull_at + 1 s` angehoben (innerhalb der erlaubten 15 Minuten Abweichung).
-    Die Einstellungen bekommen denselben angehobenen Stempel."""
+    Die Einstellungen bekommen denselben angehobenen Stempel.
+
+    Den Schlüssel `notes` richtet `_notes_key_like_desktop` am Desktop-Eintrag aus
+    (`desktop_entries`): ein Tag, der nie eine Notiz hatte, bleibt ohne `notes`."""
     floor = mobile_pairing.shift(changed_since, datetime.timedelta(seconds=1)) if changed_since else ""
     return {
         "schema_version": sync.SCHEMA_VERSION,
         "entries": {
-            date: {**entry, "modified_at": max(entry["modified_at"], floor),
-                   "device_id": device_id}
+            date: {**_notes_key_like_desktop(entry, (desktop_entries or {}).get(date)),
+                   "modified_at": max(entry["modified_at"], floor), "device_id": device_id}
             for date, entry in request.entries.items()
         },
         "settings": {
@@ -428,6 +451,22 @@ def _phone_doc(request: SyncRequest, device_id: str, device_name: str, now: str,
         "devices": with_own_entry(None, device_id, device_name, now),
         "meta": {"gc_watermark": ""},
     }
+
+
+def _notes_key_like_desktop(entry: Mapping[str, Any], desktop: object) -> dict[str, Any]:
+    """Der Handy-Eintrag mit dem Schlüssel `notes` nach der Schreib-Regel von `Storage`.
+
+    Trägt der Desktop-Eintrag (lebend oder Tombstone) den Schlüssel, behält ein leeres
+    `notes` ihn und ein Tombstone des Handys bekommt `notes: {}`; sonst entfällt ein
+    leeres `notes`, und der Tag bleibt ohne Schlüssel, den sonst niemand gesetzt hat."""
+    result = dict(entry)
+    keyed = slot_notes.has_key(desktop)
+    if result.get("deleted") is True:
+        if keyed:
+            result[slot_notes.ENTRY_KEY] = {}
+    elif result.get(slot_notes.ENTRY_KEY) == {} and not keyed:
+        del result[slot_notes.ENTRY_KEY]
+    return result
 
 
 def perform_sync(request: SyncRequest, *, device_id: str, device_name: str,
@@ -469,7 +508,8 @@ def perform_sync(request: SyncRequest, *, device_id: str, device_name: str,
             # Bei `excluded` bleiben die Stempel unangetastet: die Self-Heal-Regel
             # vergleicht sie mit dem Watermark und soll alte Tage nicht wiederbeleben.
             phone_doc = _phone_doc(request, device_id, device_name, now,
-                                   "" if excluded else last_pull_at)
+                                   "" if excluded else last_pull_at,
+                                   desktop_entries=desktop_doc.get("entries"))
             merged = sync.merge(phone_doc, desktop_doc, last_pull_at)
             sync_journal.apply_merged_doc_journaled(
                 merged, storage, settings, conflicts_store,

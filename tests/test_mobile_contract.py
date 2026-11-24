@@ -345,6 +345,26 @@ def test_pre_pause_fixtures_are_really_pre_pause():
     assert "reservation_pause" not in response
 
 
+def test_pre_notes_response_is_really_pre_notes():
+    response = load("compat/sync-response-pre-notes.json")
+
+    slots = [s for rec in response["entries"].values() for s in rec["slots"]]
+    slots += [s for c in response["conflicts"] for v in c["versions"] for s in v["slots"]]
+    assert slots
+    assert all("notiz" not in s for s in slots)
+    assert "slot_notes" not in response
+
+
+def test_the_live_response_example_carries_notes_on_every_slot():
+    response = load("sync-response.json")
+
+    slots = [s for rec in response["entries"].values() for s in rec["slots"]]
+    slots += [s for c in response["conflicts"] for v in c["versions"] for s in v["slots"]]
+    assert slots and all(isinstance(s.get("notiz"), str) for s in slots)
+    assert any(s["notiz"] for s in slots)
+    assert response["slot_notes"] is True
+
+
 def test_the_live_response_example_has_the_shape_build_reservations_emits():
     example = load("sync-response.json")
     today = datetime.date.fromisoformat(example["server_time"][:10])

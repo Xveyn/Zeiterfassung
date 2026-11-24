@@ -374,3 +374,43 @@ def test_load_json_body_is_strict():
     for body in (b"{kaputt", b'{"a": NaN}', b'{"a": 1, "a": 2}', b"[" * 100000, b"\xff"):
         with pytest.raises(w.WriteError):
             w.load_json_body(body)
+
+
+def test_parse_slots_without_notiz_has_no_key():
+    slots = w.parse_slots([{"start": "08:00", "end": "12:00"}], allow_note=True)
+    assert "notiz" not in slots[0]
+
+
+def test_parse_slots_trims_the_note():
+    slots = w.parse_slots([{"start": "08:00", "end": "12:00", "notiz": " K "}], allow_note=True)
+    assert slots[0]["notiz"] == "K"
+
+
+def test_parse_slots_keeps_an_empty_note_as_given():
+    slots = w.parse_slots([{"start": "08:00", "end": "12:00", "notiz": ""}], allow_note=True)
+    assert slots[0]["notiz"] == ""
+
+
+@pytest.mark.parametrize("value", [5, "a\nb", "x" * 201, None])
+def test_parse_slots_rejects_a_bad_note(value):
+    with pytest.raises(w.WriteError) as excinfo:
+        w.parse_slots([{"start": "08:00", "end": "12:00", "notiz": value}], allow_note=True)
+    assert (excinfo.value.status, excinfo.value.code) == (422, "invalid_note")
+    assert excinfo.value.message.startswith("Slot 1: ")
+
+
+def test_parse_slots_with_notes_still_rejects_unknown_fields_and_names_notiz():
+    with pytest.raises(w.WriteError) as excinfo:
+        w.parse_slots([{"start": "08:00", "end": "12:00", "x": 1}], allow_note=True)
+    assert excinfo.value.code == "invalid_slot" and "notiz" in excinfo.value.message
+
+
+def test_parse_slots_without_allow_note_rejects_notiz_as_before():
+    with pytest.raises(w.WriteError) as excinfo:
+        w.parse_slots([{"start": "08:00", "end": "12:00", "notiz": "K"}])
+    assert excinfo.value.code == "invalid_slot" and "notiz" not in excinfo.value.message.split("gefunden")[0]
+
+
+def test_parse_day_body_accepts_a_note():
+    body = json.dumps({"slots": [{"start": "08:00", "end": "12:00", "notiz": "K"}]}).encode()
+    assert w.parse_day_body(body)[0]["notiz"] == "K"

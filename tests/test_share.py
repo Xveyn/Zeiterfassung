@@ -665,3 +665,50 @@ def test_import_overwrites_desktop_pause_with_zero(tmp_path):
         {"date": "2026-08-31", "entry": _erec(_rslot("08:00", "12:00", "Office"))},
     ])
     assert store.get("2026-08-31")["slots"][0]["pause"] == 0
+
+
+# --- Notizen: nie in der Teilen-Datei ---
+
+
+def _noted_storage(tmp_path):
+    from src.storage import Storage
+    st = Storage(str(tmp_path / "z.json"), device_id="dev")
+    st.save("2026-05-14", [
+        {**_eslot("08:00", "12:00", 15, "Büro"), "notiz": "Kunde Mustermann"},
+        _eslot("13:00", "16:00"),
+    ])
+    return st
+
+
+def test_build_share_doc_never_carries_notes(tmp_path):
+    st = _noted_storage(tmp_path)
+    assert st.get_all()["2026-05-14"]["slots"][0]["notiz"] == "Kunde Mustermann"
+    doc = build_share_doc(st, "a@b.de")
+    slots = doc["entries"]["2026-05-14"]["slots"]
+    assert all(set(s) == {"start", "end", "pause", "kategorie"} for s in slots)
+    parsed = parse_share_doc(serialize_share_doc(doc))
+    assert parsed["schema_version"] == 3 == SCHEMA_VERSION
+
+
+def test_old_sender_shape_with_notes_on_disk_passes_validator(tmp_path):
+    from src.storage import sanitize_slot
+    st = _noted_storage(tmp_path)
+    with open(tmp_path / "z.json", encoding="utf-8") as fh:
+        assert "notes" in json.load(fh)["2026-05-14"]
+    # Alte App: `_user_shape` reicht je lebendem Eintrag nur {"slots": sanitize_slot(...)}
+    # der gespeicherten Slots weiter; `notes` am Eintrag bleibt dabei liegen.
+    old = {d: {"slots": [sanitize_slot(s) for s in e["slots"]]}
+           for d, e in st.get_all_raw().items() if not e.get("deleted")}
+    assert all("notiz" not in s for e in old.values() for s in e["slots"])
+    doc = {"schema_version": 3, "kind": KIND, "exported_at": "2026-05-14T00:00:00Z",
+           "exported_by": "", "entries": old}
+    parse_share_doc(serialize_share_doc(doc))
+
+
+def test_import_keeps_note_for_same_start(tmp_path):
+    st = _noted_storage(tmp_path)
+    apply_import(st, [{"date": "2026-05-14", "entry": {"slots": [
+        _eslot("08:00", "12:00", 45, "Büro")]}}])
+    slot = st.get("2026-05-14")["slots"][0]
+    assert slot["pause"] == 45
+    assert slot["notiz"] == "Kunde Mustermann"

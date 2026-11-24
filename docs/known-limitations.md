@@ -731,6 +731,69 @@ für Fragen: `docs/datenschutz.md` (die Web-App verlinkt es im Koppel-Bildschirm
 - **Offene Randfälle:** #422 (Koppel-Dialog), #423 („verdrängt“ ohne Ausweg), #425 und #426 (Relay-Transport der
   Web-App, Tests und Doku).
 
+## Slot-Notizen (#519): bekannte Grenzen
+
+Die Notiz liegt am Tag je Startzeit (`notes`, s. `CLAUDE.md`, `src/slot_notes.py`) und
+reist mit dem Tag durch Sync und Konflikte. Ältere Versionen kennen den Schlüssel nicht; was
+daraus folgt, ist in einer gemischten Flotte nicht ganz zu schließen.
+
+- **Eine alte Version ändert die Startzeit eines Slots oder löscht ihn: die Notiz geht
+  verloren,** die Zuordnung hängt an der Startzeit. Tauscht sie die Zeiten zweier Slots, wandern die
+  Notizen mit den Zeiten. Zwischen zwei neuen Geräten gibt es das nicht: sie schreiben `notes` an
+  jedem Tag mit, der Notizen hat oder hatte, auch über das Löschen des Tages hinweg (s. unten).
+- **Eine gelöschte oder geänderte Notiz kann in einer gemischten Flotte zurückkommen.** Dafür
+  braucht es drei Geräte in dieser Reihenfolge: ein neues Gerät entfernt oder ändert die Notiz und
+  synchronisiert, ein altes speichert denselben Tag danach neu (im Sync-Doc fehlt der Schlüssel), und
+  ein drittes neues Gerät, das noch den Stand mit der alten Notiz hält, synchronisiert vor dem
+  ersten. Es erbt die alte Notiz und macht sie zum neuesten Stand; am Ende haben alle Geräte die alte
+  Notiz, ohne Konflikt, und die Änderung des ersten Geräts ist spurlos weg. Synchronisiert das erste
+  Gerät zuerst, bleibt seine Fassung. Schließen ließe sich das nur mit eigenen Zeitstempeln je Notiz.
+- **Ein altes Gerät braucht dafür keine Bedienung.** Solange für den Tag ein gelöster Konflikt in der
+  Liste steht (bis zur Kompaktierung), baut seine Schleife über die Auflösungen den Tag bei jedem Sync
+  aus vier Schlüsseln neu; das zählt wie ein Neuspeichern ohne `notes`.
+- **Welche Löschungen den Schlüssel behalten.** Ein Tombstone trägt `notes: {}`, wenn der gelöschte
+  Stand den Schlüssel trug: beim Löschen am neuen Desktop und beim Löschen am Handy (der Desktop setzt
+  den Schlüssel nach seinem Eintrag). Eine als „gelöscht“ gelöste Konflikt-Auflösung schreibt ihn,
+  wenn der gespeicherte Stand oder einer der beiden Kandidaten ihn trägt (oder die Wahl eine Notiz
+  hat); Tombstone und Auflösung tragen ihn dann beide. Ein Tombstone eines **alten** Geräts hat nur
+  vier Schlüssel, ebenso einer, den die Auflösungs-Schleife eines alten Geräts neu baut (er gewinnt
+  bei gleichem Stempel über die Textform); ein danach neu angelegter Tag ohne Schlüssel kann dann von
+  einem Gerät, das noch einen Stand mit Notiz hält, die alte Notiz zurückbekommen.
+- **Welche Neuanlagen den Schlüssel tragen.** Legt ein neuer Desktop einen Tag über einem Tombstone
+  mit Schlüssel neu an, trägt der neue Tag ihn sofort und erbt nichts. Das Handy (die PWA schickt
+  heute kein `notiz`) und ein altes Gerät legen den Tag ohne Schlüssel an; er bekommt ihn im Merge,
+  sobald das mergende Gerät den Tombstone mit Schlüssel hält (`notes: {}`, Stempel + 1 s). Beim
+  Handy ist das immer der Fall, der Desktop hält den Tombstone selbst. **Grenze:** synchronisiert ein
+  Gerät, das noch den Stand mit Notiz von vor dem Löschen hält, den ohne Schlüssel neu angelegten Tag
+  **bevor** ein Gerät mit dem Tombstone es tut, erbt er die alte Notiz, und sie kommt zurück
+  (dieselbe Reihenfolge-Abhängigkeit wie in der Drei-Geräte-Grenze oben).
+- **Nach der Kompaktierung fehlt die Markierung.** Die Kompaktierung entfernt abgeschlossene
+  Tombstones samt `notes: {}`. Ein danach neu angelegter Tag wird ohne Schlüssel geschrieben (es gibt
+  keinen Vorgänger mehr, der ihn trug), und ein Gerät, das seit **vor** dem Löschen offline war und
+  den Stand mit Notiz hält, erbt beim nächsten Sync die alte Notiz in den neuen Tag.
+- **Die Anhebung um eine Sekunde macht den ergänzten Stand zum neuesten.** Dafür reicht schon eine
+  Sekunde Uhrabweichung: zeigt die Uhr eines Handys etwa eine Sekunde mehr als die des Desktops (oder
+  läuft der Abgleich in derselben Sekunde wie das Speichern), ist der Stempel des gespeicherten Tages
+  mit Notiz danach jünger als der Abgleich-Zeitpunkt (`last_pull_at`), den der Desktop sich merkt.
+  Ändert eine PWA, die kein `notiz` sendet, denselben Tag erneut, gelten beide Seiten als seither
+  geändert, und es entsteht ein unnötiger Konflikt „Handy gegen Handy“; Daten gehen nicht verloren
+  (s. „Last-Write-Wins hängt an den Geräte-Uhren“).
+- **Eine alte Version löst einen Konflikt, dessen Stände sich nur in der Notiz unterscheiden:** sie
+  sieht zwei gleiche Karten, es gilt der jüngere Stand.
+- **Geteilte Arbeitszeiten kommen ohne Notizen an.** Die Teilen-Datei bleibt bewusst bei den vier
+  Slot-Feldern (v3).
+- **Eine Auflösung kann von einem alten Schreiber überholt werden.** Schreibt ein Gerät in der alten
+  Version einen Tag genau eine Sekunde, bevor der Nutzer auf einem anderen Gerät den Konflikt für
+  diesen Tag auflöst, kann die Anhebung um eine Sekunde den alten Stand auf den Stempel der Auflösung
+  heben. Dann entscheidet die Geräte-ID, und der alte Wert kann den aufgelösten in den Einträgen
+  ersetzen (der Konflikt-Datensatz bleibt erhalten; ohne Notizen hätte die Auflösung gewonnen). Das
+  geschieht auf einem neuen Gerät, das den alten Stand im selben Merge sieht, in dem es die Auflösung
+  erst anwendet. Schreibt das alte Gerät in **derselben** Sekunde wie die Auflösung, entscheidet ohne
+  Notizen die Geräte-ID; mit Notizen liegt der angehobene alte Stand eine Sekunde nach ihr und gewinnt
+  immer. Das ist symmetrisch und stabil und braucht eine gemischte Flotte mit Notizen am Tag.
+  Möglicher Fix: die Anhebung erst nach den Auflösungen anwenden und nur, wenn der Eintrag danach noch
+  der Gewinner ist.
+
 ## Beschädigte oder fremde Daten (Storage)
 
 - **Ungültige Slot-Werte werden beim Lesen ersetzt, nicht repariert.** Eine gespeicherte Pause, die keine ganze Zahl von 0 bis 1440 ist (`null`, Text, `30.5`, negativ, `inf`), zählt `0`; `start`/`end` ohne Text zählen als leer, eine Kategorie ohne Text als „ohne Kategorie“. Die Datei behält den Originalwert, bis der Tag neu gespeichert wird.

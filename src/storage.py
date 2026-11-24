@@ -10,11 +10,13 @@ from typing import Any
 from src.json_store import (
     atomic_write_json, backup_corrupt, load_json_or_quarantine, quarantine_corrupt,
 )
+from src.slot_notes import effective_slots, has_key, notes_from_slots, notes_of, with_notes
 from src.time_utils import utc_now_iso
 
 # JSON-getragene Records (Audit N8): ein Slot {start, end, pause, kategorie};
-# ein Entry {slots, modified_at, device_id, deleted}; der Store hält
-# {ISO-Datum: Entry}. Werte sind heterogen (str/int/bool/list) → Any.
+# ein Entry {slots, modified_at, device_id, deleted}, dazu `notes` ({start: Notiz}),
+# wenn der Tag Notizen hat oder hatte, bei einem Tombstone als `{}`; der Store hält
+# {ISO-Datum: Entry}. Werte sind heterogen (str/int/bool/list/dict) → Any.
 Slot = dict[str, Any]
 Entry = dict[str, Any]
 
@@ -296,7 +298,8 @@ class Storage:
         slots = entry.get("slots") if isinstance(entry, dict) else None
         if not isinstance(slots, list):
             return {"slots": []}
-        return {"slots": [clean for clean in map(sanitize_slot, slots) if clean is not None]}
+        clean = [c for c in map(sanitize_slot, slots) if c is not None]
+        return {"slots": with_notes(clean, notes_of(entry))}
 
     def get_all(self) -> dict[str, dict[str, Any]]:
         """Liefert {date: {slots: [...]}} ohne Tombstones."""
@@ -326,15 +329,36 @@ class Storage:
         else:
             self._data[date_str] = previous
 
-    def save(self, date_str: str, slots: list[Slot]) -> None:
+    def _live_entry(self, slots: list[Slot], previous: Any, stamp: str,
+                    notes_known: bool = False) -> Entry:
+        """Der zu schreibende Eintrag: vier Felder je Slot, Notizen unter `notes`.
+
+        Ein Slot ohne `notiz` erbt die des bisherigen lebenden Slots mit gleichem
+        `start`. `notes` steht, wenn es Notizen gibt, der bisherige Eintrag den
+        Schlüssel trug (auch ein Tombstone; Notizen vererbt er nicht) oder
+        `notes_known` gesetzt ist."""
+        alive = isinstance(previous, dict) and not previous.get("deleted")
+        old = self._user_shape(previous)["slots"] if alive else []
+        eff = effective_slots(slots, old)
+        notes = notes_from_slots(eff)
+        entry: Entry = {
+            "slots": [_normalize_slot(s) for s in eff],
+            "modified_at": stamp,
+            "device_id": self.device_id,
+            "deleted": False,
+        }
+        if notes or notes_known or has_key(previous):
+            entry["notes"] = notes
+        return entry
+
+    def save(self, date_str: str, slots: list[Slot], *, notes_known: bool = False) -> None:
+        """Speichert einen Tag. `notes_known` schreibt den Schlüssel `notes` auch dann,
+        wenn der bisherige Stand ihn nicht trug (`sync.resolve_conflict`: Auflösung und
+        gespeicherter Tag müssen im Schlüssel übereinstimmen)."""
         with self._lock:
             previous = self._data.get(date_str)
-            self._data[date_str] = {
-                "slots": [_normalize_slot(s) for s in slots],
-                "modified_at": utc_now_iso(),
-                "device_id": self.device_id,
-                "deleted": False,
-            }
+            self._data[date_str] = self._live_entry(slots, previous, utc_now_iso(),
+                                                    notes_known)
             try:
                 self._save_to_disk()
             except BaseException:
@@ -345,19 +369,26 @@ class Storage:
                 self._restore_day(date_str, previous)
                 raise
 
-    def delete(self, date_str: str) -> None:
+    def delete(self, date_str: str, *, notes_known: bool = False) -> None:
+        """Schreibt einen Tombstone; `notes_known` wie bei `save`."""
         with self._lock:
             if date_str not in self._data:
                 return
             # Tombstone: behält die Zeile mit deleted=true, damit der Sync ein
             # Delete gegen ein veraltetes Save eines anderen Geräts durchsetzen kann.
             previous = self._data[date_str]
-            self._data[date_str] = {
+            tombstone: Entry = {
                 "slots": [],
                 "modified_at": utc_now_iso(),
                 "device_id": self.device_id,
                 "deleted": True,
             }
+            # Der Schlüssel `notes` überlebt das Löschen: ein später neu angelegter
+            # Tag trägt ihn dann, und der Merge liest ihn nicht als Stand eines
+            # Schreibers, der nichts von Notizen weiß (sonst erbte er die alte Notiz).
+            if notes_known or has_key(previous):
+                tombstone["notes"] = {}
+            self._data[date_str] = tombstone
             try:
                 self._save_to_disk()
             except BaseException:
@@ -398,12 +429,9 @@ class Storage:
             previous_data = dict(self._data)
             now = utc_now_iso()
             for date_str, payload in updates.items():
-                self._data[date_str] = {
-                    "slots": [_normalize_slot(s) for s in payload.get("slots", [])],
-                    "modified_at": now,
-                    "device_id": self.device_id,
-                    "deleted": False,
-                }
+                self._data[date_str] = self._live_entry(
+                    payload.get("slots", []), self._data.get(date_str), now
+                )
             try:
                 self._save_to_disk()
             except BaseException:

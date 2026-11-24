@@ -269,6 +269,23 @@ def _share_reservation_shape(records: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _share_entry_shape(records: dict[str, Any]) -> dict[str, Any]:
+    """Projiziert Ist-Zeit-Records auf die vier Share-Felder.
+
+    Die Notiz gehört nie in die Datei: `_check_keys` jeder ausgelieferten
+    Version lehnt unbekannte Slot-Felder ab, ein Tag mit Notiz ergäbe eine
+    Datei, die kein Empfänger importieren kann.
+    """
+    return {
+        date_str: {"slots": [
+            {"start": s.get("start"), "end": s.get("end"),
+             "pause": s.get("pause"), "kategorie": s.get("kategorie")}
+            for s in record["slots"]
+        ]}
+        for date_str, record in records.items()
+    }
+
+
 def filter_records_by_range(records: dict[str, Any], date_from: datetime.date | None,
                             date_to: datetime.date | None) -> dict[str, Any]:
     """Behält die Tage, deren ISO-Schlüssel in [date_from, date_to] liegt.
@@ -323,7 +340,7 @@ def build_share_doc(storage: Storage, sender_email: str, *,
             filter_records_by_range(dict(records), date_from, date_to), categories)
 
     if include_entries:
-        doc["entries"] = _select(storage.get_all())
+        doc["entries"] = _share_entry_shape(_select(storage.get_all()))
     if include_reservations and reservation_store is not None:
         doc["reservations"] = _share_reservation_shape(
             _select(reservation_store.get_all()))

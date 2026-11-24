@@ -5,13 +5,20 @@ Doc-Struktur (Sync-File und Zwischenformate), Stand SCHEMA_VERSION = 4:
 {
   "schema_version": 4,
   "entries":   {date: {slots: [{start, end, pause, kategorie}],
-                       modified_at, device_id, deleted}},
+                       modified_at, device_id, deleted, notes?}},
   "settings":  {key:  {value, modified_at, device_id}},
   "conflicts": [{id, kind, key, candidates, detected_at,
                  resolved, resolution, resolved_at, resolved_by}],
   "devices":   {device_id: {name, updated_at}},   # optional, s.u.
   "meta":      {gc_watermark}
 }
+
+`notes` ({start: Notiz}, Xveyn#519) ist wie `devices` additiv: ein Eintrag trägt den
+Schlüssel, wenn der Tag Notizen hat oder hatte, ein Tombstone als `{}`, wenn der
+gelöschte Stand ihn trug. Die `resolution` eines Eintrags-Konflikts trägt ihn auf
+oberster Ebene neben `slots`/`deleted`, wenn ein neues Gerät aufgelöst hat und der
+Tag Notizen hat oder hatte. Ältere Clients behalten ihn am Eintrag als unbekannten
+Schlüssel; Regeln in `slot_notes.py` und `_merge_entry`.
 
 `devices` ist die Geräte-Registry (s. `devices.py`): sie übersetzt die
 `device_id` in einen lesbaren Namen für die Anzeige (Konfliktdialog). Sie ist
@@ -51,6 +58,7 @@ from src.devices import merge_registries, sanitize_registry, with_own_entry
 # damit validate_remote_doc nie gegen einen anderen Feldsatz prüft als der
 # Store später schreibt. storage.py importiert sync.py nicht (kein Zyklus).
 from src.storage import REQUIRED_ENTRY_KEYS
+from src import slot_notes
 
 if TYPE_CHECKING:
     import threading
@@ -107,9 +115,12 @@ def sorted_signature(items: Iterable[tuple[Any, ...]]) -> list[tuple[Any, ...]]:
 def _slots_signature(entry: Entry) -> list[tuple[Any, ...]]:
     """Reihenfolge-normalisierte Signatur der Slot-Liste eines Eintrags,
     für den Gleichheitsvergleich im Merge. Sortiert nach den Slot-Feldern,
-    damit eine reine Umordnung der Slots NICHT als Änderung zählt."""
+    damit eine reine Umordnung der Slots NICHT als Änderung zählt. Die Notiz
+    zur Startzeit gehört dazu: eine reine Notiz-Änderung ist eine Änderung."""
+    notes = slot_notes.notes_of(entry)
     return sorted_signature(
-        (s.get("start"), s.get("end"), s.get("pause", 0), s.get("kategorie", ""))
+        (*slot_notes.slot_fields(s),
+         notes.get(s["start"], "") if isinstance(s.get("start"), str) else "")
         for s in (entry.get("slots") or [])
     )
 
@@ -198,6 +209,36 @@ def _merge_one(local: dict[str, Any] | None, remote: dict[str, Any] | None,
     return (winner, None)
 
 
+def _merge_entry(loc: Entry | None, rem: Entry | None, last_pull_at: str,
+                 key: str) -> tuple[Entry | None, Conflict | None]:
+    """`_merge_one` für einen Tag, mit der Erb-Regel der Slot-Notizen.
+
+    Fehlt einer Seite der Schlüssel `notes` (eine ältere Version hat den Tag
+    geschrieben), erbt sie die Notizen der anderen (`slot_notes.supplement`).
+    Trägt der Gewinner Stempel und Gerät der ergänzten Seite, bekommt er
+    `modified_at + 1 s`: sonst hielte das alte Gerät beide Stände für gleich
+    und lüde seinen eigenen (ohne `notes`) bei jedem Sync wieder hoch. Die
+    Konflikt-Kandidaten behalten ihre Stempel (Dedupe über sie)."""
+    supplemented: tuple[Any, Any] | None = None
+    if loc is not None and rem is not None:
+        loc_s = slot_notes.supplement(loc, rem)
+        rem_s = slot_notes.supplement(rem, loc)
+        if loc_s is not None:
+            supplemented = (loc.get("modified_at"), loc.get("device_id"))
+            loc = loc_s
+        elif rem_s is not None:
+            supplemented = (rem.get("modified_at"), rem.get("device_id"))
+            rem = rem_s
+    winner, conflict = _merge_one(loc, rem, last_pull_at,
+                                  equal_fn=_values_equal_entry, kind="entry", key=key)
+    if (winner is not None and supplemented is not None
+            and (winner.get("modified_at"), winner.get("device_id")) == supplemented):
+        bumped = slot_notes.bump_stamp(winner.get("modified_at"))
+        if bumped is not None:
+            winner = {**winner, "modified_at": bumped}
+    return winner, conflict
+
+
 def _strip_for_candidate(item: dict[str, Any]) -> dict[str, Any]:
     """Reduziert ein Entry/Setting auf das, was im conflict.candidates landen soll."""
     return {k: v for k, v in item.items()}
@@ -249,6 +290,115 @@ def _candidate_signatures(candidates: list[dict[str, Any]]) -> tuple[tuple[Any, 
     return tuple(sorted((c.get("modified_at"), c.get("device_id")) for c in candidates))
 
 
+def _text(value: Any) -> str:
+    return value if isinstance(value, str) else ""
+
+
+def _resolution_candidate(conflict: Conflict, replaced: Entry | None,
+                          derive: bool = True) -> dict[str, Any] | None:
+    """Der Stand, den ein gelöster Konflikt schreibt; `None` bei unbekannter Art.
+
+    Eine Auflösung eines Eintrags bekommt `notes` nach `slot_notes.resolution_notes`;
+    gelöscht trägt sie `notes: {}`, wenn sie selbst, `replaced` oder ein Kandidat den
+    Schlüssel trägt (wie `Storage.delete`). `replaced` ist der Stand vor allen Auflösungen, nie
+    ein Zwischenstand der Schleife, sonst hinge das Ergebnis an der Reihenfolge der
+    Konfliktliste. Mit `derive=False` nur, was die Auflösung selbst trägt (ohne Kandidaten
+    und `replaced`): danach werden die Auflösungen eines Tages geordnet."""
+    resolution = conflict.get("resolution")
+    if not isinstance(resolution, dict):
+        resolution = {}
+    resolved_at = _text(conflict.get("resolved_at"))
+    resolved_by = _text(conflict.get("resolved_by"))
+    kind = conflict.get("kind")
+    if kind == "setting":
+        return {"value": resolution.get("value"), "modified_at": resolved_at,
+                "device_id": resolved_by}
+    if kind != "entry":
+        return None
+    candidate: Entry = {
+        "slots": resolution.get("slots", []),
+        "modified_at": resolved_at,
+        "device_id": resolved_by,
+        "deleted": bool(resolution.get("deleted", False)),
+    }
+    candidates = conflict.get("candidates")
+    candidates = candidates if isinstance(candidates, list) and derive else []
+    if not derive:
+        replaced = None
+    if candidate["deleted"]:
+        if (slot_notes.has_key(resolution) or slot_notes.has_key(replaced)
+                or any(slot_notes.has_key(c) for c in candidates)):
+            candidate["notes"] = {}
+        return candidate
+    notes = slot_notes.resolution_notes(resolution, candidates, replaced)
+    if notes is not None:
+        candidate["notes"] = notes
+    return candidate
+
+
+def _resolve_entry(current: Entry | None, candidate: Entry) -> Entry:
+    """Auflösung gegen den gemergten Eintrag, mit der Erb-Regel aus `_merge_entry`.
+
+    Fehlt dem Eintrag `notes` und trägt er Stempel und Gerät der Auflösung (die Form,
+    die die Schleife eines alten Geräts aus vier Schlüsseln baut), erbt er ihre
+    Notizen und wird eine Sekunde jünger; sonst ersetzte das alte Gerät ihn beim
+    nächsten Sync wieder. Ein anders gestempelter Eintrag ohne `notes` erbt nicht:
+    er ist ein späterer Schreibvorgang, etwa ein gelöschter und neu angelegter Tag."""
+    if current is None:
+        return candidate
+    supplemented = None
+    if ((current.get("modified_at"), current.get("device_id"))
+            == (candidate.get("modified_at"), candidate.get("device_id"))):
+        supplemented = slot_notes.supplement(current, candidate)
+    if supplemented is not None:
+        current = supplemented
+    winner = candidate if _lww_key(candidate) > _lww_key(current) else current
+    if (supplemented is not None
+            and (winner.get("modified_at"), winner.get("device_id"))
+            == (current.get("modified_at"), current.get("device_id"))):
+        bumped = slot_notes.bump_stamp(winner.get("modified_at"))
+        if bumped is not None:
+            winner = {**winner, "modified_at": bumped}
+    return winner
+
+
+def _apply_resolutions(merged: Doc) -> None:
+    """Jeder gelöste Konflikt überschreibt seinen Eintrag bzw. seine Einstellung,
+    wenn die Auflösung nach `_lww_key` jünger ist als der gemergte Wert. Je
+    Schlüssel zählt nur die jüngste Auflösung, damit die Reihenfolge der Liste
+    nichts entscheidet (#142).
+
+    Geordnet wird nach dem, was die Auflösung selbst trägt, nicht nach abgeleiteten
+    Notizen: die hängen am gemergten Eintrag, der sich durch das Anwenden ändert, und
+    ein zweiter Merge wählte sonst eine andere Auflösung. Bei gleichem eigenem Stand
+    entscheidet die Konflikt-ID."""
+    base = dict(merged["entries"])
+    best: dict[tuple[str, str], tuple[tuple[tuple[str, str, str], str], Conflict]] = {}
+    for c in merged["conflicts"]:
+        key = c.get("key")
+        if not c.get("resolved") or not isinstance(key, str):
+            continue
+        own = _resolution_candidate(c, None, derive=False)
+        if own is None:
+            continue
+        target = (c["kind"], key)
+        # Die IDs der gemergten Liste sind eindeutig. Die Textform des ganzen Datensatzes
+        # ließe sich bei Fremddaten nicht bilden (Schlüssel verschiedener Typen sortieren nicht).
+        rank = (_lww_key(own), _canonical(c.get("id")))
+        if target not in best or rank > best[target][0]:
+            best[target] = (rank, c)
+    for (kind, key), (_rank, conflict) in best.items():
+        candidate = _resolution_candidate(conflict, base.get(key))
+        if candidate is None:
+            continue
+        if kind == "entry":
+            merged["entries"][key] = _resolve_entry(merged["entries"].get(key), candidate)
+        else:
+            current = merged["settings"].get(key)
+            if current is None or _lww_key(candidate) > _lww_key(current):
+                merged["settings"][key] = candidate
+
+
 def merge(local: Doc, remote: Doc, last_pull_at: str) -> Doc:
     merged = {
         "schema_version": SCHEMA_VERSION,
@@ -271,8 +421,7 @@ def merge(local: Doc, remote: Doc, last_pull_at: str) -> Doc:
     for key in all_entry_keys:
         loc = local.get("entries", {}).get(key)
         rem = remote.get("entries", {}).get(key)
-        winner, conflict = _merge_one(loc, rem, last_pull_at,
-                                       equal_fn=_values_equal_entry, kind="entry", key=key)
+        winner, conflict = _merge_entry(loc, rem, last_pull_at, key)
         # Regel 2: Self-Heal — ein zurückgekehrtes (excluded) Gerät darf einen
         # alten, remote-fehlenden lebenden Eintrag nicht auferstehen lassen.
         if (excluded and rem is None and loc is not None
@@ -312,39 +461,7 @@ def merge(local: Doc, remote: Doc, last_pull_at: str) -> Doc:
 
     merged["conflicts"] = list(by_id.values())
 
-    # Resolutions anwenden: jeder resolved Konflikt überschreibt entries/settings,
-    # falls die Resolution jünger ist als der aktuelle merged-Wert. Verglichen
-    # wird mit derselben Ordnung wie im LWW-Merge (`_lww_key`), damit auch zwei
-    # sekundengleiche Resolutions zum selben Schlüssel unabhängig von ihrer
-    # Reihenfolge in der Liste dasselbe Ergebnis liefern (#142).
-    for c in merged["conflicts"]:
-        if not c.get("resolved"):
-            continue
-        resolution = c.get("resolution") or {}
-        resolved_at = c.get("resolved_at") or ""
-        resolved_by = c.get("resolved_by") or ""
-        if c["kind"] == "entry":
-            section = merged["entries"]
-            candidate = {
-                "slots": resolution.get("slots", []),
-                "modified_at": resolved_at,
-                "device_id": resolved_by,
-                "deleted": bool(resolution.get("deleted", False)),
-            }
-        elif c["kind"] == "setting":
-            section = merged["settings"]
-            candidate = {
-                "value": resolution.get("value"),
-                "modified_at": resolved_at,
-                "device_id": resolved_by,
-            }
-        else:
-            continue
-        current = section.get(c["key"])
-        if (current is None or current["modified_at"] < resolved_at
-                or (current["modified_at"] == resolved_at
-                    and _lww_key(candidate) > _lww_key(current))):
-            section[c["key"]] = candidate
+    _apply_resolutions(merged)
 
     # Regel 1: settled Tombstones entfernen (Kompaktierung propagieren).
     # Läuft NACH der Resolution-Application, damit kein resolved-Wert verloren geht.
@@ -563,14 +680,50 @@ def remote_is_newer(remote_doc: Doc) -> bool:
     return (remote_doc.get("schema_version") or 1) > SCHEMA_VERSION
 
 
+_SLOT_FIELDS = ("start", "end", "pause", "kategorie")
+
+
+def _slot_level_notes(resolution: dict[str, Any]) -> dict[str, str] | None:
+    """Projiziert die Slots einer Auflösung (in place) auf die vier Felder.
+
+    Liefert die am Slot angegebenen Notizen (`{start: bereinigte Notiz}`, auch `""`),
+    `None`, wenn kein Slot ein `notiz` trägt. Ein `notiz` in der gespeicherten
+    Auflösung gelangte über die Schleife in `merge` in den Bestand alter Geräte und
+    von dort in deren Teilen-Datei, die jeder Empfänger ablehnte."""
+    slots = resolution.get("slots")
+    if not isinstance(slots, list):
+        return None
+    given: dict[str, str] = {}
+    noted = False
+    projected: list[Any] = []
+    for slot in slots:
+        if not isinstance(slot, dict):
+            projected.append(slot)
+            continue
+        if slot_notes.SLOT_KEY in slot:
+            noted = True
+            start = slot.get("start")
+            if isinstance(start, str):
+                given[start] = slot_notes.clean_note(slot[slot_notes.SLOT_KEY])
+        projected.append({k: v for k, v in slot.items() if k in _SLOT_FIELDS})
+    resolution["slots"] = projected
+    return given if noted else None
+
+
 def resolve_conflict(conflict_id: str, chosen_value: dict[str, Any],
                      conflicts_store: ConflictsStore, storage: Storage, settings: Settings,
                      device_id: str, data_lock: threading.RLock | None = None) -> None:
     """User hat einen Konflikt aufgelöst. chosen_value enthält den gewählten
     (oder manuell editierten) Wert. Für entries: {slots: [...]} (und
-    optional deleted). Für settings: {value}.
+    optional deleted, notes); ein `notiz` am Slot gilt als gegeben (auch `""`).
+    Für settings: {value}.
     Schreibt den Wert in den entsprechenden Store und markiert den Konflikt
-    als resolved im ConflictsStore.
+    als resolved im ConflictsStore. Die Auflösung eines Eintrags speichert Slots
+    mit genau vier Feldern: ihre Slots landen über die Schleife in `merge` auch im
+    Bestand alter Geräte (s. `_slot_level_notes`). Den Schlüssel `notes` schreibt der
+    Tag (`notes_known`), wenn der gespeicherte Stand oder ein Kandidat ihn trägt oder
+    die Wahl eine nicht leere Notiz hat; die Auflösung trägt ihn genau dann, wenn der
+    geschriebene Tag ihn trägt, mit dessen Notizen (`{}` beim Tombstone).
 
     data_lock: geteilter Store-RLock (Whole-Branch-Review-Finding). Die
     Read-Modify-Write-Spanne (get_all → mutieren → storage/settings-Write →
@@ -594,10 +747,40 @@ def resolve_conflict(conflict_id: str, chosen_value: dict[str, Any],
         target["resolved_by"] = device_id
 
         if target["kind"] == "entry":
+            key = target["key"]
+            resolution = target["resolution"]
+            given = _slot_level_notes(resolution)
+            candidates = target.get("candidates")
+            candidates = candidates if isinstance(candidates, list) else []
+            stored = storage.get_all_raw().get(key)
+            known = (slot_notes.has_key(stored)
+                     or any(slot_notes.has_key(c) for c in candidates)
+                     or any(given.values() if given else ())
+                     or bool(slot_notes.notes_of({"slots": resolution.get("slots"),
+                                                   "notes": resolution.get("notes")})))
             if chosen_value.get("deleted"):
-                storage.delete(target["key"])
+                storage.delete(key, notes_known=known)
             else:
-                storage.save(target["key"], chosen_value.get("slots", []))
+                slots = resolution.get("slots", [])
+                notes = slot_notes.resolution_notes(resolution, candidates, stored)
+                if given is not None:
+                    notes = {**{k: v for k, v in (notes or {}).items() if k not in given},
+                             **{k: v for k, v in given.items() if v}}
+                if notes is not None:
+                    # Ausdrücklich je Slot, damit `Storage.save` nicht vom Bestand erbt.
+                    slots = [{**s, slot_notes.SLOT_KEY: notes.get(s.get("start"), "")}
+                             if isinstance(s, dict) and isinstance(s.get("start"), str) else s
+                             for s in slots]
+                storage.save(key, slots, notes_known=known)
+            # Die Notizen stehen in der Auflösung, nicht im Slot (sonst gelangten sie über
+            # die Schleife in `merge` in den Bestand alter Geräte), und genau dann, wenn
+            # der eben geschriebene Stand den Schlüssel trägt: sonst ergänzte der nächste
+            # Merge den Tag aus der Auflösung und höbe ihn auf jedem Gerät an.
+            resolution.pop(slot_notes.ENTRY_KEY, None)
+            written = storage.get_all_raw().get(key)
+            if written is not None and slot_notes.has_key(written):
+                resolution[slot_notes.ENTRY_KEY] = (
+                    {} if written.get("deleted") else slot_notes.notes_of(written))
         elif target["kind"] == "setting":
             settings.set_synced(target["key"], chosen_value.get("value"))
 
