@@ -2,6 +2,16 @@
 
 Ältere Versionen stehen im [Archiv](CHANGELOG-archive.md).
 
+## 1.29.1 — 2026-11-25
+
+### Behoben
+- **Linux: 1.29.0 startete nicht**: Die AppImage von 1.29.0 brach unter Linux-Systemen mit
+  glibc vor 2.42 (etwa Debian 13 und Ubuntu 24.04) direkt beim Start ab (`GLIBC_2.42 not
+  found`), weil der Build-Rechner von GitHub auf Ubuntu 26.04 gewechselt war. 1.29.1 wird wieder
+  auf Ubuntu 24.04 gebaut und läuft wie 1.28.0. Wer 1.29.0 unter Linux bereits installiert hat
+  und die App nicht mehr starten kann, lädt die AppImage von 1.29.1 von der Release-Seite und
+  ersetzt die alte Datei; die Daten bleiben unberührt. Windows und macOS waren nicht betroffen.
+
 ## 1.29.0 — 2026-11-25
 
 Ein Zeitblock kann jetzt eine Notiz tragen, am Rechner und auf dem Handy, und
