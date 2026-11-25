@@ -365,6 +365,43 @@ def test_the_live_response_example_carries_notes_on_every_slot():
     assert response["slot_notes"] is True
 
 
+def test_the_live_request_example_carries_notes_on_all_slots_of_a_day_or_none():
+    example = load("sync-request.json")
+
+    noted = [[("notiz" in s) for s in rec["slots"]] for rec in example["entries"].values() if rec["slots"]]
+    assert noted and all(all(day) or not any(day) for day in noted)
+    assert any(all(day) for day in noted)
+
+
+def test_the_desktop_stores_the_note_of_the_live_request_example(tmp_path):
+    example = load("sync-request.json")
+    env = mr.make_env(tmp_path)
+    _record, token = mr.add_device(env, mr.PHONE, "Pixel")
+
+    response = mr.sync(env, token, example["entries"])
+
+    assert response.status == 200
+    stored = env.ctx.storage.get_all_raw()["2026-10-07"]
+    assert stored["notes"] == {"08:00": "Kunde Mustermann"}
+    assert all("notiz" not in slot for slot in stored["slots"])
+
+
+def test_pre_notes_request_is_really_pre_notes_and_stored_without_notes(tmp_path):
+    # Eingefrorener Stand vor `notiz` an Ist-Zeit-Slots: nie ändern.
+    example = load("compat/sync-request-pre-notes.json")
+    slots = [s for rec in example["entries"].values() for s in rec["slots"]]
+    assert slots and all("notiz" not in s for s in slots)
+    env = mr.make_env(tmp_path)
+    _record, token = mr.add_device(env, mr.PHONE, "Pixel")
+
+    response = mr.sync(env, token, example["entries"])
+
+    assert response.status == 200
+    stored = env.ctx.storage.get_all_raw()["2026-10-07"]
+    assert "notes" not in stored
+    assert stored["slots"] == example["entries"]["2026-10-07"]["slots"]
+
+
 def test_the_live_response_example_has_the_shape_build_reservations_emits():
     example = load("sync-response.json")
     today = datetime.date.fromisoformat(example["server_time"][:10])

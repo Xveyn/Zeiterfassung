@@ -378,3 +378,90 @@ test('time fields give up their native look: on iOS they otherwise ignore their 
   assert.match(body, /-webkit-appearance:\s*none/);
   assert.match(body, /(?<!-)appearance:\s*none/);
 });
+
+// --- Notiz am Slot (#519) ---------------------------------------------------------------------------
+
+test('the note field is one frame like the other fields, holding the input and the ▾ button', () => {
+  const combo = rule('.combo');
+  assert.match(combo, /border:\s*1px solid var\(--line\)/);
+  assert.match(combo, /border-radius:\s*8px/);
+  assert.match(combo, /background:\s*var\(--cell\)/);
+  assert.match(rule('.combo-field'), /display:\s*flex/);
+  // Das Feld darf schrumpfen, der Knopf nicht: bei 280 px bliebe sonst kein Platz für ▾.
+  assert.match(rule('.combo-field input'), /min-width:\s*0/);
+  assert.match(rule('.combo-toggle'), /flex:\s*none/);
+  assert.match(rule('.combo-toggle'), /min-width:\s*var\(--tap\)/);
+});
+
+test('the list of previous notes sits in the flow, scrolls inside after about five entries and has no fixed width', () => {
+  const list = rule('.combo-list');
+  assert.match(list, /max-height:/);
+  assert.match(list, /overflow-y:\s*auto/);
+  assert.doesNotMatch(list, /(?<![-\w])width:\s*\d+px/);
+  assert.doesNotMatch(list, /position:\s*(absolute|fixed)/);   // kein schwebendes Popup: im <dialog> und auf iOS unzuverlässig
+  const entry = rule('.combo-list button');
+  assert.match(entry, /min-height:\s*var\(--tap\)/);
+  assert.match(entry, /text-overflow:\s*ellipsis/);
+  assert.match(entry, /white-space:\s*nowrap/);
+});
+
+test('the note field is a combobox with a list below it, without maxlength (the check reports the limit)', () => {
+  const field = /const noteField = [\s\S]*?\n {2}\};\n/.exec(views);
+  assert.ok(field, 'noteField nicht gefunden');
+  assert.doesNotMatch(field[0], /maxlength/);
+  assert.match(views, /role: 'combobox'/);
+  assert.match(views, /'aria-expanded'/);
+  assert.match(views, /'aria-controls'/);
+  assert.match(views, /autocomplete: 'off'/);
+  assert.match(views, /placeholder: 'optional'/);
+  assert.match(views, /'aria-label': 'Bisherige Notizen zeigen'/);
+  // Der Name folgt dem Zustand: offen blendet derselbe Knopf die Liste aus.
+  assert.match(views, /toggle\.setAttribute\('aria-label', open \? 'Bisherige Notizen ausblenden' : 'Bisherige Notizen zeigen'\)/);
+  assert.match(views, /role: 'listbox'/);
+});
+
+test('the opened note list scrolls into view above the sticky footer of the dialog, without smooth scrolling', () => {
+  // Bei 320×568 lagen sonst 14 px der Liste im sichtbaren Bereich; die Fußknöpfe kleben unten und deckten den Rest.
+  const field = /const noteField = [\s\S]*?\n {2}\};\n/.exec(views)[0];
+  assert.match(field, /setOpen\(true\);\s*revealList\(\);/);
+  assert.match(field, /list\.scrollIntoView\(\{ block: 'nearest' \}\)/);
+  assert.doesNotMatch(field, /behavior: 'smooth'/);
+  assert.match(field, /closest\('dialog'\)\?\.querySelector\(':scope > \.buttons, :scope > form > \.buttons'\)/);
+  assert.match(field, /list\.style\.setProperty\('--footer-height', `\$\{footer \? footer\.offsetHeight : 0\}px`\)/);
+  assert.match(rule('.combo-list'), /scroll-margin-bottom:\s*var\(--footer-height, 0px\)/);
+});
+
+test('an open note list removes its outside listener when the rows are rebuilt or the field left the page', () => {
+  const field = /const noteField = [\s\S]*?\n {2}\};\n/.exec(views)[0];
+  assert.match(field, /if \(!combo\.isConnected\) \{ closeList\(\); return; \}/);
+  assert.match(field, /if \(open\) openLists\.add\(closeList\); else openLists\.delete\(closeList\);/);
+  assert.match(views, /const build = \(\) => \{\n {4}for \(const close of \[\.\.\.openLists\]\) close\(\);/);
+});
+
+test('Escape inside the open note list closes the list, not the editor', () => {
+  // Chromium vergibt für Escape sonst `cancel` an den Dialog; die Taste selbst abfangen, solange die Liste offen ist.
+  assert.match(views, /event\.key === 'Escape' && isOpen\(\)\) \{ event\.preventDefault\(\); event\.stopPropagation\(\); focusInput\(\); closeList\(\);/);
+});
+
+test('app.js shows the note field only with slot_notes and saves through daySave with the stored day', () => {
+  assert.match(app, /const notes = Boolean\(meta\.slot_notes\)/);
+  assert.match(app, /validateRows\(rows, \{ notes \}\)/);
+  assert.match(app, /daySave\(rows, current, \{ notes \}\)/);
+  assert.match(app, /saveDay\(date, slots, \{ notesKnown \}\)/);
+  assert.doesNotMatch(app, /saveDay\(date, rowsToSlots\(/);
+  // Der einzige Ort, der Ist-Zeiten speichert: ein zweiter müsste die Notizen genauso weiterreichen.
+  assert.equal((app.match(/\.saveDay\(/g) || []).length, 1);
+});
+
+test('the note of a slot is a muted single line that is cut off with an ellipsis, in the week list and the conflict box (#519)', () => {
+  assert.match(css, /\.day \.slots \.slot-note, \.version \.slot-note \{[^}]*margin: 0[^}]*display: block[^}]*overflow: hidden[^}]*text-overflow: ellipsis[^}]*white-space: nowrap[^}]*\}/);
+  assert.match(css, /\.day \.content \{[^}]*min-width: 0/);
+  assert.match(views, /h\('li', \{\}, text, note && h\('span', \{ class: 'slot-note' \}, note\)\)/);
+});
+
+test('the app wires the note display: week model option, settings section only with slot_notes, stored via setMeta (#519)', () => {
+  const app = readFileSync(new URL('../app.js', import.meta.url), 'utf8');
+  assert.match(app, /noteDisplay: meta\.note_display/);
+  assert.match(app, /notes: meta\.slot_notes \? \{ display: normalizeNoteDisplay\(meta\.note_display\), options: NOTE_DISPLAY_OPTIONS \} : null/);
+  assert.match(app, /setNoteDisplay: async[\s\S]*?this\.store\.setMeta\(\{ note_display: display \}\);\s*this\.render\(\);/);   // die Woche folgt sofort
+});

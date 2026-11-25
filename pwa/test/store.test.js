@@ -7,6 +7,7 @@ import { parseSyncResponse } from '../sync.js';
 import { pendingReservationMinutes } from '../reservations.js';
 import { Store } from '../store.js';
 import { createMemoryAdapter } from '../memory-adapter.js';
+import { daySave, editorRows } from '../view-model.js';
 
 const SLOT = { start: '08:00', end: '12:00', pause: 0, kategorie: 'Projekt' };
 const OTHER = { start: '13:00', end: '17:00', pause: 0, kategorie: '' };
@@ -1096,4 +1097,354 @@ test('a day is stored in the order of the mode: sorted, or as entered for the ow
   await store.applyResponse(parsedResponse({ slot_order: 'category' }), store.snapshotDirty(), TODAY);
   await store.saveDay('2026-10-08', [{ ...SLOT, kategorie: 'Zeta' }, { ...OTHER, kategorie: 'Alpha' }]);
   assert.deepEqual(store.snapshotDirty().entries['2026-10-08'].slots.map((s) => s.kategorie), ['Alpha', 'Zeta']);
+});
+
+// --- Notiz am Slot (#519) ---------------------------------------------------------------------------
+
+const NOTED = { ...SLOT, notiz: 'Kunde Mustermann' };
+const notesOn = (over = {}) => parsedResponse({ slot_notes: true, ...over });
+/** Jeder gesendete Tag trägt `notiz` an allen Slots oder an keinem. */
+function assertNeverMixed(entries) {
+  for (const [date, entry] of Object.entries(entries)) {
+    const noted = entry.slots.map((slot) => 'notiz' in slot);
+    assert.ok(noted.every(Boolean) || !noted.some(Boolean), date);
+  }
+}
+
+test('a response with slot_notes stores the note on the slot and marks the day as known', async () => {
+  const { store } = await make();
+  assert.equal(store.getMeta().slot_notes, false);
+  await store.applyResponse(notesOn({ entries: { '2026-10-07': remoteDay([NOTED, { ...OTHER, notiz: '' }]) } }),
+    store.snapshotDirty(), TODAY);
+
+  const day = store.getDay('2026-10-07');
+  assert.deepEqual(day.slots, [NOTED, { ...OTHER, notiz: '' }]);
+  assert.equal(day.notes_known, true);
+  assert.equal(store.getMeta().slot_notes, true);
+});
+
+test('a response without slot_notes stores no note and leaves the day unknown', async () => {
+  const { store } = await make();
+  await store.applyResponse(parsedResponse({ entries: { '2026-10-07': remoteDay([SLOT]) } }), store.snapshotDirty(), TODAY);
+
+  const day = store.getDay('2026-10-07');
+  assert.deepEqual(day.slots, [SLOT]);
+  assert.equal(day.notes_known, false);
+  assert.equal(store.getMeta().slot_notes, false);
+});
+
+test('review focus 1: a day changed before slot_notes and not sent goes out without notiz afterwards', async () => {
+  const { store } = await make();
+  await store.saveDay('2026-10-07', [SLOT]);                        // vor slot_notes, nicht gesendet
+  await store.saveDay('2026-10-06', [SLOT]);
+  const snapshot = store.snapshotDirty();
+  await store.saveDay('2026-10-06', [{ ...SLOT, pause: 15 }]);      // gesendet, seither geändert
+  const sent = { entries: {}, versions: { '2026-10-06': snapshot.versions['2026-10-06'] } };
+
+  await store.applyResponse(notesOn({ entries: {
+    '2026-10-07': remoteDay([NOTED]), '2026-10-06': remoteDay([NOTED]) } }), sent, TODAY);
+
+  const next = store.snapshotDirty().entries;
+  assert.deepEqual(Object.keys(next).sort(), ['2026-10-06', '2026-10-07']);
+  assert.deepEqual(next['2026-10-07'].slots, [SLOT]);
+  assert.deepEqual(next['2026-10-06'].slots, [{ ...SLOT, pause: 15 }]);
+  assert.equal(store.getDay('2026-10-07').notes_known, false);
+});
+
+test('review focus 2: a known day with a note, pause changed, sends the note at 08:00 and "" elsewhere', async () => {
+  const { store } = await make();
+  await store.applyResponse(notesOn({ entries: { '2026-10-07': remoteDay([NOTED, { ...OTHER, notiz: '' }]) } }),
+    store.snapshotDirty(), TODAY);
+  const day = store.getDay('2026-10-07');
+
+  // Der Editor reicht die Notiz der Zeile weiter; die Zeile ohne Notiz kommt hier ohne Schlüssel.
+  await store.saveDay('2026-10-07', [{ ...NOTED, pause: 15 }, OTHER], { notesKnown: day.notes_known });
+
+  assert.deepEqual(store.snapshotDirty().entries['2026-10-07'].slots,
+    [{ ...NOTED, pause: 15 }, { ...OTHER, notiz: '' }]);
+});
+
+test('review focus 3: changing only the note makes the day dirty', async () => {
+  const { store } = await make();
+  await store.applyResponse(notesOn({ entries: { '2026-10-07': remoteDay([NOTED]) } }), store.snapshotDirty(), TODAY);
+  assert.equal(store.getDay('2026-10-07').dirty, false);
+
+  await store.saveDay('2026-10-07', [{ ...SLOT, notiz: 'Kunde Beispiel' }], { notesKnown: true });
+
+  assert.equal(store.getDay('2026-10-07').dirty, true);
+  assert.deepEqual(store.snapshotDirty().entries['2026-10-07'].slots, [{ ...SLOT, notiz: 'Kunde Beispiel' }]);
+});
+
+test('a note saved on an unknown day marks it known; without notesKnown it stays unknown', async () => {
+  const { store } = await make();
+  await store.applyResponse(notesOn(), store.snapshotDirty(), TODAY);
+  await store.saveDay('2026-10-05', [SLOT]);
+  await store.saveDay('2026-10-04', [NOTED], { notesKnown: true });
+
+  assert.equal(store.getDay('2026-10-05').notes_known, false);
+  assert.equal(store.getDay('2026-10-04').notes_known, true);
+  assert.deepEqual(store.snapshotDirty().entries['2026-10-05'].slots, [SLOT]);
+  assert.deepEqual(store.snapshotDirty().entries['2026-10-04'].slots, [NOTED]);
+});
+
+test('notesKnown on an unchanged day is stored without making it dirty, and an earlier true is kept while slots carry notiz', async () => {
+  const { store, adapter } = await make();
+  await store.applyResponse(notesOn(), store.snapshotDirty(), TODAY);
+  await store.saveDay('2026-10-05', [SLOT]);
+  const version = store.snapshotDirty().versions['2026-10-05'];
+
+  await store.saveDay('2026-10-05', [SLOT], { notesKnown: true });
+  assert.equal(store.getDay('2026-10-05').notes_known, true);
+  assert.equal(store.snapshotDirty().versions['2026-10-05'], version);
+  assert.deepEqual(store.snapshotDirty().entries['2026-10-05'].slots, [{ ...SLOT, notiz: '' }]);
+
+  await store.saveDay('2026-10-05', [{ ...SLOT, pause: 10, notiz: '' }]);   // ohne Flag, Slots mit notiz: bleibt bekannt
+  assert.equal(store.getDay('2026-10-05').notes_known, true);
+
+  const again = new Store(adapter, clock());
+  await again.load();
+  assert.equal(again.getDay('2026-10-05').notes_known, true);
+});
+
+test('a cleared day keeps knowing its notes', async () => {
+  const { store } = await make();
+  await store.applyResponse(notesOn({ entries: { '2026-10-07': remoteDay([NOTED]) } }), store.snapshotDirty(), TODAY);
+  await store.clearDay('2026-10-07');
+  assert.equal(store.getDay('2026-10-07').notes_known, true);
+  assert.deepEqual(store.snapshotDirty().entries['2026-10-07'].slots, []);
+});
+
+test('a sent day is never mixed: all slots carry notiz or none, across several days', async () => {
+  const { store } = await make();
+  await store.saveDay('2026-10-01', [SLOT, OTHER]);                 // vor slot_notes, nicht gesendet
+  await store.applyResponse(notesOn({ entries: { '2026-10-07': remoteDay([NOTED, { ...OTHER, notiz: '' }]) } }),
+    { entries: {}, versions: {} }, TODAY);
+  await store.saveDay('2026-10-07', [{ ...NOTED, pause: 5 }, OTHER], { notesKnown: true });
+  await store.saveDay('2026-10-03', [NOTED, OTHER], { notesKnown: true });
+  await store.saveDay('2026-10-02', [NOTED, OTHER]);                // Notiz ohne Flag: wird nicht gesendet
+
+  const { entries } = store.snapshotDirty();
+  assertNeverMixed(entries);
+  assert.ok(!('notiz' in entries['2026-10-01'].slots[0]));
+  assert.ok(!('notiz' in entries['2026-10-02'].slots[0]));
+  assert.deepEqual(entries['2026-10-03'].slots.map((s) => s.notiz), ['Kunde Mustermann', '']);
+  assert.deepEqual(entries['2026-10-07'].slots.map((s) => s.notiz), ['Kunde Mustermann', '']);
+});
+
+test('without slot_notes in the meta no day sends notiz, even a known one', async () => {
+  const { store } = await make();
+  await store.applyResponse(notesOn({ entries: { '2026-10-07': remoteDay([NOTED], { modified_at: '2026-10-01T00:00:00Z' }) } }),
+    store.snapshotDirty(), TODAY);
+  await store.saveDay('2026-10-07', [{ ...NOTED, pause: 5 }], { notesKnown: true });
+  await store.applyResponse(parsedResponse(), { entries: {}, versions: {} }, TODAY);   // Desktop ohne slot_notes
+
+  assert.equal(store.getMeta().slot_notes, false);
+  assert.deepEqual(store.snapshotDirty().entries['2026-10-07'].slots, [{ ...SLOT, pause: 5 }]);
+});
+
+test('the editor path keeps a desktop note when only the pause changes (rows → slots → saveDay → request)', async () => {
+  const { store } = await make();
+  await store.applyResponse(notesOn({ entries: { '2026-10-07': remoteDay([NOTED, { ...OTHER, notiz: '' }]) } }),
+    store.snapshotDirty(), TODAY);
+  const day = store.getDay('2026-10-07');
+  const rows = editorRows(day);
+  rows[0].pause = '15';
+
+  const { slots, notesKnown } = daySave(rows, day, { notes: store.getMeta().slot_notes });
+  await store.saveDay('2026-10-07', slots, { notesKnown });
+
+  assert.deepEqual(store.snapshotDirty().entries['2026-10-07'].slots,
+    [{ ...NOTED, pause: 15 }, { ...OTHER, notiz: '' }]);
+});
+
+test('saveDay rejects a note that is no valid single line', async () => {
+  const { store } = await make();
+  await assert.rejects(store.saveDay('2026-10-07', [{ ...SLOT, notiz: 'eins\nzwei' }], { notesKnown: true }),
+    /Nur eine Zeile/);
+  await assert.rejects(store.saveDay('2026-10-07', [{ ...SLOT, notiz: 'x'.repeat(201) }], { notesKnown: true }),
+    /Höchstens 200 Zeichen/);
+  assert.equal(store.getDay('2026-10-07'), null);
+});
+
+test('a save without notes after slot_notes was lost resets the knowledge: the day later goes out without notiz', async () => {
+  const { store } = await make();
+  await store.applyResponse(notesOn({ entries: { '2026-10-07': remoteDay([NOTED], { modified_at: '2026-10-01T00:00:00Z' }) } }),
+    store.snapshotDirty(), TODAY);
+  await store.saveDay('2026-10-07', [{ ...NOTED, pause: 5 }], { notesKnown: true });     // bekannt, noch nicht gesendet
+  await store.applyResponse(parsedResponse(), { entries: {}, versions: {} }, TODAY);     // Desktop ohne slot_notes
+  assert.equal(store.getMeta().slot_notes, false);
+  assert.equal(store.getDay('2026-10-07').notes_known, true);
+  const day = store.getDay('2026-10-07');
+  const rows = editorRows(day);
+  rows[0].pause = '15';
+  const { slots, notesKnown } = daySave(rows, day, { notes: store.getMeta().slot_notes });
+  await store.saveDay('2026-10-07', slots, { notesKnown });
+  assert.equal(store.getDay('2026-10-07').notes_known, false);
+
+  await store.applyResponse(notesOn(), { entries: {}, versions: {} }, TODAY);           // Desktop wieder mit slot_notes
+  assert.deepEqual(store.snapshotDirty().entries['2026-10-07'].slots, [{ ...SLOT, pause: 15 }]);
+});
+
+// --- Lokal behaltener Tag: Notizwissen gegen den Stempel des Desktops -------------------------------
+
+const BASE = '2026-10-07T20:00:00Z';
+const LATER = '2026-10-08T11:00:00Z';
+const known = () => notesOn({ entries: { '2026-10-07': remoteDay([SLOT, { ...OTHER, notiz: '' }], { modified_at: BASE }) } });
+const desktopNoted = (modified) => notesOn({ entries: {
+  '2026-10-07': remoteDay([NOTED, { ...OTHER, notiz: '' }], { modified_at: modified }) } });
+/** Speichern wie der Editor (`daySave`), `edit` ändert die Zeilen. */
+async function editorSave(store, date, edit) {
+  const day = store.getDay(date);
+  const rows = editorRows(day);
+  edit(rows);
+  const { slots, notesKnown } = daySave(rows, day, { notes: store.getMeta().slot_notes });
+  await store.saveDay(date, slots, { notesKnown });
+}
+
+test('race: a day saved while the request is in flight forgets its notes when the desktop changed it meanwhile', async () => {
+  const { store, adapter } = await make();
+  await store.applyResponse(known(), store.snapshotDirty(), TODAY);
+  const inFlight = store.snapshotDirty();                                  // Tag sauber, nicht gesendet
+  await editorSave(store, '2026-10-07', (rows) => { rows[1].pause = '30'; });
+
+  await store.applyResponse(desktopNoted(LATER), inFlight, TODAY);         // Desktop hat eine Notiz ergänzt
+
+  assert.equal(store.getDay('2026-10-07').notes_known, false);
+  const sent = store.snapshotDirty().entries['2026-10-07'].slots;
+  assert.ok(sent.every((slot) => !('notiz' in slot)));
+  assert.deepEqual(sent, [SLOT, { ...OTHER, pause: 30 }]);
+  const again = new Store(adapter, clock());
+  await again.load();
+  assert.equal(again.getDay('2026-10-07').notes_known, false);
+  assert.ok(again.getDay('2026-10-07').slots.every((slot) => !('notiz' in slot)));
+});
+
+test('error day: a rejected day forgets its notes when the desktop changed it; the retry goes out without notiz', async () => {
+  const { store } = await make();
+  await store.applyResponse(known(), store.snapshotDirty(), TODAY);
+  await editorSave(store, '2026-10-07', (rows) => { rows[1].pause = '30'; });
+  await store.markDayError('2026-10-07', 'abgelehnt');
+
+  await store.applyResponse(desktopNoted(LATER), store.snapshotDirty(), TODAY);   // Tag weder gesendet noch ersetzt
+  assert.equal(store.getDay('2026-10-07').notes_known, false);
+
+  await editorSave(store, '2026-10-07', (rows) => { rows[1].pause = '45'; });
+  const sent = store.snapshotDirty().entries['2026-10-07'].slots;
+  assert.deepEqual(sent, [SLOT, { ...OTHER, pause: 45 }]);
+});
+
+test('a kept day keeps its notes knowledge while the desktop stamp is unchanged, and the note goes out', async () => {
+  const { store } = await make();
+  await store.applyResponse(known(), store.snapshotDirty(), TODAY);
+  const inFlight = store.snapshotDirty();
+  await editorSave(store, '2026-10-07', (rows) => { rows[1].notiz = 'Neu'; });
+
+  await store.applyResponse(known(), inFlight, TODAY);                     // derselbe Stand des Desktops
+
+  assert.equal(store.getDay('2026-10-07').notes_known, true);
+  assert.deepEqual(store.snapshotDirty().entries['2026-10-07'].slots.map((s) => s.notiz), ['', 'Neu']);
+});
+
+test('the notes base survives saving, clearing and reloading', async () => {
+  const { store, adapter } = await make();
+  await store.applyResponse(known(), store.snapshotDirty(), TODAY);
+  await editorSave(store, '2026-10-07', (rows) => { rows[1].pause = '30'; });
+  await store.clearDay('2026-10-07');
+  const again = new Store(adapter, clock());
+  await again.load();
+
+  await again.applyResponse(known(), again.snapshotDirty(), TODAY);       // Tombstone nicht gesendet, Stempel gleich
+  assert.equal(again.getDay('2026-10-07').notes_known, true);
+});
+
+test('a kept record without notes base (older PWA) forgets its notes knowledge', async () => {
+  const adapter = createMemoryAdapter();
+  await adapter.batch([{ store: 'entries', op: 'put', key: '2026-10-07', value: {
+    entry: { slots: [{ ...SLOT, notiz: '' }], modified_at: '2026-10-08T10:00:00Z', device_id: 'phone-0001', deleted: false },
+    dirty_version: 2, synced_version: 1, error: null, notes_known: true } }]);
+  const { store } = await make({ adapter });
+
+  await store.applyResponse(known(), store.snapshotDirty(Infinity, new Set(['2026-10-07'])), TODAY);
+
+  assert.equal(store.getDay('2026-10-07').notes_known, false);
+  assert.deepEqual(store.snapshotDirty().entries['2026-10-07'].slots, [SLOT]);
+});
+
+test('without slot_notes in the response a kept day keeps its record unchanged', async () => {
+  const { store } = await make();
+  await store.applyResponse(known(), store.snapshotDirty(), TODAY);
+  const inFlight = store.snapshotDirty();
+  await editorSave(store, '2026-10-07', (rows) => { rows[1].pause = '30'; });
+
+  await store.applyResponse(parsedResponse({ entries: { '2026-10-07': remoteDay([SLOT, OTHER], { modified_at: LATER }) } }),
+    inFlight, TODAY);
+
+  assert.equal(store.getDay('2026-10-07').notes_known, true);
+});
+
+// --- Gespeicherte Form der Notiz (alte Tabs senden gespeicherte Slots unverändert) ------------------
+
+test('a day that does not know its notes is stored without notiz, a known one with the trimmed note', async () => {
+  const { store } = await make();
+  await store.applyResponse(notesOn(), store.snapshotDirty(), TODAY);
+  await editorSave(store, '2026-10-05', (rows) => { rows[0].start = '08:00'; rows[0].end = '12:00'; });
+  assert.equal(store.getDay('2026-10-05').notes_known, false);
+  assert.ok(store.getDay('2026-10-05').slots.every((slot) => !('notiz' in slot)));
+
+  await store.saveDay('2026-10-04', [{ ...SLOT, notiz: '  Kunde Mustermann  ' }], { notesKnown: true });
+  assert.deepEqual(store.getDay('2026-10-04').slots, [NOTED]);
+});
+
+test('losing the knowledge on an unchanged day also drops the stored notiz', async () => {
+  const { store } = await make();
+  await store.applyResponse(notesOn({ entries: { '2026-10-07': remoteDay([{ ...SLOT, notiz: '' }]) } }),
+    store.snapshotDirty(), TODAY);
+  await store.saveDay('2026-10-07', [SLOT]);                               // gleiche Slots, ohne notiz und ohne Flag
+  assert.equal(store.getDay('2026-10-07').notes_known, false);
+  assert.deepEqual(store.getDay('2026-10-07').slots, [SLOT]);
+});
+
+// --- Eigene Rückmeldung: der Desktop hält genau die gesendete Fassung ------------------------------
+
+/** Bekannter Tag mit Desktop-Notiz; v1 gesendet, v2 (`edit`) gespeichert, bevor die Antwort auf v1 ankommt. */
+async function doubleSave(edit, echo = (sent) => sent) {
+  const { store, adapter } = await make();
+  await store.applyResponse(notesOn({ entries: { '2026-10-07': remoteDay([NOTED, { ...OTHER, notiz: '' }], { modified_at: BASE }) } }),
+    store.snapshotDirty(), TODAY);
+  await editorSave(store, '2026-10-07', (rows) => { rows[1].pause = '30'; });                 // v1
+  const inFlight = store.snapshotDirty();
+  await editorSave(store, '2026-10-07', edit);                                              // v2
+  const sent = inFlight.entries['2026-10-07'];
+  await store.applyResponse(notesOn({ entries: { '2026-10-07': remoteDay(echo(sent.slots), { modified_at: LATER }) } }),
+    inFlight, TODAY);
+  return { store, adapter };
+}
+
+test('double save: a note typed in the second version still goes out after the echo of the first', async () => {
+  const { store, adapter } = await doubleSave((rows) => { rows[1].notiz = 'Termin'; });
+  assert.equal(store.getDay('2026-10-07').notes_known, true);
+  assert.deepEqual(store.snapshotDirty().entries['2026-10-07'].slots.map((s) => s.notiz), ['Kunde Mustermann', 'Termin']);
+  const again = new Store(adapter, clock());
+  await again.load();
+  await again.applyResponse(notesOn({ entries: { '2026-10-07': remoteDay([NOTED], { modified_at: LATER }) } }),
+    { entries: {}, versions: {} }, TODAY);                                                  // derselbe Stand: Basis gilt
+  assert.equal(again.getDay('2026-10-07').notes_known, true);
+});
+
+test('double save: a moved slot keeps its note at the new start', async () => {
+  const { store } = await doubleSave((rows) => { rows[0].start = '08:30'; });
+  assert.deepEqual(store.snapshotDirty().entries['2026-10-07'].slots.map((s) => [s.start, s.notiz]),
+    [['08:30', 'Kunde Mustermann'], ['13:00', '']]);
+});
+
+test('double save: a cleared note stays cleared', async () => {
+  const { store } = await doubleSave((rows) => { rows[0].notiz = ''; });
+  assert.deepEqual(store.snapshotDirty().entries['2026-10-07'].slots.map((s) => s.notiz), ['', '']);
+});
+
+test('double save: an answer that differs from what was sent still drops the knowledge', async () => {
+  const { store } = await doubleSave((rows) => { rows[1].notiz = 'Termin'; },
+    (slots) => slots.map((slot, index) => (index === 1 ? { ...slot, notiz: 'Vom Desktop' } : slot)));
+  assert.equal(store.getDay('2026-10-07').notes_known, false);
+  assert.ok(store.snapshotDirty().entries['2026-10-07'].slots.every((slot) => !('notiz' in slot)));
 });

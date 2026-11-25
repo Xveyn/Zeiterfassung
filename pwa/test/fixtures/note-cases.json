@@ -219,5 +219,292 @@
    "in": "\u00a0Kunde\u00a0",
    "key": "kunde"
   }
+ ],
+ "suggestions": [
+  {
+   "days": {
+    "2026-11-02": {
+     "slots": [
+      {
+       "start": "08:00",
+       "kategorie": "Montage",
+       "notiz": "Kunde M\u00fcller"
+      }
+     ]
+    },
+    "2026-11-03": {
+     "slots": [
+      {
+       "start": "08:00",
+       "kategorie": "Montage",
+       "notiz": "kunde m\u00fcller"
+      },
+      {
+       "start": "13:00",
+       "kategorie": "B\u00fcro",
+       "notiz": "Ablage"
+      }
+     ]
+    },
+    "2026-11-04": {
+     "slots": [
+      {
+       "start": "08:00",
+       "kategorie": "Montage",
+       "notiz": "Kunde Mustermann"
+      },
+      {
+       "start": "13:00",
+       "kategorie": "Montage"
+      }
+     ]
+    }
+   },
+   "kategorie": "Montage",
+   "out": [
+    "Kunde Mustermann",
+    "kunde m\u00fcller",
+    "Ablage"
+   ]
+  },
+  {
+   "days": {
+    "2026-11-02": {
+     "slots": [
+      {
+       "start": "08:00",
+       "kategorie": "Montage",
+       "notiz": "Kunde M\u00fcller"
+      }
+     ]
+    },
+    "2026-11-03": {
+     "slots": [
+      {
+       "start": "08:00",
+       "kategorie": "Montage",
+       "notiz": "kunde m\u00fcller"
+      },
+      {
+       "start": "13:00",
+       "kategorie": "B\u00fcro",
+       "notiz": "Ablage"
+      }
+     ]
+    },
+    "2026-11-04": {
+     "slots": [
+      {
+       "start": "08:00",
+       "kategorie": "Montage",
+       "notiz": "Kunde Mustermann"
+      },
+      {
+       "start": "13:00",
+       "kategorie": "Montage"
+      }
+     ]
+    }
+   },
+   "kategorie": "B\u00fcro",
+   "out": [
+    "Ablage",
+    "Kunde Mustermann",
+    "kunde m\u00fcller"
+   ]
+  },
+  {
+   "days": {
+    "2026-11-02": {
+     "slots": [
+      {
+       "start": "08:00",
+       "kategorie": "Montage",
+       "notiz": "Kunde M\u00fcller"
+      }
+     ]
+    },
+    "2026-11-03": {
+     "slots": [
+      {
+       "start": "08:00",
+       "kategorie": "Montage",
+       "notiz": "kunde m\u00fcller"
+      },
+      {
+       "start": "13:00",
+       "kategorie": "B\u00fcro",
+       "notiz": "Ablage"
+      }
+     ]
+    },
+    "2026-11-04": {
+     "slots": [
+      {
+       "start": "08:00",
+       "kategorie": "Montage",
+       "notiz": "Kunde Mustermann"
+      },
+      {
+       "start": "13:00",
+       "kategorie": "Montage"
+      }
+     ]
+    }
+   },
+   "kategorie": "",
+   "out": [
+    "Kunde Mustermann",
+    "kunde m\u00fcller",
+    "Ablage"
+   ]
+  },
+  {
+   "days": {
+    "2026-11-02": {
+     "slots": [
+      {
+       "start": "08:00",
+       "kategorie": "Montage",
+       "notiz": "Kunde M\u00fcller"
+      }
+     ]
+    },
+    "2026-11-03": {
+     "slots": [
+      {
+       "start": "08:00",
+       "kategorie": "Montage",
+       "notiz": "kunde m\u00fcller"
+      },
+      {
+       "start": "13:00",
+       "kategorie": "B\u00fcro",
+       "notiz": "Ablage"
+      }
+     ]
+    },
+    "2026-11-04": {
+     "slots": [
+      {
+       "start": "08:00",
+       "kategorie": "Montage",
+       "notiz": "Kunde Mustermann"
+      },
+      {
+       "start": "13:00",
+       "kategorie": "Montage"
+      }
+     ]
+    }
+   },
+   "kategorie": "Montage",
+   "limit": 1,
+   "out": [
+    "Kunde Mustermann"
+   ]
+  },
+  {
+   "days": {
+    "2026-11-02": {
+     "slots": [
+      {
+       "start": "08:00",
+       "kategorie": "Montage",
+       "notiz": "Au\u00dfendienst Kundentermin A"
+      }
+     ]
+    },
+    "2026-11-05": {
+     "slots": [
+      {
+       "start": "08:00",
+       "kategorie": "",
+       "notiz": "au\u00dfendienst kundentermin a"
+      },
+      {
+       "start": "13:00",
+       "kategorie": "",
+       "notiz": "B\u00fcro"
+      }
+     ]
+    }
+   },
+   "kategorie": "Montage",
+   "out": [
+    "Au\u00dfendienst Kundentermin A",
+    "B\u00fcro"
+   ]
+  },
+  {
+   "days": {
+    "2026-11-02": {
+     "slots": [
+      {
+       "start": "08:00",
+       "kategorie": "Montage",
+       "notiz": "Au\u00dfendienst Kundentermin A"
+      }
+     ]
+    },
+    "2026-11-05": {
+     "slots": [
+      {
+       "start": "08:00",
+       "kategorie": "",
+       "notiz": "au\u00dfendienst kundentermin a"
+      },
+      {
+       "start": "13:00",
+       "kategorie": "",
+       "notiz": "B\u00fcro"
+      }
+     ]
+    }
+   },
+   "kategorie": "Service",
+   "out": [
+    "au\u00dfendienst kundentermin a",
+    "B\u00fcro"
+   ]
+  },
+  {
+   "days": {
+    "2026-11-09": {
+     "slots": [
+      {
+       "start": "08:00",
+       "kategorie": "",
+       "notiz": "Alt"
+      }
+     ],
+     "deleted": true
+    },
+    "2026-11-03": {
+     "slots": "kaputt"
+    },
+    "2026-11-04": {
+     "slots": [
+      null,
+      {
+       "notiz": 5
+      }
+     ]
+    },
+    "2026-11-02": {
+     "slots": [
+      {
+       "start": "08:00",
+       "kategorie": "",
+       "notiz": "Neu"
+      }
+     ]
+    }
+   },
+   "kategorie": "",
+   "out": [
+    "Neu"
+   ]
+  }
  ]
 }

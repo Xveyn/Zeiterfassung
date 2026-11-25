@@ -11,6 +11,7 @@ import { blocksLan } from './browser-policy.js';
 import { categoryRows, timesSummary } from './categories.js';
 import { WEEKDAY_KEYS, resolveSlotDefaults, weekdayKey } from './defaults.js';
 import { describeError } from './messages.js';
+import { checkNote, groupKey, noteSuggestions } from './notes.js';
 import { openReservationSlots, pendingReservationMinutes, reservationBlockVisible, validateReservationSlots } from './reservations.js';
 import { describeState } from './push-policy.js';
 import { DEFAULT_SLOT_ORDER, sortedSlots } from './slot-order.js';
@@ -32,6 +33,25 @@ export function slotText(slot) {
   const pause = Number.isInteger(slot.pause) && slot.pause > 0 ? ` · ${slot.pause} min Pause` : '';
   const category = typeof slot.kategorie === 'string' && slot.kategorie ? ` · ${slot.kategorie}` : '';
   return `${slot.start}–${slot.end}${pause}${category}`;
+}
+
+export const NOTE_DISPLAY_OPTIONS = [
+  { value: 'line', label: 'Eigene Zeile' },
+  { value: 'inline', label: 'Hinter der Kategorie' },
+];
+
+/** Wo die Wochenliste die Notiz eines Slots zeigt: `line` (eigene Zeile) oder `inline` (hinter der Kategorie).
+ *  Unbekanntes gilt als `line`. */
+export function normalizeNoteDisplay(value) {
+  return value === 'inline' ? 'inline' : 'line';
+}
+
+/** Ein Ist-Zeit-Slot für Wochenliste und Konflikte: `text` ist die Zeile, `note` die Notiz als eigene Zeile
+ *  (leer ohne Notiz oder im Modus `inline`, dort steht sie in `text`). */
+function slotEntry(slot, display = 'line') {
+  const note = typeof slot.notiz === 'string' ? slot.notiz : '';
+  const text = slotText(slot);
+  return display === 'inline' && note ? { text: `${text} · ${note}`, note: '' } : { text, note: display === 'inline' ? '' : note };
 }
 
 /** Zeilen des Kategorie-Modals: alle bekannten Kategorien in Server-Reihenfolge. Steht am Tag eine,
@@ -77,7 +97,7 @@ function stampLabel(iso, timeZone) {
 // Abgleich wieder auf.
 /** @param {{ getDay: (date: string) => any, getReservation?: (date: string) => any, [key: string]: any }} options */
 export function weekModel({ getDay, anchor, today, conflictDates = [], windowDays = 0, aheadDays = LEGACY_AHEAD_DAYS,
-  getReservation = () => null, reservationsEnabled = false, slotOrder = DEFAULT_SLOT_ORDER }) {
+  getReservation = () => null, reservationsEnabled = false, slotOrder = DEFAULT_SLOT_ORDER, noteDisplay = 'line' }) {
   const conflicts = new Set(conflictDates);
   const dates = weekDays(anchor);
   const week = dates.map((date, index) => {
@@ -98,7 +118,7 @@ export function weekModel({ getDay, anchor, today, conflictDates = [], windowDay
       // Außerhalb dessen, was das Handy vom Desktop kennt: ein leer wirkender Tag kann dort Einträge
       // haben, und Speichern ersetzt sie (der Handy-Stand gewinnt ohne Konflikt).
       outsideWindow: date > addDays(today, aheadDays) || (windowDays > 0 && date < addDays(today, -windowDays)),
-      slots: sortedSlots(slots, slotOrder).map(slotText),
+      slots: sortedSlots(slots, slotOrder).map((slot) => slotEntry(slot, normalizeNoteDisplay(noteDisplay))),
       minutes,
       minutesLabel: minutes > 0 ? formatMinutes(minutes) : '',
       // Ein Tombstone (am Desktop oder hier geleert) sieht aus wie ein leerer Tag (#353).
@@ -197,7 +217,7 @@ export function conflictsModel(conflicts, timeZone) {
         return {
           who: version.name || String(version.device ?? '').slice(0, 8),
           when: stampLabel(String(version.modified_at ?? ''), timeZone),
-          slots: sortedSlots(slots).map(slotText),
+          slots: sortedSlots(slots).map((slot) => slotEntry(slot)),
           minutesLabel: formatMinutes(dayMinutes(slots)),
         };
       }),
@@ -212,7 +232,7 @@ export function conflictsModel(conflicts, timeZone) {
  *  darauf stehen. Ohne Standardwerte (älterer Desktop) bleibt sie leer wie zuvor. */
 function freshRow(defaults, weekday) {
   const d = defaults ? resolveSlotDefaults(defaults, '', weekday) : { start: '', end: '', pause: 0 };
-  const row = { start: d.start, end: d.end, pause: String(d.pause), kategorie: '' };
+  const row = { start: d.start, end: d.end, pause: String(d.pause), kategorie: '', notiz: '' };
   return { ...row, base: { start: row.start, end: row.end, pause: row.pause } };
 }
 
@@ -240,6 +260,7 @@ export function editorRows(day, defaults = null, weekday = '', reservation = nul
   }
   return sortedSlots(day.slots, order).map((slot) => ({
     start: slot.start, end: slot.end, pause: String(slot.pause ?? 0), kategorie: slot.kategorie ?? '',
+    notiz: typeof slot.notiz === 'string' ? slot.notiz : '',
   }));
 }
 
@@ -248,7 +269,7 @@ export function editorRows(day, defaults = null, weekday = '', reservation = nul
  *  (`pauseEnabled`, #455); ohne es steht die Pause auf 0 und geht nie in einen Slot. */
 export function reservationRows(reservation, defaults = null, weekday = '', { pauseEnabled = false } = {}) {
   /** @type {any[]} */
-  const rows = editorRows(reservation, defaults, weekday, null, { order: 'custom' });
+  const rows = editorRows(reservation, defaults, weekday, null, { order: 'custom' }).map(({ notiz, ...row }) => row);
   if (pauseEnabled) return rows;
   return rows.map((row) => ({ ...row, pause: '0', base: row.base && { ...row.base, pause: '0' } }));
 }
@@ -273,7 +294,7 @@ export function validateReservationRows(rows, { pauseEnabled = false } = {}) {
 /** „+ Slot“: der Start ist das Ende des vorigen und wird von einer Kategorie nie überschrieben. */
 export function nextRow(previous) {
   const start = previous.end ?? '';
-  return { start, end: '', pause: '0', kategorie: previous.kategorie ?? '',
+  return { start, end: '', pause: '0', kategorie: previous.kategorie ?? '', notiz: '',
     base: { start: null, end: '', pause: '0' } };
 }
 
@@ -292,21 +313,94 @@ export function pickCategory(row, name, defaults, weekday) {
   }
 }
 
-const isBlank = (row) => row.start === '' && row.end === '' && (row.pause === '' || row.pause === '0')
-  && row.kategorie === '';
+/** Leer heißt: nichts eingetragen. Mit Notizfeld (`notes`) zählt auch die Notiz, eine Zeile nur mit Notiz
+ *  ist also nicht leer und fällt der Prüfung auf (Start und Ende fehlen). */
+const isBlank = (row, notes = false) => row.start === '' && row.end === '' && (row.pause === '' || row.pause === '0')
+  && row.kategorie === '' && (!notes || String(row.notiz ?? '').trim() === '');
+
+/** Getrimmte Notiz einer Zeile; eine ungültige bleibt roh, damit `Store.saveDay` sie ablehnt. */
+const rowNote = (row) => {
+  const check = checkNote(row.notiz ?? '');
+  return check.ok ? check.note : row.notiz;
+};
 
 /** Formularzeilen → Slots für `Store.saveDay` (das normalisiert und prüft erneut). Ganz leere
- *  Zeilen entfallen, damit ein vergessenes „+ Slot“ nicht stört. */
-export function rowsToSlots(rows) {
-  return rows.filter((row) => !isBlank(row)).map((row) => ({
+ *  Zeilen entfallen, damit ein vergessenes „+ Slot“ nicht stört. Mit `notes` (Desktop versteht
+ *  Notizen) trägt jeder Slot `notiz`, sonst keiner. */
+export function rowsToSlots(rows, { notes = false } = {}) {
+  return rows.filter((row) => !isBlank(row, notes)).map((row) => ({
     start: row.start, end: row.end,
     pause: row.pause === '' ? 0 : Number(row.pause),
     kategorie: row.kategorie,
+    ...(notes ? { notiz: rowNote(row) } : {}),
   }));
 }
 
-export function validateRows(rows) {
-  return validateSlots(normalizeSlots(rowsToSlots(rows)));
+export function validateRows(rows, { notes = false } = {}) {
+  const result = validateSlots(normalizeSlots(rowsToSlots(rows, { notes })));
+  if (!result.ok || !notes) return result;
+  for (const row of rows) {
+    const check = checkNote(row.notiz ?? '');
+    if (!check.ok) return { ok: false, message: `Notiz: ${check.message}` };
+  }
+  return result;
+}
+
+/** Was „Speichern“ der Arbeitszeit an `Store.saveDay` gibt. Die Notizen des Tages gelten als bekannt, wenn
+ *  der Store sie schon kannte oder eine Zeile eine trägt — nie nur, weil das Feld zu sehen war: ein Tag mit
+ *  unbekannten Notizen ginge sonst mit leeren hinaus und löschte sie am Desktop.
+ * @param {Array<Record<string, any>>} rows
+ * @param {{ notes_known?: boolean } | null} day  `Store.getDay` beim Speichern
+ * @param {{ notes?: boolean }} [options]  `notes`: der Desktop versteht Notizen (`meta.slot_notes`)
+ */
+export function daySave(rows, day, { notes = false } = {}) {
+  const notesKnown = notes && (day?.notes_known === true || rows.some((row) => String(row.notiz ?? '').trim() !== ''));
+  return { slots: rowsToSlots(rows, { notes }), notesKnown };
+}
+
+/** Bisherige Notizen für die Auswahl unter dem Feld: die der Kategorie (`own`) und die übrigen (`other`),
+ *  je höchstens einmal, in der Reihenfolge von `noteSuggestions`, ohne Obergrenze: die Eingabe durchsucht
+ *  alle, gekürzt wird erst die Liste (`noteListModel`).
+ * @param {unknown} days  `{ISO: Tag wie Store.getDay}`
+ * @param {string} kategorie
+ * @returns {{ own: string[], other: string[] }}
+ */
+export function noteChoices(days, kategorie) {
+  const all = noteSuggestions(days, kategorie, Infinity);
+  /** @type {Record<string, unknown>} */
+  const ownDays = {};
+  if (isObject(days)) {
+    for (const [iso, day] of Object.entries(days)) {
+      if (isObject(day) && Array.isArray(day.slots)) {
+        ownDays[iso] = { ...day, slots: day.slots.filter((slot) => isObject(slot) && slot.kategorie === kategorie) };
+      }
+    }
+  }
+  const ownKeys = new Set(noteSuggestions(ownDays, kategorie, Infinity).map(groupKey));
+  return { own: all.filter((note) => ownKeys.has(groupKey(note))), other: all.filter((note) => !ownKeys.has(groupKey(note))) };
+}
+
+/** Notizen, die den eingegebenen Text enthalten (ohne Groß-/Kleinschreibung); ohne Text alle. */
+export function filterSuggestions(list, text) {
+  const needle = groupKey(text);
+  return needle === '' ? list : list.filter((note) => groupKey(note).includes(needle));
+}
+
+/** Die Gruppen der Liste unter dem Notizfeld, nach dem Filtern höchstens `limit` Einträge (eigene zuerst).
+ *  Der Kopf mit dem Kategorienamen steht nur, wenn danach „Weitere Notizen“ folgen; leere Gruppen entfallen.
+ * @param {{ own: string[], other: string[] }} choices
+ * @param {string} kategorie
+ * @param {string} [text]  Filter (Feldinhalt), leer = alle
+ * @param {number} [limit]
+ * @returns {Array<{ heading: string | null, items: string[] }>}
+ */
+export function noteListModel(choices, kategorie, text = '', limit = 20) {
+  const own = filterSuggestions(choices.own, text).slice(0, limit);
+  const other = filterSuggestions(choices.other, text).slice(0, limit - own.length);
+  const groups = [];
+  if (own.length > 0) groups.push({ heading: other.length > 0 ? kategorie || 'Ohne Kategorie' : null, items: own });
+  if (other.length > 0) groups.push({ heading: 'Weitere Notizen', items: other });
+  return groups;
 }
 
 // --- Editor: Netto, Feldfehler, Schnellwahl (#461) ---------------------------------------------------
@@ -315,8 +409,6 @@ export function validateRows(rows) {
 export const QUICK_END_MINUTES = [30, 60, 240, 480];
 export const QUICK_PAUSES = [0, 30, 45];
 
-const isBlankRow = (row) => row.start === '' && row.end === '' && row.kategorie === ''
-  && (row.pause === '' || row.pause === '0');
 
 /** Netto-Minuten einer Formularzeile (Spanne minus Pause), `null` solange Start oder Ende unbrauchbar sind.
  *  Eine Pause, die keine Zahl ist, zählt 0 — die Prüfung beim Speichern meldet sie. */
@@ -331,11 +423,16 @@ export function dayNetMinutes(rows, { withPause = true } = {}) {
   return rows.reduce((sum, row) => sum + (rowNetMinutes(withPause ? row : { ...row, pause: '0' }) ?? 0), 0);
 }
 
-/** Feldfehler einer nicht leeren Zeile: `{start?, end?}` mit dem Text für das Feld. Die vollständige Prüfung
- *  bleibt `validateRows`; das hier sagt nur, *welches* Feld fehlt. */
-export function rowProblems(row) {
-  if (isBlankRow(row)) return {};
+/** Feldfehler einer nicht leeren Zeile: `{start?, end?, notiz?}` mit dem Text für das Feld. Die vollständige
+ *  Prüfung bleibt `validateRows`; das hier sagt nur, *welches* Feld betroffen ist. */
+export function rowProblems(row, { notes = false } = {}) {
+  if (isBlank(row, notes)) return {};
+  /** @type {{ start?: string, end?: string, notiz?: string }} */
   const problems = {};
+  if (notes) {
+    const check = checkNote(row.notiz ?? '');
+    if (!check.ok) problems.notiz = check.message;
+  }
   const start = parseTime(row.start);
   const end = parseTime(row.end);
   if (row.start === '') problems.start = 'Start fehlt';

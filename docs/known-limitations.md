@@ -798,6 +798,22 @@ daraus folgt, ist in einer gemischten Flotte nicht ganz zu schließen.
   immer. Das ist symmetrisch und stabil und braucht eine gemischte Flotte mit Notizen am Tag.
   Möglicher Fix: die Anhebung erst nach den Auflösungen anwenden und nur, wenn der Eintrag danach noch
   der Gewinner ist.
+- **Handy: eine Notiz entfernt eine Desktop-Notiz, die das Handy nie sah.** Hat das Handy einen Tag geändert, bevor es
+  Notizen kannte oder dessen Notizwissen das Handy verworfen hat, und ihn noch nicht gesendet, und speichert ihn dann
+  mit einer Notiz, gehen die übrigen Slots mit `""` hinaus. Hatte der Desktop dort eine Notiz, ist sie danach weg.
+- **Handy: nach einem Desktop-Downgrade verschwinden die Notizen vom Handy.** Die erste Antwort ohne `slot_notes` ersetzt
+  jeden Tag im Fenster durch den Stand ohne `notiz`; nur Tage, die das Handy lokal behält (nicht übertragen), behalten ihre.
+  Das Notizfeld im Editor fehlt, bis der Desktop wieder `slot_notes` nennt. Am Desktop bleiben die Notizen erhalten.
+- **Handy: nach einem Downgrade oder einer Kopplung an einen älteren Desktop werden Tage „abgelehnt“.** Ein Desktop vor
+  #527 lehnt `notiz` als unbekanntes Slot-Feld ab (`422`). Bis seine erste Antwort angekommen ist, sendet das Handy bekannte,
+  nicht übertragene Tage noch mit `notiz`; jeder davon wird als „abgelehnt“ markiert und geht erst nach erneutem Speichern
+  (dann ohne `notiz`) hinaus.
+- **Handy: eine Notiz, die während eines laufenden Abgleichs getippt wurde, kann verloren gehen.** Speichert man einen Tag,
+  während die Anfrage unterwegs ist (oder ist der Tag „abgelehnt“), und trägt die Antwort des Desktops eine Fassung dieses
+  Tages, die anders ist als die in dieser Anfrage gesendete (der Desktop hat ihn seit dem letzten Abgleich geändert),
+  vergisst das Handy sein Notizwissen für diesen Tag und sendet ihn ohne `notiz`: der Desktop behält so seine Notizen,
+  statt sie still zu löschen. Eine in genau dieser Fassung getippte Notiz geht dabei nicht hinaus und
+  verschwindet vom Handy.
 
 ## Beschädigte oder fremde Daten (Storage)
 

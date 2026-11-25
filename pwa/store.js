@@ -23,6 +23,7 @@ import {
 } from './reservations.js';
 import { aheadDays } from './window-policy.js';
 import { blockSignature, categoryRows, validateCategoryRows } from './categories.js';
+import { checkNote } from './notes.js';
 
 /** Die Meta des Stores. `null` heißt bei den markierten Feldern „älterer Desktop“ (Feature-Erkennung), nie „leer“.
  * @typedef {object} Meta
@@ -48,10 +49,12 @@ import { blockSignature, categoryRows, validateCategoryRows } from './categories
  * @property {boolean} lock_enabled
  * @property {string} lock_credential
  * @property {number} lock_delay_ms
+ * @property {string} note_display         Notiz in der Wochenliste: 'line' | 'inline' (#519)
  * @property {number} shift_step_minutes
  * @property {boolean} reservations_enabled
  * @property {boolean} reservation_pause
  * @property {boolean} desktop_unpair
+ * @property {boolean} slot_notes            Desktop liefert und versteht `notiz` an Ist-Zeit-Slots (#519)
  * @property {string} slot_order
  * @property {boolean} settings_writable
  * @property {Record<string, any> | null} reminders      Block `reminders` der letzten Antwort (#331); null = Desktop kennt ihn nicht
@@ -93,9 +96,11 @@ const DEFAULT_META = Object.freeze({
   lock_credential: '',     // Credential-ID (base64url) des Passkeys der Sperre; ohne sie gilt die Sperre nicht
   lock_delay_ms: 60000,    // Frist nach dem Verlassen der App, vor der gesperrt wird (0, 1 Minute, 5 Minuten)
   shift_step_minutes: 10,  // Schrittweite des Wischs auf den Zeitfeldern (#500): 0 = aus, sonst 5/10/15/30/60; gerätelokal
+  note_display: 'line',    // Notiz in der Wochenliste (#519): line (eigene Zeile) | inline (hinter der Kategorie); gerätelokal
   reservations_enabled: false, // Desktop bietet Reservierungen an (Feld in der Antwort); fehlt es, bleibt alles verborgen
   reservation_pause: false,   // Desktop versteht `pause` an Reservierungs-Slots (Feld `reservation_pause`, #455); sonst geht sie nie auf den Draht
   slot_order: 'chrono',       // Reihenfolge der Slots (Feld `slot_order` der Antwort, #520): chrono | category | custom
+  slot_notes: false,          // Desktop liefert und versteht `notiz` an Ist-Zeit-Slots (Feld `slot_notes` der Antwort, #519)
   desktop_unpair: false,      // Desktop kennt `POST /v1/unpair` (Feld `unpair` der Antwort, #499); sonst warnt die Rückfrage vor dem Trennen
   settings_writable: false,   // Desktop versteht `settings` (Feld `writable_settings` in der Antwort); sonst ist das Bearbeiten aus
   reminders: null,            // Block `reminders` der letzten Antwort (#331); null = Desktop kennt ihn nicht
@@ -119,8 +124,8 @@ const isDirty = (record) => record.dirty_version > record.synced_version;
 const editDirty = (edit) => Boolean(edit) && edit.dirty_version > edit.synced_version;
 
 function signature(slots) {
-  // Reihenfolge der Slots ist keine Änderung (wie am Desktop).
-  return JSON.stringify(slots.map((s) => [s.start, s.end, s.pause, s.kategorie]).sort());
+  // Reihenfolge der Slots ist keine Änderung (wie am Desktop); eine geänderte Notiz schon.
+  return JSON.stringify(slots.map((s) => [s.start, s.end, s.pause, s.kategorie, s.notiz ?? '']).sort());
 }
 
 function validRecord(date, record) {
@@ -160,6 +165,8 @@ export class Store {
         dirty_version: value.dirty_version,
         synced_version: Number.isInteger(value.synced_version) ? value.synced_version : 0,
         error: typeof value.error === 'string' ? value.error : null,
+        notes_known: value.notes_known === true,
+        notes_base: typeof value.notes_base === 'string' ? value.notes_base : null,
       } : null;
       if (record && validRecord(key, record)) days.set(key, record);
     }
@@ -198,6 +205,7 @@ export class Store {
       deleted: record.entry.deleted,
       dirty: isDirty(record),
       error: record.error,
+      notes_known: record.notes_known === true,
     };
   }
 
@@ -218,7 +226,7 @@ export class Store {
       if (record.error || skip.has(date)) continue;
       if (Object.keys(entries).length >= limit) break;
       entries[date] = {
-        slots: structuredClone(record.entry.slots),
+        slots: this._wireSlots(record),
         modified_at: record.entry.modified_at,
         device_id: this._meta.device_id,
         deleted: record.entry.deleted,
@@ -226,6 +234,18 @@ export class Store {
       versions[date] = record.dirty_version;
     }
     return { entries, versions };
+  }
+
+  /** Die Slots eines Tages für die Anfrage: `notiz` an jedem Slot (`""` = keine), wenn der Desktop
+   *  Notizen versteht und die PWA die Notizen dieses Tages kennt; sonst an keinem. `""` heißt am
+   *  Desktop „entfernt“: ein Tag mit unbekannten Notizen ginge so mit leeren hinaus und löschte sie,
+   *  ohne `notiz` erbt er sie dort. Gemischt lehnt der Desktop ab. */
+  _wireSlots(record) {
+    const withNotes = this._meta.slot_notes && record.notes_known === true;
+    return record.entry.slots.map((slot) => {
+      const { notiz, ...bare } = slot;
+      return withNotes ? { ...bare, notiz: typeof notiz === 'string' ? notiz : '' } : bare;
+    });
   }
 
   // --- Schreiben -------------------------------------------------------------------------------
@@ -258,33 +278,59 @@ export class Store {
     return Boolean(record) && record.entry.device_id !== this._meta.device_id;
   }
 
-  _putIn(map, storeName, date, entry, ops) {
+  _putIn(map, storeName, date, entry, ops, extra = {}) {
     const old = map.get(date);
     const record = {
       entry,
       dirty_version: (old ? old.dirty_version : 0) + 1,
       synced_version: old ? old.synced_version : 0,
       error: null,
+      ...extra,
     };
     map.set(date, record);
     ops.push({ store: storeName, op: 'put', key: date, value: record });
   }
 
-  _put(date, entry, ops) {
-    this._putIn(this._days, 'entries', date, entry, ops);
+  /** `notesKnown`: kennt die PWA die Notizen des Tages (s. `_wireSlots`)? `notes_base` (Stempel des zuletzt
+   *  übernommenen Desktop-Stands, auf dem dieses Wissen beruht) bleibt beim Bearbeiten stehen. */
+  _put(date, entry, ops, notesKnown) {
+    const notesBase = this._days.get(date)?.notes_base ?? null;
+    this._putIn(this._days, 'entries', date, entry, ops, { notes_known: notesKnown, notes_base: notesBase });
   }
 
-  /** Speichert einen Tag (geprüfte Slots). Wirft bei ungültigen Slots oder Datum. */
-  async saveDay(date, slots) {
+  /** Speichert einen Tag (geprüfte Slots). Wirft bei ungültigen Slots oder Datum. `notesKnown`
+   *  sagt, dass die Slots die Notizen des Tages tragen (Editor mit Notizfeld). Ein bisheriges Wissen
+   *  bleibt nur, wenn die Slots `notiz` tragen: ohne (Desktop ohne `slot_notes`) ist es verloren,
+   *  der Tag geht dann ohne `notiz` hinaus und der Desktop behält seine Notizen. Gespeichert wird `notiz` nur an
+   *  einem Tag mit Notizwissen (getrimmt): ein noch offener Tab vor den Notizen sendet gespeicherte Slots
+   *  unverändert, ein `notiz: ""` von dort löschte am Desktop. */
+  async saveDay(date, slots, { notesKnown = false } = {}) {
     if (!isIsoDate(date)) throw new Error(`Ungültiges Datum: ${date}`);
     // In der Reihenfolge des Desktop-Modus gespeichert (#520; „custom“ = wie eingegeben); Reservierungen (`saveReservation`) bleiben in Zeilenreihenfolge.
-    const normalized = sortedSlots(normalizeSlots(slots), this._meta.slot_order);
-    const check = validateSlots(normalized);
+    const sorted = sortedSlots(normalizeSlots(slots), this._meta.slot_order);
+    const check = validateSlots(sorted);
     if (!check.ok) throw new Error(check.message);
+    for (const slot of sorted) {
+      if (slot.notiz === undefined) continue;
+      const note = checkNote(slot.notiz);
+      if (!note.ok) throw new Error(`Notiz: ${note.message}`);
+    }
     const old = this._days.get(date);
+    const carries = sorted.some((slot) => typeof slot.notiz === 'string');
+    const known = notesKnown || (carries && old?.notes_known === true);
+    const normalized = sorted.map((slot) => {
+      const { notiz, ...bare } = slot;
+      if (!known || notiz === undefined) return bare;
+      const note = checkNote(notiz);
+      return { ...bare, notiz: note.ok ? note.note : '' };
+    });
     if (old && !old.entry.deleted && signature(old.entry.slots) === signature(normalized)) {
-      if (old.error) {                                             // erneut speichern = erneut versuchen
+      // Unverändert: nicht dirty machen, aber erneut versuchen (Fehler weg) und das Wissen ablegen.
+      const stale = !known && old.entry.slots.some((slot) => 'notiz' in slot);
+      if (old.error || old.notes_known !== known || stale) {
         old.error = null;
+        old.notes_known = known;
+        if (stale) old.entry.slots = normalized;
         await this._adapter.batch([{ store: 'entries', op: 'put', key: date, value: old }]);
       }
       return;
@@ -295,7 +341,7 @@ export class Store {
       modified_at: this._stampAfter(old?.entry.modified_at, this._isForeign(old)),
       device_id: this._meta.device_id,
       deleted: false,
-    }, ops);
+    }, ops, known);
     await this._adapter.batch(ops);
   }
 
@@ -309,7 +355,7 @@ export class Store {
       modified_at: this._stampAfter(old.entry.modified_at, this._isForeign(old)),
       device_id: this._meta.device_id,
       deleted: true,
-    }, ops);
+    }, ops, old.notes_known === true);
     await this._adapter.batch(ops);
   }
 
@@ -553,12 +599,17 @@ export class Store {
       if (!isIsoDate(date)) continue;
       const record = this._days.get(date);
       const sent = snapshot.versions[date];
-      if (record && isDirty(record) && !(sent !== undefined && sent === record.dirty_version)) continue;
+      if (record && isDirty(record) && !(sent !== undefined && sent === record.dirty_version)) {
+        this._forgetStaleNotes(record, entry, parsed, date, ops, snapshot.entries?.[date]);
+        continue;
+      }
       const next = {
         entry: structuredClone(entry),
         dirty_version: record ? record.dirty_version : 0,
         synced_version: record ? record.dirty_version : 0,
         error: null,
+        notes_known: parsed.slot_notes === true,      // mit `slot_notes` trägt der Stand des Desktops seine Notizen
+        notes_base: entry.modified_at,
       };
       this._days.set(date, next);
       ops.push({ store: 'entries', op: 'put', key: date, value: next });
@@ -608,6 +659,7 @@ export class Store {
       // ohne Pause hinaus und käme als 0 zurück.
       reservation_pause: parsed.reservations != null ? parsed.reservation_pause === true : this._meta.reservation_pause,
       desktop_unpair: parsed.unpair === true,
+      slot_notes: parsed.slot_notes === true,
       slot_order: normalizeSlotOrder(parsed.slot_order),
       last_pull_at: parsed.last_pull_at,
       server_time: parsed.server_time,
@@ -629,6 +681,24 @@ export class Store {
     };
     ops.push({ store: 'meta', op: 'put', key: 'meta', value: this._meta });
     await this._adapter.batch(ops);
+  }
+
+  /** Ein lokal behaltener Tag, den der Desktop seit dem übernommenen Stand (`notes_base`) geändert hat: das
+   *  Notizwissen gilt nicht mehr. Der Desktop sieht darin keinen Konflikt (seine Änderung liegt vor
+   *  `last_pull_at`), `notiz` an jedem Slot löschte also still seine neuen Notizen. Ohne `notiz` erbt er sie;
+   *  eine in genau dieser Fassung getippte Notiz geht dafür nicht hinaus. Hält der Desktop genau, was diese
+   *  Anfrage gesendet hat (`sent`, die eigene Rückmeldung mit neuem Stempel), bleibt das Wissen mit neuer Basis. */
+  _forgetStaleNotes(record, entry, parsed, date, ops, sent) {
+    if (parsed.slot_notes !== true || record.notes_known !== true) return;
+    if (record.notes_base === entry.modified_at) return;
+    if (sent && sent.deleted === entry.deleted && signature(sent.slots) === signature(entry.slots)) {
+      record.notes_base = entry.modified_at;
+      ops.push({ store: 'entries', op: 'put', key: date, value: record });
+      return;
+    }
+    record.notes_known = false;
+    record.entry.slots = record.entry.slots.map(({ notiz: _notiz, ...bare }) => bare);
+    ops.push({ store: 'entries', op: 'put', key: date, value: record });
   }
 
   _drop(date, ops) {

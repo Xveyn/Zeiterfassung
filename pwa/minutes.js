@@ -66,8 +66,8 @@ export function formatMinutes(total) {
 }
 
 /** Aus Formularwerten die vier Felder des Protokolls machen (Standard: Pause 0, Kategorie
- *  leer, Kategorie getrimmt wie am Server). Unbrauchbares bleibt unverändert und fällt
- *  in `validateSlots` auf. */
+ *  leer, Kategorie getrimmt wie am Server), dazu `notiz`, wenn sie Text ist (sonst entfällt
+ *  der Schlüssel). Unbrauchbares bleibt unverändert und fällt in `validateSlots` auf. */
 export function normalizeSlots(raw) {
   if (!Array.isArray(raw)) return [];
   return raw.map((item) => {
@@ -78,6 +78,7 @@ export function normalizeSlots(raw) {
       end: item.end,
       pause: item.pause === undefined ? 0 : item.pause,
       kategorie: typeof kategorie === 'string' ? kategorie.trim() : kategorie,
+      ...(typeof item.notiz === 'string' ? { notiz: item.notiz } : {}),
     };
   });
 }

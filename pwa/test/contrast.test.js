@@ -23,10 +23,17 @@ const ratio = (a, b) => {
   return (hi + 0.05) / (lo + 0.05);
 };
 
+// Die Liste der bisherigen Notizen unter dem Notizfeld (#519) hat eine eigene Fläche; ihr Wert kommt aus der Regel.
+function noteListBackground() {
+  const match = /\.combo-list \{[^}]*background:\s*(#[0-9a-fA-F]{6})/.exec(css);
+  assert.ok(match, '.combo-list braucht eine feste Hintergrundfarbe');
+  return match[1];
+}
+
 // Flächen, auf denen Text steht: die Tokens plus die festen Farben aus dem Stylesheet.
 const surfaces = () => ({
   bg: token('bg'), cell: token('cell'), 'cell-hover': token('cell-hover'), weekend: token('weekend'), entry: token('entry'),
-  statusbar: '#101a30', 'dirty-bar': '#3a2f10', 'pill-ok': '#14351f',
+  statusbar: '#101a30', 'dirty-bar': '#3a2f10', 'pill-ok': '#14351f', 'note-list': noteListBackground(),
 });
 
 const atLeast = (label, a, b, min) => assert.ok(ratio(a, b) >= min, `${label}: ${ratio(a, b).toFixed(2)}:1 (mindestens ${min}:1)`);
@@ -76,4 +83,19 @@ test('the shift hint under the time fields is muted text, its live value normal 
   assert.match(rule('.slot .shift-hint.live'), /color: var\(--text\)/);
   assert.doesNotMatch(rule('.slot .shift-hint') + rule('.slot .shift-hint.live'), /opacity/);
   assert.match(css, /dialog \{[^}]*background: var\(--bg\)/);                 // die Fläche, gegen die oben gemessen wird
+});
+
+test('the note list: entries in normal text, the group heading muted, the highlighted entry on --cell-hover', () => {
+  const rule = (selector) => (css.match(new RegExp(`${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} \\{([^}]*)\\}`)) || [])[1] || '';
+  assert.match(rule('.combo-list button'), /color: var\(--text\)/);
+  assert.match(rule('.combo-head'), /color: var\(--muted\)/);
+  assert.match(rule('.combo-list button[aria-selected="true"]'), /background: var\(--cell-hover\)/);
+  assert.match(rule('.combo-field input::placeholder'), /color: var\(--muted\)/);
+  assert.doesNotMatch(rule('.combo-list button') + rule('.combo-head'), /opacity/);
+});
+
+test('the note under a slot is muted text on --entry, --weekend, --cell (conflict box) and --bg (#519)', () => {
+  const rule = (selector) => (css.match(new RegExp(`${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} \\{([^}]*)\\}`)) || [])[1] || '';
+  assert.match(rule('.day .slots .slot-note, .version .slot-note'), /color: var\(--muted\)/);
+  for (const name of ['entry', 'weekend', 'cell', 'bg']) atLeast(`muted auf ${name}`, token('muted'), surfaces()[name], 4.5);
 });

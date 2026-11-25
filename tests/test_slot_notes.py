@@ -39,6 +39,14 @@ def test_group_key(case):
     assert sn.group_key(case["in"]) == case["key"]
 
 
+@pytest.mark.parametrize("case", CASES["suggestions"])
+def test_suggestions_fixture(case):
+    # Die Fixture enthält einen gelöschten Tag (Tombstone) nur für die PWA; die App-Form kennt ihn nicht.
+    days = {k: v for k, v in case["days"].items() if not v.get("deleted")}
+    kwargs = {"limit": case["limit"]} if "limit" in case else {}
+    assert sn.suggestions(days, case["kategorie"], **kwargs) == case["out"]
+
+
 def test_check_note_meldungen():
     with pytest.raises(NoteError) as e:
         sn.check_note(5)

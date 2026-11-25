@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 
 import {
   SETTINGS_TABS, categoriesModel, categoryRemovalText, categoryRenameHint, settingsTabLabel, retentionLabel,
-  WEEKDAYS, dayTitle, categoryDisplay, categoryLabel, categoryOptions, conflictsModel, dayChanged, editLock, editorRows, focusKeyToRestore, hintKey, hintsModel, desktopHint, localTime, nextRow, olderModel, pickCategory, rowsToSlots, slotText,
+  WEEKDAYS, dayTitle, normalizeNoteDisplay, categoryDisplay, categoryLabel, categoryOptions, conflictsModel, dayChanged, editLock, editorRows, focusKeyToRestore, hintKey, hintsModel, desktopHint, localTime, nextRow, olderModel, pickCategory, rowsToSlots, slotText,
   reachedAfterSyncError, unpairDialogModel, statusModel, validateRows, weekModel, windowRow, reservationRows, reservationRowsToSlots, validateReservationRows,
 } from '../view-model.js';
 import { SyncError } from '../sync.js';
@@ -194,7 +194,7 @@ test('a conflict shows both versions read-only with names, times and sums', () =
   assert.equal(model.versions[0].who, 'Pixel von Sven');
   assert.equal(model.versions[1].who, 'DESKTOP-');                  // ohne Namen: gekürzte ID
   assert.equal(model.versions[0].when, '07.10.2026 18:30');
-  assert.deepEqual(model.versions[0].slots, ['08:00–12:00 · Projekt']);
+  assert.deepEqual(model.versions[0].slots, [{ text: '08:00–12:00 · Projekt', note: '' }]);
   assert.equal(model.versions[0].minutesLabel, '4:00');
 });
 
@@ -220,7 +220,7 @@ test('the editor starts from the stored slots or from one blank row', () => {
   assert.deepEqual(editorRows(null).map(plain), [{ start: '', end: '', pause: '0', kategorie: '' }]);
   assert.deepEqual(editorRows(live([], { deleted: true })).map(plain), [{ start: '', end: '', pause: '0', kategorie: '' }]);
   assert.deepEqual(editorRows(live([{ start: '08:00', end: '12:00', pause: 15, kategorie: 'A' }])),
-    [{ start: '08:00', end: '12:00', pause: '15', kategorie: 'A' }]);
+    [{ start: '08:00', end: '12:00', pause: '15', kategorie: 'A', notiz: '' }]);
 });
 
 test('a new row continues after the previous one', () => {
@@ -1272,7 +1272,7 @@ const EARLY = { start: '09:00', end: '11:00', pause: 0, kategorie: '' };
 
 test('the week list shows the slots of a day in chronological order', () => {
   const week = weekModel({ getDay: days({ '2026-10-08': live([LATE, EARLY]) }), anchor: '2026-10-08', today: '2026-10-08' });
-  assert.deepEqual(week.days[3].slots, ['09:00–11:00', '11:00–13:00']);
+  assert.deepEqual(week.days[3].slots, [{ text: '09:00–11:00', note: '' }, { text: '11:00–13:00', note: '' }]);
 });
 
 test('the editor opens the stored slots in chronological order', () => {
@@ -1281,7 +1281,7 @@ test('the editor opens the stored slots in chronological order', () => {
 
 test('a conflict version lists its slots in chronological order', () => {
   const model = conflictsModel([{ id: 'c', date: '2026-10-08', versions: [{ slots: [LATE, EARLY] }] }], 'UTC');
-  assert.deepEqual(model[0].versions[0].slots, ['09:00–11:00', '11:00–13:00']);
+  assert.deepEqual(model[0].versions[0].slots, [{ text: '09:00–11:00', note: '' }, { text: '11:00–13:00', note: '' }]);
 });
 
 test('reservation rows keep the stored order: the desktop hands over event ids and the reminder by position (#520)', () => {
@@ -1293,10 +1293,145 @@ test('the week list and the editor follow the slot order of the desktop (#520)',
   const ZETA = { start: '09:00', end: '10:00', pause: 0, kategorie: 'Zeta' };
   const ALPHA = { start: '13:00', end: '14:00', pause: 0, kategorie: 'Alpha' };
   const model = (slotOrder) => weekModel({ getDay: days({ '2026-10-08': live([ZETA, ALPHA]) }), anchor: '2026-10-08', today: '2026-10-08', slotOrder });
-  assert.deepEqual(model('chrono').days[3].slots.map((t) => t.slice(0, 5)), ['09:00', '13:00']);
-  assert.deepEqual(model('category').days[3].slots.map((t) => t.slice(0, 5)), ['13:00', '09:00']);
-  assert.deepEqual(model('custom').days[3].slots.map((t) => t.slice(0, 5)), ['09:00', '13:00']);
+  assert.deepEqual(model('chrono').days[3].slots.map((s) => s.text.slice(0, 5)), ['09:00', '13:00']);
+  assert.deepEqual(model('category').days[3].slots.map((s) => s.text.slice(0, 5)), ['13:00', '09:00']);
+  assert.deepEqual(model('custom').days[3].slots.map((s) => s.text.slice(0, 5)), ['09:00', '13:00']);
   const rows = (order) => editorRows(live([ALPHA, ZETA]), null, '', null, { order }).map(({ start }) => start);
   assert.deepEqual(rows('chrono'), ['09:00', '13:00']);
   assert.deepEqual(rows('custom'), ['13:00', '09:00']);
+});
+
+// --- Notiz am Slot (#519) ---------------------------------------------------------------------------
+
+import { daySave, noteChoices, noteListModel, filterSuggestions } from '../view-model.js';
+
+test('every editor row carries its note: stored slots keep theirs, new rows start empty', () => {
+  const rows = editorRows(live([{ ...SLOT, notiz: 'Kunde Mustermann' }, { start: '13:00', end: '14:00', pause: 0, kategorie: '' }]));
+  assert.deepEqual(rows.map((row) => row.notiz), ['Kunde Mustermann', '']);
+  assert.equal(editorRows(null).at(0).notiz, '');
+  assert.equal(editorRows(null, null, '', live([SLOT])).at(0).notiz, '');
+  assert.equal(nextRow(rows[0]).notiz, '');
+});
+
+test('reservation rows carry no note: reservations have none', () => {
+  assert.equal('notiz' in reservationRows(live([SLOT])).at(0), false);
+});
+
+test('rows become slots with a trimmed note only with notes on; without, no slot has notiz', () => {
+  const rows = [{ start: '08:00', end: '12:00', pause: '0', kategorie: 'A', notiz: '  Kunde  ' },
+    { start: '13:00', end: '14:00', pause: '0', kategorie: '', notiz: '' }];
+  assert.deepEqual(rowsToSlots(rows, { notes: true }).map((slot) => slot.notiz), ['Kunde', '']);
+  assert.equal(rowsToSlots(rows).some((slot) => 'notiz' in slot), false);
+});
+
+test('a row with only a note is not blank: it stays and the check names the missing times', () => {
+  const rows = [{ start: '08:00', end: '12:00', pause: '0', kategorie: '', notiz: '' },
+    { start: '', end: '', pause: '0', kategorie: '', notiz: 'vergessen' }];
+  assert.equal(rowsToSlots(rows, { notes: true }).length, 2);
+  assert.equal(validateRows(rows, { notes: true }).ok, false);
+  assert.deepEqual(rowProblems(rows[1], { notes: true }), { start: 'Start fehlt', end: 'Ende fehlt' });
+  // Ohne Notizfeld zählt die Notiz nicht: die Zeile ist leer wie zuvor.
+  assert.deepEqual(rowProblems(rows[1]), {});
+});
+
+test('validation rejects a note of 201 characters or with a line break, and names the field', () => {
+  const ok = { start: '08:00', end: '12:00', pause: '0', kategorie: '', notiz: 'x'.repeat(200) };
+  assert.equal(validateRows([ok], { notes: true }).ok, true);
+  const long = { ...ok, notiz: 'x'.repeat(201) };
+  const broken = { ...ok, notiz: 'eins\nzwei' };
+  assert.deepEqual(validateRows([long], { notes: true }), { ok: false, message: 'Notiz: Höchstens 200 Zeichen.' });
+  assert.deepEqual(validateRows([broken], { notes: true }), { ok: false, message: 'Notiz: Nur eine Zeile, keine Steuerzeichen.' });
+  assert.deepEqual(rowProblems(long, { notes: true }), { notiz: 'Höchstens 200 Zeichen.' });
+  assert.deepEqual(rowProblems(broken, { notes: true }), { notiz: 'Nur eine Zeile, keine Steuerzeichen.' });
+  // Ohne Notizfeld wird die Notiz nicht geprüft (sie geht auch nicht mit).
+  assert.equal(validateRows([long]).ok, true);
+});
+
+test('saving: notes known stays known, a typed note makes the day known, a shown field alone does not', () => {
+  const rows = [{ start: '08:00', end: '12:00', pause: '15', kategorie: 'A', notiz: '' }];
+  assert.deepEqual(daySave(rows, { notes_known: false }, { notes: true }),
+    { slots: [{ start: '08:00', end: '12:00', pause: 15, kategorie: 'A', notiz: '' }], notesKnown: false });
+  assert.equal(daySave(rows, null, { notes: true }).notesKnown, false);
+  assert.equal(daySave(rows, { notes_known: true }, { notes: true }).notesKnown, true);
+  assert.equal(daySave([{ ...rows[0], notiz: ' Kunde ' }], null, { notes: true }).notesKnown, true);
+  assert.equal(daySave([{ ...rows[0], notiz: '   ' }], null, { notes: true }).notesKnown, false);
+  // Ohne Fähigkeit des Desktops ändert sich nichts: kein notiz, kein Wissen.
+  assert.deepEqual(daySave([{ ...rows[0], notiz: 'Kunde' }], { notes_known: true }, { notes: false }),
+    { slots: [{ start: '08:00', end: '12:00', pause: 15, kategorie: 'A' }], notesKnown: false });
+});
+
+test('note choices split the suggestions into the own category and the others', () => {
+  const stored = {
+    '2026-10-06': live([{ ...SLOT, kategorie: 'B', notiz: 'Wartung' }, { ...SLOT, start: '13:00', end: '14:00', notiz: 'Kunde' }]),
+    '2026-10-07': live([{ ...SLOT, notiz: 'kunde' }, { ...SLOT, start: '13:00', end: '14:00', kategorie: 'B', notiz: 'Planung' }]),
+  };
+  assert.deepEqual(noteChoices(stored, 'Projekt'), { own: ['kunde'], other: ['Planung', 'Wartung'] });
+  assert.deepEqual(noteChoices(stored, 'Leer'), { own: [], other: ['kunde', 'Planung', 'Wartung'] });
+  assert.deepEqual(noteChoices(null, 'Projekt'), { own: [], other: [] });
+});
+
+test('the suggestion filter matches a case-insensitive substring and keeps the order', () => {
+  assert.deepEqual(filterSuggestions(['Kunde Mustermann', 'Planung', 'Kundentermin'], 'KUNDE'), ['Kunde Mustermann', 'Kundentermin']);
+  assert.deepEqual(filterSuggestions(['A', 'B'], '  '), ['A', 'B']);
+  assert.deepEqual(filterSuggestions(['A', 'B'], 'x'), []);
+});
+
+test('the list names the own category only when other notes follow; others always come under „Weitere Notizen“', () => {
+  const both = { own: ['Kunde'], other: ['Planung'] };
+  assert.deepEqual(noteListModel(both, 'Projekt'),
+    [{ heading: 'Projekt', items: ['Kunde'] }, { heading: 'Weitere Notizen', items: ['Planung'] }]);
+  assert.deepEqual(noteListModel(both, ''),
+    [{ heading: 'Ohne Kategorie', items: ['Kunde'] }, { heading: 'Weitere Notizen', items: ['Planung'] }]);
+  assert.deepEqual(noteListModel({ own: ['Kunde'], other: [] }, 'Projekt'), [{ heading: null, items: ['Kunde'] }]);
+  assert.deepEqual(noteListModel({ own: [], other: ['Planung'] }, 'Projekt'), [{ heading: 'Weitere Notizen', items: ['Planung'] }]);
+  assert.deepEqual(noteListModel(both, 'Projekt', 'kun'), [{ heading: null, items: ['Kunde'] }]);
+  assert.deepEqual(noteListModel(both, 'Projekt', 'zzz'), []);
+});
+
+test('typing searches all previous notes, not only the newest 20; without text at most 20 are shown', () => {
+  const stored = {};
+  for (let i = 0; i < 25; i += 1) {
+    const iso = `2026-09-${String(i + 1).padStart(2, '0')}`;
+    stored[iso] = live([{ ...SLOT, notiz: i === 0 ? 'Altlast Archiv' : `Notiz ${i}` }]);
+  }
+  const choices = noteChoices(stored, 'Projekt');
+  assert.deepEqual(noteListModel(choices, 'Projekt', 'altlast'), [{ heading: null, items: ['Altlast Archiv'] }]);
+  const all = noteListModel(choices, 'Projekt');
+  assert.equal(all.reduce((sum, group) => sum + group.items.length, 0), 20);
+  assert.equal(all[0].items[0], 'Notiz 24');
+});
+
+test('the 20-entry cap counts both groups: the own ones first, the others fill up', () => {
+  const own = Array.from({ length: 15 }, (_, i) => `eigen ${i}`);
+  const other = Array.from({ length: 10 }, (_, i) => `fremd ${i}`);
+  const groups = noteListModel({ own, other }, 'Projekt');
+  assert.equal(groups[0].items.length, 15);
+  assert.equal(groups[1].items.length, 5);
+});
+
+// --- Notiz in Wochenliste und Konflikten (#519) ---------------------------------------------------
+
+const NOTED = { start: '08:00', end: '12:00', pause: 30, kategorie: 'Montage', notiz: 'Kunde Mustermann' };
+
+test('a note is its own line by default and follows the category in the inline mode', () => {
+  const getDay = days({ '2026-10-08': live([NOTED, EARLY]) });
+  const line = weekModel({ getDay, anchor: '2026-10-08', today: '2026-10-08' }).days[3].slots;
+  assert.deepEqual(line, [{ text: '08:00–12:00 · 30 min Pause · Montage', note: 'Kunde Mustermann' }, { text: '09:00–11:00', note: '' }]);
+  const inline = weekModel({ getDay, anchor: '2026-10-08', today: '2026-10-08', noteDisplay: 'inline' }).days[3].slots;
+  assert.deepEqual(inline, [{ text: '08:00–12:00 · 30 min Pause · Montage · Kunde Mustermann', note: '' }, { text: '09:00–11:00', note: '' }]);
+});
+
+test('an unknown note display counts as the own line', () => {
+  assert.equal(normalizeNoteDisplay('inline'), 'inline');
+  for (const value of ['line', 'x', undefined, null, 3]) assert.equal(normalizeNoteDisplay(value), 'line');
+  const getDay = days({ '2026-10-08': live([NOTED]) });
+  assert.equal(weekModel({ getDay, anchor: '2026-10-08', today: '2026-10-08', noteDisplay: 'x' }).days[3].slots[0].note, 'Kunde Mustermann');
+});
+
+test('reservations stay plain text, a conflict version shows the note as its own line', () => {
+  const week = weekModel({ getDay: days({}), getReservation: () => ({ slots: [NOTED], deleted: false }), reservationsEnabled: true,
+    anchor: '2026-10-08', today: '2026-10-05', noteDisplay: 'inline' });
+  assert.deepEqual(week.days[3].reservation.slots, ['08:00–12:00 · 30 min Pause · Montage']);
+  const [model] = conflictsModel([{ id: 'c', date: '2026-10-08', versions: [{ slots: [NOTED] }] }], 'UTC');
+  assert.deepEqual(model.versions[0].slots, [{ text: '08:00–12:00 · 30 min Pause · Montage', note: 'Kunde Mustermann' }]);
 });

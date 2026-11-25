@@ -7,13 +7,14 @@ import { focusByKey, h } from './dom.js';
 import { MAX_CATEGORY_LENGTH, TIME_STEP_MINUTES, formatMinutes, snapPause, snapTime } from './minutes.js';
 import { mayStartShift, shiftLabel, shiftWindow, stepsForDistance } from './shift-policy.js';
 import { updateStatusText } from './update-policy.js';
+import { groupKey } from './notes.js';
 import { createDialogHistory } from './dialog-history.js';
 import { PRIVACY_URL } from './relay-client.js';
 import { RESERVATION_CALENDAR_NOTE } from './messages.js';
 import { MAX_NAME_LENGTH, blockSignature, moveRow, rowsToBlock, timesSummary, validateCategoryRows } from './categories.js';
 import {
   QUICK_END_MINUTES, QUICK_PAUSES, SETTINGS_TABS, addToTime, categoryDisplay, categoryOptions, categoryRemovalText,
-  categoryRenameHint, connectionSummary, dayNetMinutes, editorTitle, hintKey, nextRow, pickCategory, pairFields, rowNetMinutes, rowProblems,
+  categoryRenameHint, connectionSummary, dayNetMinutes, editorTitle, hintKey, nextRow, noteListModel, pickCategory, pairFields, rowNetMinutes, rowProblems,
   retentionLabel, settingsTabLabel, storageNotice, windowRow,
 } from './view-model.js';
 
@@ -150,6 +151,11 @@ export function pairView({ address, code, deviceName, busy, canScan, canCancel, 
 
 // --- Woche ---------------------------------------------------------------------------------------------
 
+/** Eine Zeile der Slot-Liste; die Notiz steht als zweite Zeile darunter. */
+function slotItem({ text, note }) {
+  return h('li', {}, text, note && h('span', { class: 'slot-note' }, note));
+}
+
 function dayRow(day, handlers) {
   const classes = ['day', day.state, day.isWeekend && 'weekend', day.isToday && 'today', day.beyondWindow && 'future'];
   return h('li', {}, h('button', { type: 'button', class: classes.filter(Boolean).join(' '),
@@ -159,7 +165,7 @@ function dayRow(day, handlers) {
       day.isToday && h('div', { class: 'tag' }, 'heute')),
     h('div', { class: 'content' },
       day.addHint && h('div', { class: 'add muted' }, day.addHint),
-      h('ul', { class: 'slots' }, day.slots.map((text) => h('li', {}, text))),
+      h('ul', { class: 'slots' }, day.slots.map(slotItem)),
       day.reservation?.slots.length > 0 && h('ul', { class: 'slots reserved' },
         day.reservation.slots.map((text) => h('li', {}, `geplant ${text}`)))),
     h('span', { class: 'sum' }, day.minutesLabel, day.addHint && h('span', { class: 'plus', 'aria-hidden': 'true' }, '+')),
@@ -216,7 +222,7 @@ const SHIFT_HINT = '↔ Ziehen verschiebt beide Zeiten';
 const SHIFT_LABEL_MS = 900;          // so lange bleibt „+20 min“ nach dem Loslassen stehen
 const SHIFT_CLICK_GUARD_MS = 400;    // ein Klick direkt nach dem Zug öffnete sonst die Zeitauswahl
 
-function slotSection({ rows, categories, defaults, weekday, withPause, pauseEnabled = false, shiftStep = 0, onChange }) {
+function slotSection({ rows, categories, defaults, weekday, withPause, pauseEnabled = false, shiftStep = 0, notes = null, onChange }) {
   const list = h('div', {});
   const state = rows.map((row) => ({ ...row, base: row.base && { ...row.base } }));
   const prefix = withPause ? 'slot' : 'res';       // die Ids beider Abschnitte dürfen nicht kollidieren
@@ -224,6 +230,7 @@ function slotSection({ rows, categories, defaults, weekday, withPause, pauseEnab
   const showPause = withPause || pauseEnabled;
   const refs = [];                                  // je Zeile: Felder, Fehlertext, Netto, Schnellwahl
   const touched = new Set();                        // Zeilen, deren Zeitfeld schon verlassen wurde
+  const openLists = new Set();                      // Schließer offener Notizlisten: ein Neubau räumt ihre Listener ab
   let revealed = false;                             // nach einem Speicherversuch zeigen alle Zeilen ihre Fehler
   const total = h('span', {}, '');
   const totalRow = h('div', { class: 'daysum' }, h('span', {}, 'Tag gesamt'), total);
@@ -232,11 +239,18 @@ function slotSection({ rows, categories, defaults, weekday, withPause, pauseEnab
     state.forEach((row, index) => {
       const ref = refs[index];
       if (!ref) return;
-      const problems = revealed || touched.has(row) ? rowProblems(row) : {};
+      // Ein Fehler der Notiz steht sofort (Länge, Zeilenumbruch); fehlende Zeiten erst nach dem Verlassen eines Zeitfelds.
+      const all = rowProblems(row, { notes: Boolean(notes) });
+      const problems = revealed || touched.has(row) ? all : { notiz: all.notiz };
       ref.start.setAttribute('aria-invalid', String(Boolean(problems.start)));
       ref.end.setAttribute('aria-invalid', String(Boolean(problems.end)));
       ref.error.textContent = problems.start ?? problems.end ?? '';
       ref.fieldset.classList.toggle('bad', Boolean(problems.start || problems.end));
+      if (ref.note) {
+        ref.note.input.setAttribute('aria-invalid', String(Boolean(problems.notiz)));
+        ref.note.combo.classList.toggle('bad', Boolean(problems.notiz));
+        ref.note.error.textContent = problems.notiz ?? '';
+      }
       const net = rowNetMinutes(showPause ? row : { ...row, pause: '0' });
       ref.net.hidden = net === null;
       ref.netValue.textContent = net === null ? '' : `${formatMinutes(net)} h`;
@@ -327,9 +341,94 @@ function slotSection({ rows, categories, defaults, weekday, withPause, pauseEnab
     }, 'picker', { id });
     return h('div', {}, h('label', { for: id }, 'Kategorie'), picker);
   };
+  // Notiz (#519): Eingabe mit ▾, darunter im Fluss die bisherigen Notizen. Auf- und Zuklappen baut die Zeile nicht
+  // neu (der Fokus bliebe sonst nicht). Die Vorschläge kommen erst beim ersten Öffnen (`notes.suggest`).
+  const noteField = (index, ref) => {
+    const row = state[index];
+    const id = `${prefix}-${index}-notiz`;
+    const listId = `${id}-list`;
+    let choices = null;
+    const input = h('input', { id, type: 'text', value: row.notiz ?? '', placeholder: 'optional', autocomplete: 'off',
+      role: 'combobox', 'aria-expanded': 'false', 'aria-controls': listId, 'aria-autocomplete': 'list' });
+    const list = h('div', { id: listId, class: 'combo-list', role: 'listbox', 'aria-label': 'Bisherige Notizen', hidden: true });
+    const isOpen = () => !list.hidden;
+    const toggle = button(h('span', { 'aria-hidden': 'true' }, '▾'), () => (isOpen() ? closeList() : openList('')), 'combo-toggle',
+      { 'aria-label': 'Bisherige Notizen zeigen', 'aria-controls': listId, 'aria-expanded': 'false', disabled: !notes.available });
+    const combo = h('div', { class: 'combo' }, h('div', { class: 'combo-field' }, input, toggle), list);
+    // Ein Tipp außerhalb schließt; Safari gibt angetippten Knöpfen keinen Fokus, `focusout` allein reicht dort nicht.
+    const outside = (event) => {
+      if (!combo.isConnected) { closeList(); return; }       // Dialog geschlossen: nur den Listener abräumen
+      if (!combo.contains(event.target)) closeList();
+    };
+    const setOpen = (open) => {
+      list.hidden = !open;
+      input.setAttribute('aria-expanded', String(open));
+      toggle.setAttribute('aria-expanded', String(open));
+      toggle.setAttribute('aria-label', open ? 'Bisherige Notizen ausblenden' : 'Bisherige Notizen zeigen');
+      if (open) document.addEventListener('pointerdown', outside, true);
+      else document.removeEventListener('pointerdown', outside, true);
+      if (open) openLists.add(closeList); else openLists.delete(closeList);
+    };
+    const closeList = () => setOpen(false);
+    // Die Liste öffnet unter dem Feld, auf kleinen Schirmen oft unterhalb des sichtbaren Bereichs: hineinscrollen, mit
+    // Abstand für die klebende Fußzeile des Dialogs. Ohne `smooth`, sonst bräuchte es `prefers-reduced-motion`.
+    const revealList = () => {
+      const footer = combo.closest('dialog')?.querySelector(':scope > .buttons, :scope > form > .buttons');
+      list.style.setProperty('--footer-height', `${footer ? footer.offsetHeight : 0}px`);
+      list.scrollIntoView({ block: 'nearest' });
+    };
+    const entries = () => [...list.querySelectorAll('button')];
+    // Vor dem Zuklappen: ein Fokus in der verborgenen Liste ginge sonst verloren.
+    const focusInput = () => { if (list.contains(document.activeElement)) input.focus(); };
+    const pick = (note) => {
+      focusInput();
+      row.notiz = note;
+      input.value = note;
+      closeList();
+      update();
+      onChange();
+    };
+    const openList = (text) => {
+      choices ??= notes.suggest(row.kategorie);
+      const groups = noteListModel(choices, row.kategorie, text);
+      if (groups.length === 0) { closeList(); return; }
+      const current = groupKey(row.notiz ?? '');
+      list.replaceChildren(...groups.map((group, number) => h('div', { role: 'group', 'aria-labelledby': group.heading ? `${listId}-${number}` : null },
+        group.heading && h('div', { id: `${listId}-${number}`, class: 'combo-head' }, group.heading),
+        ...group.items.map((note) => button(note, () => pick(note), '',
+          { role: 'option', 'aria-selected': String(current !== '' && groupKey(note) === current), title: note })))));
+      setOpen(true);
+      revealList();
+    };
+    input.addEventListener('input', () => {
+      row.notiz = input.value;
+      update();
+      onChange();
+      if (input.value.trim() === '') closeList(); else openList(input.value);
+    });
+    // Ein Eintrag nimmt dem Feld beim Antippen nicht den Fokus: die Tastatur bliebe sonst nicht offen.
+    list.addEventListener('mousedown', (event) => { if (event.target.closest('button')) event.preventDefault(); });
+    combo.addEventListener('focusout', (event) => { if (event.relatedTarget && !combo.contains(event.relatedTarget)) closeList(); });
+    combo.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && isOpen()) { event.preventDefault(); event.stopPropagation(); focusInput(); closeList(); return; }
+      if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+      if (!isOpen()) {
+        if (event.key === 'ArrowDown' && !toggle.disabled) { event.preventDefault(); openList(''); }
+        if (!isOpen()) return;
+      }
+      event.preventDefault();
+      const items = entries();
+      const at = items.indexOf(document.activeElement);
+      const next = event.key === 'ArrowDown' ? Math.min(at + 1, items.length - 1) : at - 1;
+      if (next < 0) input.focus(); else items[next].focus();
+    });
+    ref.note = { input, combo, error: h('div', { class: 'field-error', role: 'status' }, '') };
+    return h('div', {}, h('label', { for: id }, 'Notiz'), combo, ref.note.error);
+  };
   // Eine Schnellwahl schreibt in die Zeile und baut neu; die Felder zeigen den neuen Wert.
   const chipLabel = (minutes) => (minutes < 60 ? `+${minutes} min` : `+${minutes / 60} h`);
   const build = () => {
+    for (const close of [...openLists]) close();
     refs.length = 0;
     list.replaceChildren(...state.map((row, index) => {
       const ref = { start: null, end: null, endChips: [], pauseChips: [] };
@@ -374,6 +473,7 @@ function slotSection({ rows, categories, defaults, weekday, withPause, pauseEnab
           showPause && field(index, 'pause', 'Pause (Min)', { type: 'number', inputmode: 'numeric', min: 0, step: TIME_STEP_MINUTES }),
           categoryField(index)),
         pauseChips.length > 0 && h('div', { class: 'chips', role: 'group', 'aria-label': 'Pause setzen' }, ...pauseChips),
+        notes && noteField(index, ref),
         ref.net);
       return ref.fieldset;
     }));
@@ -389,11 +489,12 @@ function slotSection({ rows, categories, defaults, weekday, withPause, pauseEnab
 }
 
 /** Tag bearbeiten. Mit `reservation` hat der Dialog zwei Reiter (Arbeitszeit / Reservierung); jeder
- *  hält seinen eigenen Zustand, „Speichern“ und „Tag leeren“ wirken auf den aktiven.
+ *  hält seinen eigenen Zustand, „Speichern“ und „Tag leeren“ wirken auf den aktiven. `notes`
+ *  (`{suggest(kategorie) → {own, other}, available}`, nur wenn der Desktop Notizen versteht) zeigt das Notizfeld der Arbeitszeit.
  *  `handlers.save(kind, rows)` liefert `null` bei Erfolg oder eine Fehlermeldung; `kind` ist
  *  `'work'` oder `'reservation'`. */
 export function editorDialog({ title, rows, categories, defaults = null, weekday = '', errors = {}, lock = null, canClear, validate,
-  reservation = null, startWith = 'work', pauseEnabled = false, shiftStep = 0 }, handlers) {
+  reservation = null, startWith = 'work', pauseEnabled = false, shiftStep = 0, notes = null }, handlers) {
   const message = h('div', { class: 'error-text', role: 'alert' }, '');
   const save = h('button', { type: 'submit', class: 'primary' }, 'Speichern');
   const dialog = h('dialog', { 'aria-labelledby': 'editor-title' });
@@ -412,7 +513,7 @@ export function editorDialog({ title, rows, categories, defaults = null, weekday
     else if (errors[active] && !edited[active]) message.textContent = errors[active];
     else message.textContent = attempted[active] && !result.ok ? result.message : '';
   };
-  const work = slotSection({ rows, categories, defaults, weekday, withPause: true, shiftStep,
+  const work = slotSection({ rows, categories, defaults, weekday, withPause: true, shiftStep, notes,
     onChange: () => { edited.work = true; refresh(); } });
   const res = reservation && slotSection({ rows: reservation.rows, categories, defaults, weekday,
     withPause: false, pauseEnabled, shiftStep, onChange: () => { edited.reservation = true; refresh(); } });
@@ -554,7 +655,7 @@ export function conflictsDialog(conflicts, handlers) {
       h('h2', {}, conflict.dateLabel),
       conflict.versions.map((version) => h('div', { class: 'version' },
         h('strong', {}, version.who), h('span', { class: 'muted' }, ` · ${version.when}`),
-        version.slots.length === 0 ? h('p', {}, 'gelöscht') : h('ul', {}, version.slots.map((text) => h('li', {}, text))),
+        version.slots.length === 0 ? h('p', {}, 'gelöscht') : h('ul', {}, version.slots.map(slotItem)),
         h('div', {}, `Summe ${version.minutesLabel}`))),
       button('Zu diesem Tag', () => { dialog.close(); handlers.openDay(conflict.date); }, 'link'))),
     h('div', { class: 'buttons' }, button('Schließen', () => dialog.close())));
@@ -564,7 +665,7 @@ export function conflictsDialog(conflicts, handlers) {
 // --- Einstellungen -----------------------------------------------------------------------------------
 
 /** Reiter „Verbindung“: Stand der Kopplung und des Desktops, Verlauf, Neu koppeln. */
-function connectionPanel({ desktopName, desktop, hint = '', address, transport = 'lan', persistent, tokenUntil, window: windowInfo, push, lock, shift,
+function connectionPanel({ desktopName, desktop, hint = '', address, transport = 'lan', persistent, tokenUntil, window: windowInfo, push, lock, shift, notes,
   online = true, lastSyncAt = '' }, { closeThen, handlers }) {
   const windowState = windowRow(windowInfo);
   const resetWindow = button('Auf 90 Tage zurücksetzen', () => closeThen(() => handlers.resetWindow()), '', { 'data-focus': 'reset-window' });
@@ -594,6 +695,7 @@ function connectionPanel({ desktopName, desktop, hint = '', address, transport =
     pushSection(push, handlers),
     lock && lockSection(lock, handlers),
     shift && shiftSection(shift, handlers),
+    notes && notesSection(notes, handlers),
     h('p', { class: 'muted' }, 'Relay und Benachrichtigungen: ', privacyLink(), '.'),
     h('details', { class: 'tech' },
       h('summary', {}, 'Technische Details'),
@@ -736,6 +838,22 @@ function shiftSection(model, handlers) {
     h('h3', {}, 'Zeiten verschieben'),
     h('label', { for: 'shift-step' }, 'Wischen auf den Zeitfeldern'), select,
     h('p', { class: 'muted' }, 'Im Tages-Editor verschiebt ein waagerechter Zug auf den Zeitfeldern Start und Ende gemeinsam: nach rechts später, nach links früher.'));
+}
+
+/** Abschnitt „Notizen“: wo die Wochenliste die Notiz eines Slots zeigt. */
+function notesSection(model, handlers) {
+  const select = h('select', { id: 'note-display', 'data-focus': 'note-display' },
+    model.options.map((option) => h('option', { value: option.value }, option.label)));
+  select.value = model.display;
+  select.addEventListener('change', async () => {
+    select.disabled = true;
+    select.value = await handlers.setNoteDisplay(select.value);
+    select.disabled = false;
+    select.focus();
+  });
+  return h('section', { class: 'notes-setting' },
+    h('h3', {}, 'Notizen'),
+    h('label', { for: 'note-display' }, 'In der Wochenliste'), select);
 }
 
 /** Die Sperre selbst: ein Dialog über allem, was offen ist (ein später geöffneter modaler Dialog liegt weiter oben in der

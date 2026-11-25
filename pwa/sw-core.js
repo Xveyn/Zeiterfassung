@@ -45,6 +45,7 @@ export const PRECACHE = [
   './reservations.js',
   './reminders-plan.js',
   './slot-order.js',
+  './notes.js',
   './push-blob.js',
   './push-message.js',
   './relay-client.js',

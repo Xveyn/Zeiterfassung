@@ -340,13 +340,32 @@ importierter Tag behält deshalb die Notizen der Slots, deren Startzeit bleibt.
 
 ## Handy-PWA
 
-- Tages-Editor (Reiter Ist-Zeit): ein Notizfeld je Slot mit Vorschlägen aus den
-  lokal bekannten Notizen der Kategorie. Das Feld erscheint nur, wenn der Desktop
-  `slot_notes` nennt; sonst sendet und zeigt die PWA keine Notiz.
-- Wochenliste und Konfliktversionen zeigen die Notiz neben der Kategorie.
+- Tages-Editor (Reiter Arbeitszeit): je Slot unter Pause/Kategorie ein Eingabefeld
+  „Notiz“ (leer mit grauem „optional“) und rechts ein ▾. Zu ist es nur ein Feld; die
+  Liste der bisherigen Notizen klappt unter dem Feld auf, wenn ▾ getippt oder ins Feld
+  geschrieben wird, und filtert nach dem getippten Text. Reihenfolge wie am Desktop:
+  zuerst die Notizen der gewählten Kategorie, darunter „Weitere Notizen“, je neueste
+  zuerst, zusammen höchstens 20. Antippen übernimmt und klappt zu, freier Text bleibt
+  möglich. Eine eigene Liste, keine `<datalist>` (zeigt auf dem Handy je nach Browser
+  erst nach Eingabe etwas, ein ▾ ließe sich nicht anschließen). Der Reiter Reservierung
+  bekommt kein Feld. Das Feld erscheint nur, wenn der Desktop `slot_notes` nennt; sonst
+  sendet und zeigt die PWA keine Notiz.
+- Wochenliste und Konfliktversionen zeigen die Notiz. In der Wochenliste stellt der
+  Nutzer ein, wo (Einstellungen, gerätelokal): als eigene graue Zeile unter dem Slot
+  (Vorgabe, bei Platzmangel mit „…“ gekürzt) oder in derselben Zeile hinter der
+  Kategorie wie am Desktop (`Montage · Kunde Mustermann`). Die Konfliktversionen zeigen
+  sie als eigene Zeile.
 - Die PWA hält die Notiz in ihrem eigenen Speicher am Slot (`notiz`); ihre
   Änderungs-Signatur schließt sie ein, damit eine reine Notiz-Änderung als
   Änderung gilt.
+- **Gesendet wird `notiz` nur für Tage, deren Notizen die PWA kennt.** `""` heißt am
+  Desktop „Notiz entfernt“. Ein Tag, den die PWA vor `slot_notes` gespeichert oder
+  erhalten hat, trägt lokal keine Notizen, obwohl der Desktop welche haben kann; ginge
+  er mit `notiz: ""` an jedem Slot hinaus, löschte er sie. Je Tag merkt sich die PWA
+  deshalb, ob sie dessen Notizen kennt: wahr, wenn der Tag aus einer Antwort mit
+  `slot_notes` stammt oder im Editor mit Notizfeld mit mindestens einer Notiz gespeichert
+  wurde. Nur dann tragen alle Slots `notiz`, sonst keiner (der Desktop erbt). Ein
+  unbekannter Tag, den der Nutzer ohne Notiz speichert, bleibt unbekannt.
 
 ## Reihenfolge der Umsetzung
 
