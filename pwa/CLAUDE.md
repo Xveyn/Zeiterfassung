@@ -184,7 +184,7 @@ Desktop) ist seltener, kommt aber vor. Sieben Regeln:
    das alt **und** neu spricht, dann die PWA mit dem Neuen, später das Alte
    entfernen. Umgekehrt ginge es nicht, weil sich der Desktop-Bestand nicht
    zwingen lässt.
-4. **Eingefrorene Vorgänger.** (Das Live-Beispiel `sync-request.json` zeigt den **neuen** Vertrag inkl. `pause` an Reservierungen, das die ausgelieferte PWA noch nicht sendet; was sie heute schickt, steht in `compat/sync-request-pre-pause.json`.) `test/fixtures/compat/` enthält Kopien der
+4. **Eingefrorene Vorgänger.** (Das Live-Beispiel `sync-request.json` zeigt den aktuellen Vertrag inkl. `pause` an Reservierungen; was die PWA ohne die Fähigkeit `reservation_pause` schickt, steht in `compat/sync-request-pre-pause.json`.) `test/fixtures/compat/` enthält Kopien der
    Vertragsbeispiele zu dem Zeitpunkt, an dem die Form galt. Sie werden **nie**
    mitgezogen, wenn sich das Live-Beispiel ändert: die PWA muss die alte Antwort
    weiter verstehen (`test/compat.test.js`), der Desktop die alte Anfrage
@@ -685,7 +685,7 @@ in `docs/datenschutz.md`, Abschnitt 11 (die Zusage zu den Geheimnissen in Abschn
   (best effort).
 - **Der Service Worker schreibt nur Fehler** und ist ein eigener, einzeln rückbaubarer Schritt: Chrome holt bei
   jeder Update-Prüfung **alle** statischen Imports des Modul-Workers neu, jede weitere Datei im Import-Graphen von
-  `sw.js` kostet dort Abrufe (Verdacht auf Zusammenhang mit dem offenen Update-Problem #390). Deshalb eine
+  `sw.js` kostet dort Abrufe. Deshalb eine
   Positivliste der Imports von `sw.js` in `test/log-contexts.test.js` (`sw-core`, `push-blob`, `diagnose`,
   `push-message`, `debug-log`, `log-store`; `log-scrub` kommt über `debug-log`). Wer einen Import ergänzt,
   begründet ihn dort.
