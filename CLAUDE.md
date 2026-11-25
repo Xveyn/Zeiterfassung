@@ -361,6 +361,14 @@ Autostart-/Single-Instance-Pfade bleiben damit unverändert. Linux bleibt
 onefile, weil die AppImage ohnehin selbst mountet (onefile darin wäre
 Doppelpackung) und margenheld/Zeiterfassung#118 Windows-spezifisch ist.
 
+**Der Linux-Build läuft auf `ubuntu-24.04`, nicht auf `ubuntu-latest`** (`release.yml` und
+`build.yml`, `tests/test_linux_build_runner.py`). Eine AppImage läuft nur auf Systemen mit
+mindestens der glibc des Build-Rechners. Als `ubuntu-latest` auf 26.04 (glibc 2.42) wechselte,
+startete die AppImage von 1.29.0 unter Debian 13 und Ubuntu 24.04 nicht mehr (`GLIBC_2.42 not
+found`); 1.29.1 baut wieder auf 24.04 (glibc 2.39). Wer das Image anhebt, hebt damit die
+Mindest-glibc der Nutzer an: das ist eine Entscheidung über unterstützte Distributionen, kein
+Wartungsschritt.
+
 **Wer die AppImage neu startet, startet `$APPIMAGE`, nie `sys.executable`.**
 `sys.executable` zeigt in den temporären Mount `/tmp/.mount_…`, den die
 AppImage-Runtime aushängt, sobald die startende Instanz endet — ein daraus
