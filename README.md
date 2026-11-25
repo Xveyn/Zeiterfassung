@@ -44,12 +44,12 @@ Desktop-App zur Erfassung von Arbeitszeiten: im Kern Kalenderansicht und PDF-Ber
 - **Urlaub** — Urlaubszeiträume als Einheit eintragen (Name, Von/Bis, Stunden pro Tag oder Gesamtstunden auf die Arbeitstage verteilt); im Kalender ein durchgehender türkiser Block über Wochenenden und Feiertage hinweg, einzelne Tage nachträglich anpassbar (halbe Urlaubstage). Urlaub und Arbeitszeit schließen sich am selben Tag aus — ein Urlaubstag nimmt keine Arbeitszeit an, und ein Urlaub lässt sich nicht über bereits erfasste Tage legen. Die Stundenzeile in der Kalenderzelle („4:00 h") lässt sich im Dialog „Urlaub verwalten" abschalten — der Zeitraum bleibt dann als Block mit „Urlaub" stehen, die Stunden stehen weiterhin im Tooltip. Optional als Ganztags-Termine im Google Kalender — im Dialog „Urlaub verwalten" ein- und ausschaltbar; beim Ausschalten räumt die App ihre Termine auf Wunsch wieder weg. Gerätelokal — Urlaub reist **nicht** über den Drive-Sync mit
 - **Feiertage** — Feiertage des gewählten Bundeslands sind im Kalender markiert und werden beim Anlegen eines Eintrags nachgefragt
 - **Nur Werktage** — Optional lässt sich das Wochenende komplett deaktivieren: Sa/So verschwinden aus Kalender, Standardzeiten, Bericht, Mailversand und PDF-Export. Vorhandene Wochenend-Einträge bleiben gespeichert und sind sofort wieder da, wenn die Einstellung zurückgenommen wird
-- **Notiz am Slot** *(ab --VERSION--)* — Optionale, einzeilige Notiz je Zeitblock, die eine Kategorie verfeinert (Kategorie „Montage“, Notiz „Kunde Mustermann“), mit Vorschlägen aus bereits benutzten Notizen. Erscheint in Tooltip, Bericht und Webhook; der Bericht kann die Summe je Kategorie zusätzlich je Notiz aufschlüsseln. Reist mit Drive-Sync und Handy-Abgleich, beim Teilen bleibt sie zurück
-- **Reihenfolge der Slots** *(ab --VERSION--)* — Die Slots eines Tages stehen standardmäßig chronologisch; in Einstellungen → Arbeitszeit lässt sich stattdessen nach Kategorie sortieren oder eine eigene Reihenfolge festlegen (Pfeile im Tages-Dialog). Gilt für Kalender, Tages-Dialog, Bericht und Handy-App und wird zwischen den Geräten synchronisiert. Auch die Kategorien selbst lassen sich im Kategorien-Dialog mit Pfeilen sortieren; die Reihenfolge gilt in der Auswahl überall
+- **Notiz am Slot** *(ab 1.29.0)* — Optionale, einzeilige Notiz je Zeitblock, die eine Kategorie verfeinert (Kategorie „Montage“, Notiz „Kunde Mustermann“), mit Vorschlägen aus bereits benutzten Notizen. Erscheint in Tooltip, Bericht und Webhook; der Bericht kann die Summe je Kategorie zusätzlich je Notiz aufschlüsseln. Reist mit Drive-Sync und Handy-Abgleich, beim Teilen bleibt sie zurück
+- **Reihenfolge der Slots** *(ab 1.29.0)* — Die Slots eines Tages stehen standardmäßig chronologisch; in Einstellungen → Arbeitszeit lässt sich stattdessen nach Kategorie sortieren oder eine eigene Reihenfolge festlegen (Pfeile im Tages-Dialog). Gilt für Kalender, Tages-Dialog, Bericht und Handy-App und wird zwischen den Geräten synchronisiert. Auch die Kategorien selbst lassen sich im Kategorien-Dialog mit Pfeilen sortieren; die Reihenfolge gilt in der Auswahl überall
 - **Wochenstunden-Limit** — Optionales Werkstudenten-Limit über einen konfigurierbaren Zeitraum mit Warnung beim Überschreiten
 - **Pausenpflicht-Warnung** — Hinweis beim Speichern, wenn die eingetragene Pause die gesetzliche Mindestpause nach § 4 ArbZG unterschreitet (30 Min ab >6 h, 45 Min ab >9 h); standardmäßig aktiv, abschaltbar. Grobe Näherung, keine rechtliche Bewertung
 
-![Tages-Dialog mit Arbeitszeit samt Notiz, Reservierung und Erinnerung](docs/screenshots/tagesdialog-v--VERSION--.png)
+![Tages-Dialog mit Arbeitszeit samt Notiz, Reservierung und Erinnerung](docs/screenshots/tagesdialog-v1.29.0.png)
 
 *Ein Tag im Detail: erfasste Ist-Zeit, geplante Reservierung und die Erinnerung ans Verschicken. Linksklick auf einen Kalendertag öffnet den Dialog; gelöscht wird im Kalender selbst (Rechtsklick, unter macOS über das ✕ in der Tageszelle).*
 
@@ -65,13 +65,13 @@ Desktop-App zur Erfassung von Arbeitszeiten: im Kern Kalenderansicht und PDF-Ber
 - **Sende-Erinnerung** — Optionale Toast-Erinnerung, die Arbeitszeiten zu verschicken: monatlich an einem frei wählbaren Tag (auf Wunsch von Wochenenden und Feiertagen weg verschoben) und/oder tagesbezogen, wenn ein dafür markierter Reservierungs-Slot ausläuft. Der Sende-Dialog schlägt den Zeitraum seit der letzten Erinnerung vor
 - **Teilen & Importieren** — Eigene Arbeitszeiten als JSON-Anhang per Mail an eine zweite Person teilen — wahlweise über Gmail oder ein SMTP-Konto, dessen hinterlegter Empfänger dann vorbelegt und überschreibbar ist; der Empfänger importiert sie mit Zeitraum-Filter und drei Konflikt-Modi (alles importieren / alles lokal / pro Tag entscheiden)
 
-![Sende-Dialog mit Zeitraum- und Kategorieauswahl, Aufschlüsselung nach Kategorie und Notiz](docs/screenshots/senden-v--VERSION--.png)
+![Sende-Dialog mit Zeitraum- und Kategorieauswahl, Aufschlüsselung nach Kategorie und Notiz](docs/screenshots/senden-v1.29.0.png)
 
 *Der Sende-Dialog: Zeitraum, Kategorie-Filter und die Gesamtstunden vor dem Absenden.*
 
-![Erzeugter PDF-Bericht, Notizen in der Kategorie-Spalte](docs/screenshots/bericht-v--VERSION--.png)
+![Erzeugter PDF-Bericht, Notizen in der Kategorie-Spalte](docs/screenshots/bericht-v1.29.0.png)
 
-![Summe je Kategorie im PDF-Bericht, aufgeschlüsselt nach Notiz](docs/screenshots/bericht-summe-v--VERSION--.png)
+![Summe je Kategorie im PDF-Bericht, aufgeschlüsselt nach Notiz](docs/screenshots/bericht-summe-v1.29.0.png)
 
 *Der erzeugte PDF-Bericht — pro ISO-Kalenderwoche gruppiert, mit Tages- und Wochensummen.*
 
@@ -90,7 +90,7 @@ Desktop-App zur Erfassung von Arbeitszeiten: im Kern Kalenderansicht und PDF-Ber
 - **UI-Skalierung** — Stufenloser Skalierungsfaktor für die Oberfläche (gerätelokal). Unter Windows und Linux folgt die App zusätzlich der Anzeigeskalierung des Systems — unter Windows bleibt sie dabei scharf, unter Linux ist sie auf skalierten X11-Desktops nicht mehr winzig; der Faktor gilt dann obendrauf. Wechselst du unter Linux den Monitor und ändert sich dabei die Skalierung des Desktops, weist ein Banner „Skalierung passt nicht zum Monitor“ mit „Neu starten“ darauf hin; auf Wunsch startet die App selbst neu *(ab 1.28.0)*
 - **Cross-Platform-Installer** — Per PyInstaller gebaut, als Setup-Exe (Windows), DMG (macOS) und AppImage (Linux) paketierbar
 
-![Einstellungs-Dialog, Tab Arbeitszeit mit der Reihenfolge der Slots](docs/screenshots/einstellungen-v--VERSION--.png)
+![Einstellungs-Dialog, Tab Arbeitszeit mit der Reihenfolge der Slots](docs/screenshots/einstellungen-v1.29.0.png)
 
 *Die Einstellungen, hier der Tab „Arbeitszeit" mit Standardzeiten, Pausenpflicht und Werkstudenten-Limit.*
 
@@ -288,7 +288,7 @@ Wiederhole Schritte 3-4 auf jedem weiteren Gerät mit demselben Google-Konto.
 - **Manueller Sync** — der `⟳`-Button im Header triggert sofortigen Push
 - **Konflikte** — wird ein Tag offline auf zwei Geräten unterschiedlich bearbeitet, erscheint nach dem Sync ein Warn-Icon auf dem Tag und ein „⚠ N Konflikte"-Status. Klick auf **Konflikte ansehen** in den Einstellungen öffnet einen Dialog, der beide Stände als zwei Karten nebeneinander zeigt *(ab 1.26.0)* — „Dieses Gerät“ und das andere Gerät mit seinem Namen, Unterschiede gelb markiert, der jüngere Stand mit „● neuer“ —; du behältst einen der beiden Stände
 
-![Konfliktdialog mit zwei Karten: Dieses Gerät und ein anderes Gerät, die unterschiedliche Notiz gelb markiert](docs/screenshots/konflikte-v--VERSION--.png)
+![Konfliktdialog mit zwei Karten: Dieses Gerät und ein anderes Gerät, die unterschiedliche Notiz gelb markiert](docs/screenshots/konflikte-v1.29.0.png)
 
 *Der Konfliktdialog — beide Stände nebeneinander, Unterschiede gelb, der jüngere mit „● neuer“.*
 
@@ -365,7 +365,7 @@ curl -H "Authorization: Bearer <Token>" http://127.0.0.1:17653/v1/summary/month/
 | `GET /v1/categories` | die in den Einstellungen konfigurierten Kategorien |
 | `GET /v1/holidays/{YYYY}` | Feiertage des eingestellten Bundeslands (leer, solange keins gesetzt ist) |
 
-Einen Tag eintragen (ersetzt den ganzen Tag; `pause` in Minuten, `kategorie` und `notiz` *(ab --VERSION--)* sind optional; eine Kategorie darf nicht auf `*` enden und nicht „(ohne Kategorie)“ heißen — die App zeigt beides anders an, als sie es speichert, die API lehnt es mit `422 invalid_category` ab):
+Einen Tag eintragen (ersetzt den ganzen Tag; `pause` in Minuten, `kategorie` und `notiz` *(ab 1.29.0)* sind optional; eine Kategorie darf nicht auf `*` enden und nicht „(ohne Kategorie)“ heißen — die App zeigt beides anders an, als sie es speichert, die API lehnt es mit `422 invalid_category` ab):
 
 ~~~
 curl -X PUT -H "Authorization: Bearer <Token>" -H "Content-Type: application/json" \
@@ -399,7 +399,7 @@ Die API läuft nur, solange die App läuft (Autostart hilft), nimmt nur Anfragen
 
 **Handy-Erfassung** — Du trägst Arbeitszeiten auf dem Handy ein, auch unterwegs ohne Verbindung. Im selben WLAN — oder, für iPhone und iPad, über einen Relay im Internet *(ab 1.26.0)* — gleicht das Handy sie mit dieser App ab. Standardmäßig **aus**.
 
-Die optionale **Notiz** *(ab --VERSION--)* zu einem Zeitblock lässt sich auch auf dem Handy eingeben (mit Vorschlägen aus bisherigen Notizen) und wird in der Wochenliste angezeigt, auf Wunsch hinter der Kategorie statt in eigener Zeile.
+Die optionale **Notiz** *(ab 1.29.0)* zu einem Zeitblock lässt sich auch auf dem Handy eingeben (mit Vorschlägen aus bisherigen Notizen) und wird in der Wochenliste angezeigt, auf Wunsch hinter der Kategorie statt in eigener Zeile.
 
 **Voraussetzungen:** die Desktop-App läuft. Im WLAN: Handy und Rechner im selben Netz und auf dem Handy ein aktueller Chrome (Android). Über den Relay *(ab 1.26.0)*: iPhone oder iPad (Safari, als Web-App installiert) und eine Internetverbindung. Die Web-App liegt unter `https://xveyn.github.io/Zeiterfassung/` — genau so geschrieben, der Pfad unterscheidet **Groß- und Kleinschreibung** (`…/zeiterfassung/` liefert eine 404-Seite von GitHub). Der Rechner stellt nur die Abgleich-Schnittstelle bereit, nicht die Seite.
 
@@ -432,13 +432,13 @@ Im WLAN scheitert der Abgleich in Safari, weil der Browser den Zugriff einer `ht
 
 **Achtung:** Wer den QR-Code fotografiert, kann sich von überall im Internet koppeln, solange der Code gilt (fünf Minuten); zeige ihn nur dem eigenen Handy. Ist der Rechner aus oder im Ruhezustand, meldet die Web-App nach kurzer Zeit „Desktop hat nicht geantwortet“; die Änderungen bleiben auf dem Handy erhalten und gehen beim nächsten Abgleich hinaus. Wird das Handy am Rechner widerrufen, löscht die App auch die Box am Relay; das Handy meldet danach dasselbe und braucht eine neue Kopplung.
 
-**Was abgeglichen wird:** Ist-Zeiten (samt Notiz *(ab --VERSION--)*), Reservierungen und die Kategorien samt Standardzeiten, jeweils in beide Richtungen; dazu vom Rechner zum Handy die Reihenfolge der Slots *(ab --VERSION--)*. Reservierungen erscheinen am Handy nur, wenn „Reservierungen verwenden“ am Rechner an ist (heute bis 365 Tage voraus, vergangene entfallen). Urlaub, Zugangsdaten und die übrigen Einstellungen bleiben auf dem Rechner. Das Handy sieht standardmäßig die letzten 90 Tage; ältere Zeiten lädt es auf Antippen nach („Ältere Zeiten laden“), bis zur Obergrenze, die du unter Einstellungen → Mobil einstellst (höchstens 365 Tage). Dasselbe Zusammenführen wie beim Drive-Sync: hat nur eine Seite einen Tag geändert, gilt ihr Stand; haben beide ihn geändert, entsteht ein Konflikt in der Konfliktliste der App (Einstellungen → Google → „Konflikte ansehen (n)“, erscheint nur bei offenen Konflikten), bis zur Auflösung gilt der neuere Stand. Die Web-App zeigt Konflikte nur an.
+**Was abgeglichen wird:** Ist-Zeiten (samt Notiz *(ab 1.29.0)*), Reservierungen und die Kategorien samt Standardzeiten, jeweils in beide Richtungen; dazu vom Rechner zum Handy die Reihenfolge der Slots *(ab 1.29.0)*. Reservierungen erscheinen am Handy nur, wenn „Reservierungen verwenden“ am Rechner an ist (heute bis 365 Tage voraus, vergangene entfallen). Urlaub, Zugangsdaten und die übrigen Einstellungen bleiben auf dem Rechner. Das Handy sieht standardmäßig die letzten 90 Tage; ältere Zeiten lädt es auf Antippen nach („Ältere Zeiten laden“), bis zur Obergrenze, die du unter Einstellungen → Mobil einstellst (höchstens 365 Tage). Dasselbe Zusammenführen wie beim Drive-Sync: hat nur eine Seite einen Tag geändert, gilt ihr Stand; haben beide ihn geändert, entsteht ein Konflikt in der Konfliktliste der App (Einstellungen → Google → „Konflikte ansehen (n)“, erscheint nur bei offenen Konflikten), bis zur Auflösung gilt der neuere Stand. Die Web-App zeigt Konflikte nur an.
 
 <table>
 <tr>
-<td><img src="docs/screenshots/handy-woche-v--VERSION--.png" alt="Wochenansicht der Web-App mit Notizen unter den Slots, heutigem Tag, einer Reservierung und der Zeile Noch ausstehend" width="200"></td>
-<td><img src="docs/screenshots/handy-editor-v--VERSION--.png" alt="Tages-Editor der Web-App, Reiter Arbeitszeit mit Notizfeld und aufgeklappter Liste der bisherigen Notizen" width="200"></td>
-<td><img src="docs/screenshots/handy-verbindung-v--VERSION--.png" alt="Einstellungen der Web-App, Reiter Verbindung mit Zustandskarte, Benachrichtigungen, App-Sperre, Zeiten verschieben, Notizen und Trennen" width="200"></td>
+<td><img src="docs/screenshots/handy-woche-v1.29.0.png" alt="Wochenansicht der Web-App mit Notizen unter den Slots, heutigem Tag, einer Reservierung und der Zeile Noch ausstehend" width="200"></td>
+<td><img src="docs/screenshots/handy-editor-v1.29.0.png" alt="Tages-Editor der Web-App, Reiter Arbeitszeit mit Notizfeld und aufgeklappter Liste der bisherigen Notizen" width="200"></td>
+<td><img src="docs/screenshots/handy-verbindung-v1.29.0.png" alt="Einstellungen der Web-App, Reiter Verbindung mit Zustandskarte, Benachrichtigungen, App-Sperre, Zeiten verschieben, Notizen und Trennen" width="200"></td>
 <td><img src="docs/screenshots/handy-kategorien-v1.28.0.png" alt="Einstellungen der Web-App, Reiter Kategorien" width="200"></td>
 </tr>
 </table>
