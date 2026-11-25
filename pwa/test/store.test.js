@@ -1403,3 +1403,48 @@ test('losing the knowledge on an unchanged day also drops the stored notiz', asy
   assert.equal(store.getDay('2026-10-07').notes_known, false);
   assert.deepEqual(store.getDay('2026-10-07').slots, [SLOT]);
 });
+
+// --- Eigene Rückmeldung: der Desktop hält genau die gesendete Fassung ------------------------------
+
+/** Bekannter Tag mit Desktop-Notiz; v1 gesendet, v2 (`edit`) gespeichert, bevor die Antwort auf v1 ankommt. */
+async function doubleSave(edit, echo = (sent) => sent) {
+  const { store, adapter } = await make();
+  await store.applyResponse(notesOn({ entries: { '2026-10-07': remoteDay([NOTED, { ...OTHER, notiz: '' }], { modified_at: BASE }) } }),
+    store.snapshotDirty(), TODAY);
+  await editorSave(store, '2026-10-07', (rows) => { rows[1].pause = '30'; });                 // v1
+  const inFlight = store.snapshotDirty();
+  await editorSave(store, '2026-10-07', edit);                                              // v2
+  const sent = inFlight.entries['2026-10-07'];
+  await store.applyResponse(notesOn({ entries: { '2026-10-07': remoteDay(echo(sent.slots), { modified_at: LATER }) } }),
+    inFlight, TODAY);
+  return { store, adapter };
+}
+
+test('double save: a note typed in the second version still goes out after the echo of the first', async () => {
+  const { store, adapter } = await doubleSave((rows) => { rows[1].notiz = 'Termin'; });
+  assert.equal(store.getDay('2026-10-07').notes_known, true);
+  assert.deepEqual(store.snapshotDirty().entries['2026-10-07'].slots.map((s) => s.notiz), ['Kunde Mustermann', 'Termin']);
+  const again = new Store(adapter, clock());
+  await again.load();
+  await again.applyResponse(notesOn({ entries: { '2026-10-07': remoteDay([NOTED], { modified_at: LATER }) } }),
+    { entries: {}, versions: {} }, TODAY);                                                  // derselbe Stand: Basis gilt
+  assert.equal(again.getDay('2026-10-07').notes_known, true);
+});
+
+test('double save: a moved slot keeps its note at the new start', async () => {
+  const { store } = await doubleSave((rows) => { rows[0].start = '08:30'; });
+  assert.deepEqual(store.snapshotDirty().entries['2026-10-07'].slots.map((s) => [s.start, s.notiz]),
+    [['08:30', 'Kunde Mustermann'], ['13:00', '']]);
+});
+
+test('double save: a cleared note stays cleared', async () => {
+  const { store } = await doubleSave((rows) => { rows[0].notiz = ''; });
+  assert.deepEqual(store.snapshotDirty().entries['2026-10-07'].slots.map((s) => s.notiz), ['', '']);
+});
+
+test('double save: an answer that differs from what was sent still drops the knowledge', async () => {
+  const { store } = await doubleSave((rows) => { rows[1].notiz = 'Termin'; },
+    (slots) => slots.map((slot, index) => (index === 1 ? { ...slot, notiz: 'Vom Desktop' } : slot)));
+  assert.equal(store.getDay('2026-10-07').notes_known, false);
+  assert.ok(store.snapshotDirty().entries['2026-10-07'].slots.every((slot) => !('notiz' in slot)));
+});

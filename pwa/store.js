@@ -600,7 +600,7 @@ export class Store {
       const record = this._days.get(date);
       const sent = snapshot.versions[date];
       if (record && isDirty(record) && !(sent !== undefined && sent === record.dirty_version)) {
-        this._forgetStaleNotes(record, entry, parsed, date, ops);
+        this._forgetStaleNotes(record, entry, parsed, date, ops, snapshot.entries?.[date]);
         continue;
       }
       const next = {
@@ -686,10 +686,16 @@ export class Store {
   /** Ein lokal behaltener Tag, den der Desktop seit dem übernommenen Stand (`notes_base`) geändert hat: das
    *  Notizwissen gilt nicht mehr. Der Desktop sieht darin keinen Konflikt (seine Änderung liegt vor
    *  `last_pull_at`), `notiz` an jedem Slot löschte also still seine neuen Notizen. Ohne `notiz` erbt er sie;
-   *  eine in genau dieser Fassung getippte Notiz geht dafür nicht hinaus. */
-  _forgetStaleNotes(record, entry, parsed, date, ops) {
+   *  eine in genau dieser Fassung getippte Notiz geht dafür nicht hinaus. Hält der Desktop genau, was diese
+   *  Anfrage gesendet hat (`sent`, die eigene Rückmeldung mit neuem Stempel), bleibt das Wissen mit neuer Basis. */
+  _forgetStaleNotes(record, entry, parsed, date, ops, sent) {
     if (parsed.slot_notes !== true || record.notes_known !== true) return;
     if (record.notes_base === entry.modified_at) return;
+    if (sent && sent.deleted === entry.deleted && signature(sent.slots) === signature(entry.slots)) {
+      record.notes_base = entry.modified_at;
+      ops.push({ store: 'entries', op: 'put', key: date, value: record });
+      return;
+    }
     record.notes_known = false;
     record.entry.slots = record.entry.slots.map(({ notiz: _notiz, ...bare }) => bare);
     ops.push({ store: 'entries', op: 'put', key: date, value: record });

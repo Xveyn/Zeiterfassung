@@ -362,10 +362,12 @@ Jeder Ist-Zeit-Slot kann eine einzeilige Notiz tragen (Feld `notiz`, Regeln in `
 - **Das Wissen hängt am Stand des Desktops** (`notes_base`, der `modified_at` des zuletzt übernommenen Desktop-Stands; liegt
   am Datensatz, nicht im `entry`, und bleibt bei `saveDay`/`clearDay` stehen). Bleibt ein Tag in `applyResponse` lokal stehen
   (während der Anfrage gespeichert, oder „abgelehnt“), übernimmt die PWA den neueren Stand des Desktops nicht. Trägt die
-  Antwort den Tag mit anderem `modified_at` als `notes_base` (oder fehlt der Stempel, Datensatz einer älteren PWA) und nennt sie
-  `slot_notes`, gilt das Wissen nicht mehr: `notes_known` wird falsch, `notiz` fällt aus den gespeicherten Slots, der Tag geht
+  Antwort den Tag mit anderem `modified_at` als `notes_base` (oder fehlt der Stempel, Datensatz einer älteren PWA), anders als die
+  in dieser Anfrage gesendete Fassung, und nennt sie `slot_notes`, gilt das Wissen nicht mehr: `notes_known` wird falsch, `notiz` fällt aus den gespeicherten Slots, der Tag geht
   ohne `notiz` hinaus und der Desktop behält seine Notizen. Sonst sähe der Desktop keinen Konflikt (seine Änderung liegt vor
-  `last_pull_at`) und löschte eine inzwischen dort ergänzte Notiz still. **Preis:** eine Notiz, die genau in dieser lokal
+  `last_pull_at`) und löschte eine inzwischen dort ergänzte Notiz still. Ist der Stand der Antwort genau die gesendete Fassung
+  (gleiche Slots samt `notiz`, gleiches `deleted`; die eigene Rückmeldung mit neuem Stempel), wird ihr `modified_at` die neue
+  Basis und das Wissen bleibt. **Preis:** eine Notiz, die genau in dieser lokal
   behaltenen Fassung getippt wurde, geht nicht hinaus.
 - **Editor:** Feld „Notiz“ mit ▾, standardmäßig zu. Die Liste öffnet unter dem Feld bei ▾, Tippen oder ↓, filtert nach Text
   über alle bisherigen Notizen, zeigt höchstens 20, die der eigenen Kategorie zuerst, dann „Weitere Notizen“. Escape schließt
