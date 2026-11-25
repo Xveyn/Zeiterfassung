@@ -25,7 +25,7 @@ ES-Module flach im Ordner:
   stehen, gespeicherte Slots nie.
 - `slot-order.js` — Reihenfolge der Slots eines Tages (#520), Gegenstück zu `src/slot_order.py`: `sortedSlots(slots, mode)` kennt `chrono` (Start, Ende, Kategorie, Position), `category` (Kategoriename gefaltet, ohne Kategorie zuletzt) und `custom` (gespeicherte Reihenfolge); den Modus liefert der Desktop als `slot_order` der Sync-Antwort (Meta `slot_order`, Feature-Erkennung nach Regel 2: fehlt das Feld, gilt `chrono`, eingefroren als `compat/sync-response-pre-slot-order.json`). Wochenliste und Tages-Editor zeigen nach dem Modus, `Store.saveDay` speichert so (`custom`: wie eingegeben); Konfliktversionen sind immer chronologisch. Das Handy liest den Modus bisher nur: der Desktop nimmt `slot_order_mode` im Teil `settings` des Abgleichs schon an (`writable_settings` nennt ihn), ein Desktop davor lehnt unbekannte Schlüssel mit 422 ab — die PWA darf ihn deshalb erst senden, wenn die Antwort ihn in `writable_settings` nennt (Feature-Erkennung); Reservierungen bleiben in Zeilenreihenfolge. **Bekannte Grenze:** ein Handy mit noch gecachter PWA vor `slot_order` (#522) speichert einen Tag beim Bearbeiten chronologisch — eine „Eigene Reihenfolge“ dieses Tages geht dann verloren, bis das PWA-Update ankommt (kein Konflikt, kein Datenverlust). Gleichlauf: `test/fixtures/slot-order-cases.json` (Python und JavaScript lesen dieselbe Datei).
 - `notes.js` — Regeln der Notiz am Ist-Zeit-Slot (#519), Gegenstück zu `src/slot_notes.py`: `cleanNote` (gespeicherte
-  Daten, bereinigt, lehnt nie ab), `checkNote` (Eingabe, wirft bei ungültiger Notiz), `groupKey` (`toLowerCase`, nicht
+  Daten, bereinigt, lehnt nie ab), `checkNote` (Eingabe: `{ok: true, note}` mit getrimmter Notiz oder `{ok: false, message}`, wirft nie), `groupKey` (`toLowerCase`, nicht
   Unicode-Faltung), `noteSuggestions` (Vorschläge fürs Notizfeld) und `MAX_NOTE_LEN` (200 Zeichen als Code Points).
   Gleichlauf: `test/fixtures/note-cases.json` (Python und JavaScript lesen dieselbe Datei, auch den Block `suggestions`).
   Verhalten und Regeln des Handys: Abschnitt „Notiz am Slot“.
@@ -356,14 +356,29 @@ Jeder Ist-Zeit-Slot kann eine einzeilige Notiz tragen (Feld `notiz`, Regeln in `
   das Feld lässt sie dagegen stehen — ein Tag, den das Handy ohne Notizwissen geändert hat, darf nicht pauschal löschen.
   Bekannt ist ein Tag, wenn er aus einer Antwort mit `slot_notes` kam oder mit Notizwissen gespeichert wurde; ein Speichern,
   dessen Slots kein `notiz` tragen, setzt es zurück, `clearDay` behält es. `Store.saveDay` lehnt eine ungültige Notiz ab,
-  `notiz` gehört zur Änderungssignatur.
+  `notiz` gehört zur Änderungssignatur. **Gespeichert** wird `notiz` nur an einem Tag mit Notizwissen (getrimmt), sonst an
+  keinem Slot: ein noch offener Tab mit einer PWA vor den Notizen (oder ein Rollback von Pages) sendet gespeicherte Slots
+  unverändert, ein `notiz: ""` von dort löschte am Desktop.
+- **Das Wissen hängt am Stand des Desktops** (`notes_base`, der `modified_at` des zuletzt übernommenen Desktop-Stands; liegt
+  am Datensatz, nicht im `entry`, und bleibt bei `saveDay`/`clearDay` stehen). Bleibt ein Tag in `applyResponse` lokal stehen
+  (während der Anfrage gespeichert, oder „abgelehnt“), übernimmt die PWA den neueren Stand des Desktops nicht. Trägt die
+  Antwort den Tag mit anderem `modified_at` als `notes_base` (oder fehlt der Stempel, Datensatz einer älteren PWA) und nennt sie
+  `slot_notes`, gilt das Wissen nicht mehr: `notes_known` wird falsch, `notiz` fällt aus den gespeicherten Slots, der Tag geht
+  ohne `notiz` hinaus und der Desktop behält seine Notizen. Sonst sähe der Desktop keinen Konflikt (seine Änderung liegt vor
+  `last_pull_at`) und löschte eine inzwischen dort ergänzte Notiz still. **Preis:** eine Notiz, die genau in dieser lokal
+  behaltenen Fassung getippt wurde, geht nicht hinaus.
 - **Editor:** Feld „Notiz“ mit ▾, standardmäßig zu. Die Liste öffnet unter dem Feld bei ▾, Tippen oder ↓, filtert nach Text
   über alle bisherigen Notizen, zeigt höchstens 20, die der eigenen Kategorie zuerst, dann „Weitere Notizen“. Escape schließt
   nur die Liste. Gespeichert wird ausschließlich über `daySave` (`view-model.js`), dort sitzt die Regel für `notes_known`;
   `noteListModel`/`noteChoices` bauen die Liste.
 - **Anzeige:** Wochenliste und Konfliktversionen zeigen die Notiz (`slotEntry`, `span.slot-note`). Einstellung `note_display`
   (`line` = eigene Zeile, Vorgabe; `inline` = hinter der Kategorie), gerätelokal, in Einstellungen › Verbindung, Abschnitt
-  „Notizen“, nur mit `slot_notes`. Nennt der Desktop `slot_notes` später nicht mehr, bleiben bereits geholte Notizen sichtbar.
+  „Notizen“, nur mit `slot_notes`.
+- **Desktop-Downgrade** (oder neu gekoppelt an einen älteren Desktop): die erste Antwort ohne `slot_notes` ersetzt jeden Tag
+  im Fenster durch den Stand ohne `notiz`, die Notizen verschwinden vom Handy; nur Datensätze, die sie nicht ersetzt (lokal
+  behaltene Tage), behalten sie. Bis diese Antwort ankommt, gilt `slot_notes` noch: ein Desktop vor #527 lehnt `notiz` als
+  unbekanntes Slot-Feld ab (`422`), jeder bekannte, nicht übertragene Tag wird also nacheinander „abgelehnt“, bis er erneut
+  gespeichert wird (dann ohne `notiz`, weil der Editor ohne `slot_notes` kein Notizwissen mehr meldet).
 
 ## Zeiten verschieben (#500)
 

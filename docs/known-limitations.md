@@ -801,8 +801,18 @@ daraus folgt, ist in einer gemischten Flotte nicht ganz zu schließen.
 - **Handy: eine Notiz entfernt eine Desktop-Notiz, die das Handy nie sah.** Hat das Handy einen Tag geändert, bevor es
   Notizen kannte, und ihn noch nicht gesendet, und speichert ihn dann mit einer Notiz, gehen die übrigen Slots mit `""`
   hinaus. Hatte der Desktop dort eine Notiz, ist sie danach weg.
-- **Handy: nach einem Desktop-Downgrade lassen sich Notizen nicht ändern.** Das Handy zeigt die Notizen, die es hat,
-  weiter an, das Notizfeld im Editor fehlt aber, bis der Desktop wieder `slot_notes` nennt.
+- **Handy: nach einem Desktop-Downgrade verschwinden die Notizen vom Handy.** Die erste Antwort ohne `slot_notes` ersetzt
+  jeden Tag im Fenster durch den Stand ohne `notiz`; nur Tage, die das Handy lokal behält (nicht übertragen), behalten ihre.
+  Das Notizfeld im Editor fehlt, bis der Desktop wieder `slot_notes` nennt. Am Desktop bleiben die Notizen erhalten.
+- **Handy: nach einem Downgrade oder einer Kopplung an einen älteren Desktop werden Tage „abgelehnt“.** Ein Desktop vor
+  #527 lehnt `notiz` als unbekanntes Slot-Feld ab (`422`). Bis seine erste Antwort angekommen ist, sendet das Handy bekannte,
+  nicht übertragene Tage noch mit `notiz`; jeder davon wird als „abgelehnt“ markiert und geht erst nach erneutem Speichern
+  (dann ohne `notiz`) hinaus.
+- **Handy: eine Notiz, die während eines laufenden Abgleichs getippt wurde, kann verloren gehen.** Speichert man einen Tag,
+  während die Anfrage unterwegs ist (oder ist der Tag „abgelehnt“), und hat der Desktop denselben Tag seit dem letzten
+  Abgleich geändert, vergisst das Handy sein Notizwissen für diesen Tag und sendet ihn ohne `notiz`: der Desktop behält so
+  seine Notizen, statt sie still zu löschen. Eine in genau dieser Fassung getippte Notiz geht dabei nicht hinaus und
+  verschwindet vom Handy.
 
 ## Beschädigte oder fremde Daten (Storage)
 
