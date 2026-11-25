@@ -870,6 +870,7 @@ class App {
       setNoteDisplay: async (value) => {
         const display = normalizeNoteDisplay(value);
         await this.store.setMeta({ note_display: display });
+        this.render();
         return display;
       },
       applyUpdate: () => this.reloadForUpdate(),
