@@ -420,6 +420,24 @@ test('the note field is a combobox with a list below it, without maxlength (the 
   assert.match(views, /role: 'listbox'/);
 });
 
+test('the opened note list scrolls into view above the sticky footer of the dialog, without smooth scrolling', () => {
+  // Bei 320×568 lagen sonst 14 px der Liste im sichtbaren Bereich; die Fußknöpfe kleben unten und deckten den Rest.
+  const field = /const noteField = [\s\S]*?\n {2}\};\n/.exec(views)[0];
+  assert.match(field, /setOpen\(true\);\s*revealList\(\);/);
+  assert.match(field, /list\.scrollIntoView\(\{ block: 'nearest' \}\)/);
+  assert.doesNotMatch(field, /behavior: 'smooth'/);
+  assert.match(field, /closest\('dialog'\)\?\.querySelector\(':scope > \.buttons, :scope > form > \.buttons'\)/);
+  assert.match(field, /list\.style\.setProperty\('--footer-height', `\$\{footer \? footer\.offsetHeight : 0\}px`\)/);
+  assert.match(rule('.combo-list'), /scroll-margin-bottom:\s*var\(--footer-height, 0px\)/);
+});
+
+test('an open note list removes its outside listener when the rows are rebuilt or the field left the page', () => {
+  const field = /const noteField = [\s\S]*?\n {2}\};\n/.exec(views)[0];
+  assert.match(field, /if \(!combo\.isConnected\) \{ closeList\(\); return; \}/);
+  assert.match(field, /if \(open\) openLists\.add\(closeList\); else openLists\.delete\(closeList\);/);
+  assert.match(views, /const build = \(\) => \{\n {4}for \(const close of \[\.\.\.openLists\]\) close\(\);/);
+});
+
 test('Escape inside the open note list closes the list, not the editor', () => {
   // Chromium vergibt für Escape sonst `cancel` an den Dialog; die Taste selbst abfangen, solange die Liste offen ist.
   assert.match(views, /event\.key === 'Escape' && isOpen\(\)\) \{ event\.preventDefault\(\); event\.stopPropagation\(\); focusInput\(\); closeList\(\);/);

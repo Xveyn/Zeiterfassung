@@ -231,7 +231,7 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
 .combo-field input::placeholder { color: var(--muted); opacity: 1; }
 .combo-toggle { flex: none; min-width: var(--tap); padding: 0; border-radius: 0 8px 8px 0; background: none; color: var(--muted); }
 /* Etwa fünf Einträge, dann scrollt die Liste in sich; der halbe sechste zeigt, dass es weitergeht. */
-.combo-list { max-height: calc(5.5 * var(--tap)); overflow-y: auto; overscroll-behavior: contain; background: #101a30; border-top: 1px solid #2a3a5a; border-radius: 0 0 7px 7px; }
+.combo-list { max-height: calc(5.5 * var(--tap)); overflow-y: auto; overscroll-behavior: contain; scroll-margin-bottom: var(--footer-height, 0px); background: #101a30; border-top: 1px solid #2a3a5a; border-radius: 0 0 7px 7px; }
 .combo-head { padding: 8px 10px 2px; font-size: .75rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .combo-list button { display: block; width: 100%; min-height: var(--tap); padding: 0 10px; border-radius: 0; background: none; color: var(--text); text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .combo-list button[aria-selected="true"] { background: var(--cell-hover); }

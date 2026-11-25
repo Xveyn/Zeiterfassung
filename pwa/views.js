@@ -230,6 +230,7 @@ function slotSection({ rows, categories, defaults, weekday, withPause, pauseEnab
   const showPause = withPause || pauseEnabled;
   const refs = [];                                  // je Zeile: Felder, Fehlertext, Netto, Schnellwahl
   const touched = new Set();                        // Zeilen, deren Zeitfeld schon verlassen wurde
+  const openLists = new Set();                      // Schließer offener Notizlisten: ein Neubau räumt ihre Listener ab
   let revealed = false;                             // nach einem Speicherversuch zeigen alle Zeilen ihre Fehler
   const total = h('span', {}, '');
   const totalRow = h('div', { class: 'daysum' }, h('span', {}, 'Tag gesamt'), total);
@@ -355,7 +356,10 @@ function slotSection({ rows, categories, defaults, weekday, withPause, pauseEnab
       { 'aria-label': 'Bisherige Notizen zeigen', 'aria-controls': listId, 'aria-expanded': 'false', disabled: !notes.available });
     const combo = h('div', { class: 'combo' }, h('div', { class: 'combo-field' }, input, toggle), list);
     // Ein Tipp außerhalb schließt; Safari gibt angetippten Knöpfen keinen Fokus, `focusout` allein reicht dort nicht.
-    const outside = (event) => { if (!combo.contains(event.target)) closeList(); };
+    const outside = (event) => {
+      if (!combo.isConnected) { closeList(); return; }       // Dialog geschlossen: nur den Listener abräumen
+      if (!combo.contains(event.target)) closeList();
+    };
     const setOpen = (open) => {
       list.hidden = !open;
       input.setAttribute('aria-expanded', String(open));
@@ -363,8 +367,16 @@ function slotSection({ rows, categories, defaults, weekday, withPause, pauseEnab
       toggle.setAttribute('aria-label', open ? 'Bisherige Notizen ausblenden' : 'Bisherige Notizen zeigen');
       if (open) document.addEventListener('pointerdown', outside, true);
       else document.removeEventListener('pointerdown', outside, true);
+      if (open) openLists.add(closeList); else openLists.delete(closeList);
     };
     const closeList = () => setOpen(false);
+    // Die Liste öffnet unter dem Feld, auf kleinen Schirmen oft unterhalb des sichtbaren Bereichs: hineinscrollen, mit
+    // Abstand für die klebende Fußzeile des Dialogs. Ohne `smooth`, sonst bräuchte es `prefers-reduced-motion`.
+    const revealList = () => {
+      const footer = combo.closest('dialog')?.querySelector(':scope > .buttons, :scope > form > .buttons');
+      list.style.setProperty('--footer-height', `${footer ? footer.offsetHeight : 0}px`);
+      list.scrollIntoView({ block: 'nearest' });
+    };
     const entries = () => [...list.querySelectorAll('button')];
     // Vor dem Zuklappen: ein Fokus in der verborgenen Liste ginge sonst verloren.
     const focusInput = () => { if (list.contains(document.activeElement)) input.focus(); };
@@ -386,6 +398,7 @@ function slotSection({ rows, categories, defaults, weekday, withPause, pauseEnab
         ...group.items.map((note) => button(note, () => pick(note), '',
           { role: 'option', 'aria-selected': String(current !== '' && groupKey(note) === current), title: note })))));
       setOpen(true);
+      revealList();
     };
     input.addEventListener('input', () => {
       row.notiz = input.value;
@@ -415,6 +428,7 @@ function slotSection({ rows, categories, defaults, weekday, withPause, pauseEnab
   // Eine Schnellwahl schreibt in die Zeile und baut neu; die Felder zeigen den neuen Wert.
   const chipLabel = (minutes) => (minutes < 60 ? `+${minutes} min` : `+${minutes / 60} h`);
   const build = () => {
+    for (const close of [...openLists]) close();
     refs.length = 0;
     list.replaceChildren(...state.map((row, index) => {
       const ref = { start: null, end: null, endChips: [], pauseChips: [] };
