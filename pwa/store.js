@@ -166,6 +166,7 @@ export class Store {
         synced_version: Number.isInteger(value.synced_version) ? value.synced_version : 0,
         error: typeof value.error === 'string' ? value.error : null,
         notes_known: value.notes_known === true,
+        notes_base: typeof value.notes_base === 'string' ? value.notes_base : null,
       } : null;
       if (record && validRecord(key, record)) days.set(key, record);
     }
@@ -290,34 +291,46 @@ export class Store {
     ops.push({ store: storeName, op: 'put', key: date, value: record });
   }
 
-  /** `notesKnown`: kennt die PWA die Notizen des Tages (s. `_wireSlots`)? */
+  /** `notesKnown`: kennt die PWA die Notizen des Tages (s. `_wireSlots`)? `notes_base` (Stempel des zuletzt
+   *  übernommenen Desktop-Stands, auf dem dieses Wissen beruht) bleibt beim Bearbeiten stehen. */
   _put(date, entry, ops, notesKnown) {
-    this._putIn(this._days, 'entries', date, entry, ops, { notes_known: notesKnown });
+    const notesBase = this._days.get(date)?.notes_base ?? null;
+    this._putIn(this._days, 'entries', date, entry, ops, { notes_known: notesKnown, notes_base: notesBase });
   }
 
   /** Speichert einen Tag (geprüfte Slots). Wirft bei ungültigen Slots oder Datum. `notesKnown`
    *  sagt, dass die Slots die Notizen des Tages tragen (Editor mit Notizfeld). Ein bisheriges Wissen
    *  bleibt nur, wenn die Slots `notiz` tragen: ohne (Desktop ohne `slot_notes`) ist es verloren,
-   *  der Tag geht dann ohne `notiz` hinaus und der Desktop behält seine Notizen. */
+   *  der Tag geht dann ohne `notiz` hinaus und der Desktop behält seine Notizen. Gespeichert wird `notiz` nur an
+   *  einem Tag mit Notizwissen (getrimmt): ein noch offener Tab vor den Notizen sendet gespeicherte Slots
+   *  unverändert, ein `notiz: ""` von dort löschte am Desktop. */
   async saveDay(date, slots, { notesKnown = false } = {}) {
     if (!isIsoDate(date)) throw new Error(`Ungültiges Datum: ${date}`);
     // In der Reihenfolge des Desktop-Modus gespeichert (#520; „custom“ = wie eingegeben); Reservierungen (`saveReservation`) bleiben in Zeilenreihenfolge.
-    const normalized = sortedSlots(normalizeSlots(slots), this._meta.slot_order);
-    const check = validateSlots(normalized);
+    const sorted = sortedSlots(normalizeSlots(slots), this._meta.slot_order);
+    const check = validateSlots(sorted);
     if (!check.ok) throw new Error(check.message);
-    for (const slot of normalized) {
+    for (const slot of sorted) {
       if (slot.notiz === undefined) continue;
       const note = checkNote(slot.notiz);
       if (!note.ok) throw new Error(`Notiz: ${note.message}`);
     }
     const old = this._days.get(date);
-    const carries = normalized.some((slot) => typeof slot.notiz === 'string');
+    const carries = sorted.some((slot) => typeof slot.notiz === 'string');
     const known = notesKnown || (carries && old?.notes_known === true);
+    const normalized = sorted.map((slot) => {
+      const { notiz, ...bare } = slot;
+      if (!known || notiz === undefined) return bare;
+      const note = checkNote(notiz);
+      return { ...bare, notiz: note.ok ? note.note : '' };
+    });
     if (old && !old.entry.deleted && signature(old.entry.slots) === signature(normalized)) {
       // Unverändert: nicht dirty machen, aber erneut versuchen (Fehler weg) und das Wissen ablegen.
-      if (old.error || old.notes_known !== known) {
+      const stale = !known && old.entry.slots.some((slot) => 'notiz' in slot);
+      if (old.error || old.notes_known !== known || stale) {
         old.error = null;
         old.notes_known = known;
+        if (stale) old.entry.slots = normalized;
         await this._adapter.batch([{ store: 'entries', op: 'put', key: date, value: old }]);
       }
       return;
@@ -586,13 +599,17 @@ export class Store {
       if (!isIsoDate(date)) continue;
       const record = this._days.get(date);
       const sent = snapshot.versions[date];
-      if (record && isDirty(record) && !(sent !== undefined && sent === record.dirty_version)) continue;
+      if (record && isDirty(record) && !(sent !== undefined && sent === record.dirty_version)) {
+        this._forgetStaleNotes(record, entry, parsed, date, ops);
+        continue;
+      }
       const next = {
         entry: structuredClone(entry),
         dirty_version: record ? record.dirty_version : 0,
         synced_version: record ? record.dirty_version : 0,
         error: null,
         notes_known: parsed.slot_notes === true,      // mit `slot_notes` trägt der Stand des Desktops seine Notizen
+        notes_base: entry.modified_at,
       };
       this._days.set(date, next);
       ops.push({ store: 'entries', op: 'put', key: date, value: next });
@@ -664,6 +681,18 @@ export class Store {
     };
     ops.push({ store: 'meta', op: 'put', key: 'meta', value: this._meta });
     await this._adapter.batch(ops);
+  }
+
+  /** Ein lokal behaltener Tag, den der Desktop seit dem übernommenen Stand (`notes_base`) geändert hat: das
+   *  Notizwissen gilt nicht mehr. Der Desktop sieht darin keinen Konflikt (seine Änderung liegt vor
+   *  `last_pull_at`), `notiz` an jedem Slot löschte also still seine neuen Notizen. Ohne `notiz` erbt er sie;
+   *  eine in genau dieser Fassung getippte Notiz geht dafür nicht hinaus. */
+  _forgetStaleNotes(record, entry, parsed, date, ops) {
+    if (parsed.slot_notes !== true || record.notes_known !== true) return;
+    if (record.notes_base === entry.modified_at) return;
+    record.notes_known = false;
+    record.entry.slots = record.entry.slots.map(({ notiz: _notiz, ...bare }) => bare);
+    ops.push({ store: 'entries', op: 'put', key: date, value: record });
   }
 
   _drop(date, ops) {
