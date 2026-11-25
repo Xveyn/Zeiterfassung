@@ -10,16 +10,17 @@ aktuelle Oberfläche zeigt oder eine drei Releases alte.
 | Datei | Motiv |
 |-------|-------|
 | `kalender-v1.25.0.png` | Monatsansicht (Hero-Bild) mit Urlaub, violettem Punkt (Reservierung) und bernsteinfarbenem Punkt (Sende-Erinnerung) |
-| `tagesdialog-v1.26.0.png` | Tages-Dialog: Ist-Zeit, Reservierung, Erinnerung |
-| `senden-v1.23.3.png` | Sende-Dialog mit Zeitraum- und Kategoriewahl |
-| `bericht-v1.23.3.png` | Erzeugter PDF-Bericht, Seite 1 |
-| `einstellungen-v1.26.0.png` | Einstellungen, Tab „Arbeitszeit" mit der Moduswahl der Standardzeiten |
-| `konflikte-v1.26.0.png` | Konfliktdialog: zwei Karten, links die gruppierte Liste |
+| `tagesdialog-v--VERSION--.png` | Tages-Dialog: Ist-Zeit mit Notiz, Reservierung, Erinnerung |
+| `senden-v--VERSION--.png` | Sende-Dialog mit Zeitraum- und Kategoriewahl, „Nach Kategorie“ und „Nach Notiz aufschlüsseln“ angehakt |
+| `bericht-v--VERSION--.png` | Erzeugter PDF-Bericht, Seite 1 (Notizen in der Kategorie-Spalte) |
+| `bericht-summe-v--VERSION--.png` | Ausschnitt der letzten Berichtsseite: „Summe je Kategorie“, aufgeschlüsselt nach Notiz (die Tabelle steht nie auf Seite 1, xhtml2pdf hält jede Woche zusammen) |
+| `einstellungen-v--VERSION--.png` | Einstellungen, Tab „Arbeitszeit" mit „Slots eines Tages" und der Moduswahl der Standardzeiten |
+| `konflikte-v--VERSION--.png` | Konfliktdialog: zwei Karten, die sich nur in der Notiz unterscheiden, links die gruppierte Liste |
 | `einstellungen-erinnerungen-v1.26.0.png` | Einstellungen, Tab „Erinnerungen" mit dem Abschnitt „Handy" |
 | `einstellungen-mobil-v1.26.0.png` | Einstellungen, Tab „Mobil" mit einem gekoppelten Demo-Handy |
-| `handy-woche-v1.28.0.png` | Handy-Web-App: Woche mit heutigem Tag, Reservierung und „Noch ausstehend" |
-| `handy-editor-v1.28.0.png` | Handy-Web-App: Tages-Editor, Reiter „Reservierung" mit Schnellwahl und Netto |
-| `handy-verbindung-v1.28.0.png` | Handy-Web-App: Einstellungen → Verbindung (Zustandskarte, Benachrichtigungen, App-Sperre, Trennen); 390 × 1000 Pixel, damit der ganze Reiter im Bild steht |
+| `handy-woche-v--VERSION--.png` | Handy-Web-App: Woche mit Notizen als eigene Zeile, heutigem Tag, Reservierung und „Noch ausstehend" |
+| `handy-editor-v--VERSION--.png` | Handy-Web-App: Tages-Editor, Reiter „Arbeitszeit" mit Notizfeld und aufgeklappter Liste; 390 × 1580 Pixel, damit der ganze Dialog im Bild steht |
+| `handy-verbindung-v--VERSION--.png` | Handy-Web-App: Einstellungen → Verbindung (Zustandskarte, Benachrichtigungen, App-Sperre, Zeiten verschieben, Notizen, Trennen); 390 × 1330 Pixel, damit der ganze Reiter im Bild steht |
 | `handy-kategorien-v1.28.0.png` | Handy-Web-App: Einstellungen → Kategorien |
 | `handy-einrichtung-v1.28.0.png` | Handy-Web-App: Einrichtungs-Screen vor dem Koppeln (Chrome auf Android, User-Agent per CDP gesetzt) |
 
