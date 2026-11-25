@@ -2,6 +2,61 @@
 
 Ältere Versionen stehen im [Archiv](CHANGELOG-archive.md).
 
+## 1.29.0 — 2026-11-25
+
+Ein Zeitblock kann jetzt eine Notiz tragen, am Rechner und auf dem Handy, und
+der Bericht schlüsselt auf Wunsch je Notiz auf. Die Slots eines Tages stehen
+chronologisch, nach Kategorie oder in einer eigenen Reihenfolge.
+
+### Hinzugefügt
+- **Notiz am Slot**: Jeder Zeitblock der Arbeitszeit kann eine einzeilige Notiz
+  tragen, die die Kategorie verfeinert (Kategorie „Montage“, Notiz „Kunde
+  Mustermann“), höchstens 200 Zeichen. Im Tages-Dialog steht dafür ein Feld mit
+  Vorschlägen aus den bisher benutzten Notizen (die der gewählten Kategorie
+  zuerst). Die Notiz erscheint im Tooltip der Kalenderzelle, im Löschen-Dialog,
+  im Konfliktdialog und im Bericht (in der Kategorie-Spalte, keine neue Spalte);
+  der Webhook trägt sie am Slot (`notiz`, nur wenn vorhanden), die lokale API
+  liest und schreibt sie. Reservierungen und das Teilen von Arbeitszeiten bleiben
+  ohne Notiz.
+- **Bericht: „Nach Notiz aufschlüsseln“**: Unter „Nach Kategorie aufschlüsseln“
+  im Senden- und Export-Dialog; die „Summe je Kategorie“ bekommt dann Unterzeilen
+  je Notiz. Der Schalter erscheint nur, wenn es überhaupt eine Notiz gibt.
+- **Notiz auf dem Handy**: Die Web-App zeigt Notizen in der Woche (als eigene
+  Zeile oder hinter der Kategorie, Einstellungen → Verbindung → „Notizen“) und in
+  den Konflikten, und im Tages-Editor gibt es dasselbe Feld mit aufklappbarer
+  Liste der bisherigen Notizen. Die Web-App bietet das nur an, wenn der Rechner
+  diese Version hat; Notizen am Rechner, die das Handy noch nicht kennt, bleiben
+  beim Abgleich erhalten.
+- **Reihenfolge der Slots**: Einstellungen → Arbeitszeit → „Slots eines Tages“:
+  chronologisch (Standard), nach Kategorie oder eigene Reihenfolge, die du im
+  Tages-Dialog mit ▲/▼ festlegst. Die Einstellung reist per Drive-Sync, und das
+  Handy zeigt die Slots in derselben Reihenfolge. Die Liste der Kategorien lässt sich im Kategorien-Dialog
+  ebenfalls mit ▲/▼ ordnen; die Reihenfolge gilt in allen Auswahllisten.
+- **Web-App: Zeiten per Wisch verschieben**: Ein waagerechter Zug auf den
+  Zeitfeldern eines Slots verschiebt Start und Ende gemeinsam; die Schrittweite
+  (oder aus) steht unter Einstellungen → Verbindung.
+
+### Behoben
+- **Slots eines Tages**: Ein später angelegter früherer Slot stand bisher hinter
+  den vorhandenen; die Slots werden jetzt in der gewählten Reihenfolge angezeigt
+  und gespeichert.
+- **Web-App: Updates kamen nicht an**: Änderte ein Update nur die Build-Kennung,
+  startete Chrome den neuen Service Worker nicht und die Web-App blieb auf dem
+  alten Stand. Die Kennung steht jetzt auch im Hauptskript, und die Update-Suche
+  umgeht den HTTP-Cache.
+- **Web-App: Zeitfelder auf dem iPhone** überlappten in der Slot-Zeile nicht mehr.
+- **Web-App: Erinnerung trotz eingetragener Zeit**: Eine am Handy eingetragene
+  Ist-Zeit nimmt die zugehörige Erinnerung jetzt sofort heraus, auch wenn der
+  Rechner aus ist.
+
+### Bekannte Grenzen
+- Notizen und ältere Versionen: Ändert eine ältere App-Version die Startzeit
+  eines Slots oder löscht ihn, geht dessen Notiz verloren; in seltenen
+  Reihenfolgen mit drei Geräten kann eine gelöschte oder geänderte Notiz
+  zurückkommen. Einzelheiten unter
+  [Slot-Notizen](docs/known-limitations.md#slot-notizen-519-bekannte-grenzen).
+- Geteilte Arbeitszeiten kommen ohne Notizen an.
+
 ## 1.28.0 — 2026-11-09
 
 Die Handy-Web-App kann sich jetzt selbst vom Rechner trennen, bekommt eine

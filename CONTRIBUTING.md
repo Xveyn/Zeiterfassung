@@ -247,11 +247,11 @@ Wer testbares Verhalten ändert (Feature wie Bugfix), schreibt einen passenden T
 mit — bei Bugfixes idealerweise erst einen Test, der den Fehler reproduziert.
 
 In der CI läuft die Test-Suite gegen Python 3.12–3.14 sowie zusätzlich auf Windows
-und macOS; dazu kommen `ruff check .` (Lint) und `pyright` (Typen).
+und macOS; dazu kommen `ruff check .` (Lint) und `pyright` (Typen), für `pwa/` und `relay/` `biome lint` (Lint) und `tsc` (Typen per JSDoc).
 
 ### PWA (`pwa/`)
 
-Die Handy-Web-App ist reines JavaScript ohne Build und ohne npm-Abhängigkeiten (`pwa/` hat keine; der Relay unten schon). Tests laufen mit dem eingebauten Runner von Node (Node 22 oder neuer):
+Die Handy-Web-App ist reines JavaScript ohne Build und läuft ohne npm-Abhängigkeiten (einzige devDependency ist TypeScript für die Typprüfung, `npm ci && npm run typecheck` in `pwa/`; der Relay hat auch Laufzeit-Abhängigkeiten). Tests laufen mit dem eingebauten Runner von Node (Node 22 oder neuer):
 
 ```
 cd pwa && node --test
@@ -259,7 +259,7 @@ cd pwa && node --test
 
 Die JSON-Beispiele in `pwa/test/fixtures/` sind der Vertrag zum Python-Server: Dieselben Dateien lesen die JS-Tests und `tests/test_mobile_contract.py`. Ändert sich Request, Response oder ein Fehlercode des Servers, ändern sich die Beispiele mit — sonst wird einer der beiden Tests rot.
 
-Zum Ausprobieren im Browser startet `python scripts/pwa_devserver.py` die echte Handy-Instanz der App und dazu `pwa/` auf `http://localhost:8099/`; er druckt einen Koppel-Link mit frischem Code. Der Koppel-Link akzeptiert nur private IPv4-Adressen: Standard ist die erste gefundene LAN-Adresse; fällt der Server auf `127.0.0.1` zurück (kein LAN), startest du ihn mit `--address <LAN-IP>`. Der Dev-Server stempelt `__BUILD__` in `sw-core.js` selbst (`dev-<Hash>` über die App-Dateien, #272): eine Änderung unter `pwa/` löst den normalen Update-Weg aus, „Neu laden“ übernimmt den neuen Worker — Worker abmelden oder Caches leeren ist nicht nötig (`pwa/CLAUDE.md`, „Entwickeln und prüfen“).
+Zum Ausprobieren im Browser startet `python scripts/pwa_devserver.py` die echte Handy-Instanz der App und dazu `pwa/` auf `http://localhost:8099/`; er druckt einen Koppel-Link mit frischem Code. Der Koppel-Link akzeptiert nur private IPv4-Adressen: Standard ist die erste gefundene LAN-Adresse; fällt der Server auf `127.0.0.1` zurück (kein LAN), startest du ihn mit `--address <LAN-IP>`. Der Dev-Server stempelt `__BUILD__` in `sw-core.js` und `sw.js` selbst (`dev-<Hash>` über die App-Dateien, #272): eine Änderung unter `pwa/` löst den normalen Update-Weg aus, „Neu laden“ übernimmt den neuen Worker — Worker abmelden oder Caches leeren ist nicht nötig (`pwa/CLAUDE.md`, „Entwickeln und prüfen“).
 
 **Kryptografie ändert man immer auf beiden Seiten:** `src/mobile_crypto.py` und `pwa/crypto.js` müssen byte-genau dasselbe tun (Ableitung, Zusatzdaten, Umschlag). Gemeinsame Testvektoren liegen in `pwa/test/fixtures/crypto-vectors.json`; wer etwas daran ändert, erzeugt sie neu (Skript im Plan `docs/superpowers/plans/2026-10-10-pwa-verschluesselung.md`, Task 1) und lässt beide Testsuiten laufen.
 
