@@ -19,6 +19,7 @@ from typing import Any
 
 from src.default_times import MODE_GENERAL, mode_code, spread
 from src.devices import sanitize_device_name
+from src.box_relay import BOX_IDLE_DAYS
 from src.api_service import (
     DEFAULT_PORT, MAX_PORT, MIN_PORT, REASON_INVALID_PORT, REASON_PORT_IN_USE,
     REASON_TOKEN_UNAVAILABLE, STATE_ERROR, STATE_RUNNING, STATE_STARTING,
@@ -823,7 +824,7 @@ REVOKE_ERROR_TEXT = (
     "bleibt weiterhin gekoppelt und kann sich abgleichen.")
 
 _BOX_NOTICE_ONE = (
-    "Dabei wird auch die Box am Relay gelöscht (ist der Relay nicht erreichbar, verfällt sie nach 90 Tagen "
+    f"Dabei wird auch die Box am Relay gelöscht (ist der Relay nicht erreichbar, verfällt sie nach {BOX_IDLE_DAYS} Tagen "
     "ohne Nutzung von selbst). Das Handy meldet danach „Der Desktop hat nicht geantwortet“, bis es neu "
     "gekoppelt ist.")
 
@@ -846,7 +847,7 @@ def revoke_all_prompt(*, boxes: int) -> str:
     elif boxes > 1:
         text += (
             f"\n\nDabei werden auch die {boxes} Boxen am Relay gelöscht (ist der Relay nicht erreichbar, "
-            "verfallen sie nach 90 Tagen ohne Nutzung von selbst). Die Handys melden danach „Der Desktop "
+            f"verfallen sie nach {BOX_IDLE_DAYS} Tagen ohne Nutzung von selbst). Die Handys melden danach „Der Desktop "
             "hat nicht geantwortet“, bis sie neu gekoppelt sind.")
     return text + "\n\nFortfahren?"
 

@@ -31,7 +31,7 @@ import threading
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 
-from src import desktop_entry, oauth_utils, secret_migration, self_update
+from src import box_relay, desktop_entry, oauth_utils, secret_migration, self_update
 from src.autostart import disable_autostart, macos_plist_path
 
 log = logging.getLogger(__name__)
@@ -112,7 +112,7 @@ def _forget_boxes(base_path: str) -> str | None:
         return None
     noun = "Box" if missed == 1 else "Boxen"
     return (f"{missed} {noun} am Relay nicht erreicht — "
-            f"{'sie verfällt' if missed == 1 else 'sie verfallen'} nach 90 Tagen von selbst")
+            f"{'sie verfällt' if missed == 1 else 'sie verfallen'} nach {box_relay.BOX_IDLE_DAYS} Tagen von selbst")
 
 
 def _glob(base_path: str, pattern: str) -> list[str]:

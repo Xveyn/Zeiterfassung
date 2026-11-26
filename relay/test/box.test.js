@@ -8,7 +8,7 @@ import { fakeContext, fakePlatform } from './box-fakes.js';
 
 const T0 = Date.parse('2026-11-02T12:00:00Z');
 const DAY = 86_400_000;
-const IDLE = T0 + LIMITS.idleDays * DAY;
+const IDLE = T0 + LIMITS.boxIdleDays * DAY;
 
 // Erwarteter `ver` des ersten put zum Zeitpunkt `ms` (Uhr als Untergrenze, s. VER_EPOCH in box.js).
 const verAt = (ms) => Math.max(1, Math.floor((ms - Date.UTC(2026, 0, 1)) / 1000));
@@ -215,6 +215,53 @@ const scenarios = {
     assert.equal(await ctx.storage.getAlarm(), null);
     assert.equal(phone.closed[0], 1000);
     assert.equal(desktop.closed[0], 1000);
+  },
+
+  async 'a box left alone for 14 days is empty, whether one role or both wrote (#526)'() {
+    for (const roles of [['phone'], ['phone', 'desktop']]) {
+      const { box, ctx, clock, connect } = setup();
+      for (const role of roles) await box.webSocketMessage(await connect(role), put(1));
+      assert.equal(await ctx.storage.getAlarm(), T0 + 14 * DAY, roles.join('+'));
+      clock.now = T0 + 14 * DAY;
+      await box.alarm();
+      assert.deepEqual(ctx.storage.keys(), [], roles.join('+'));
+      assert.equal(await ctx.storage.getAlarm(), null, roles.join('+'));
+    }
+  },
+
+  async 'a put before the 14 days are up keeps the box for another 14 days'() {
+    const { box, ctx, clock, connect } = setup();
+    const phone = await connect('phone');
+    await box.webSocketMessage(phone, put(1));
+    clock.now = T0 + 10 * DAY;
+    await box.webSocketMessage(phone, put(2));
+    clock.now = T0 + 14 * DAY;
+    await box.alarm();
+    assert.deepEqual([...(await ctx.storage.get('req')).data], [2]);
+    assert.equal(await ctx.storage.getAlarm(), T0 + 24 * DAY);
+  },
+
+  async 'a put pulls in a deadline that lies further out than boxIdleDays'() {
+    const { box, ctx, connect } = setup();
+    await ctx.storage.put('idle', T0 + 90 * DAY);
+    await ctx.storage.setAlarm(T0 + 90 * DAY);
+    await box.webSocketMessage(await connect('phone'), put(1));
+    assert.equal(await ctx.storage.get('idle'), T0 + 14 * DAY);
+    assert.equal(await ctx.storage.getAlarm(), T0 + 14 * DAY);
+  },
+
+  async 'the daily throttle never wipes a box less than 13 days after its last put'() {
+    const { box, ctx, clock, connect } = setup();
+    const phone = await connect('phone');
+    await box.webSocketMessage(phone, put(1));
+    const lastPut = T0 + DAY - 1;                               // gedrosselt: Frist bleibt bei T0 + 14 Tagen
+    clock.now = lastPut;
+    await box.webSocketMessage(phone, put(2));
+    const wipeAt = await ctx.storage.getAlarm();
+    assert.ok(wipeAt - lastPut > 13 * DAY);
+    clock.now = wipeAt - 1;
+    await box.alarm();
+    assert.deepEqual([...(await ctx.storage.get('req')).data], [2]);
   },
 
   async 'DELETE /v1/box wipes storage, alarm and closes all sockets with 1000'() {

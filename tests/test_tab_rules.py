@@ -1004,7 +1004,7 @@ def test_revoke_prompt_without_a_box_is_the_old_text():
 def test_revoke_prompt_with_a_box_names_the_relay_the_deletion_and_the_phones_message():
     text = tr.revoke_prompt("iPad", has_box=True)
     assert "„iPad“ wird ausgesperrt" in text
-    for fragment in ("Relay", "gelöscht", "90 Tagen ohne Nutzung", "Der Desktop hat nicht geantwortet", "neu gekoppelt"):
+    for fragment in ("Relay", "gelöscht", "14 Tagen ohne Nutzung", "Der Desktop hat nicht geantwortet", "neu gekoppelt"):
         assert fragment in text, fragment
     assert text.endswith("Fortfahren?")
 
@@ -1016,6 +1016,7 @@ def test_revoke_all_prompt_counts_the_boxes():
     assert "Relay" in one and "Der Desktop hat nicht geantwortet" in one
     three = tr.revoke_all_prompt(boxes=3)
     assert "Relay" in three and "3" in three
+    assert "14 Tagen ohne Nutzung" in one and "14 Tagen ohne Nutzung" in three
     assert three.endswith("Fortfahren?")
 
 

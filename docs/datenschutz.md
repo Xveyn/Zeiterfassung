@@ -16,7 +16,7 @@ Gerätetoken im Klartext; nie den Inhalt. Im Einzelnen:
   und die Feldnamen des Umschlags,
 - das Gerätetoken im Klartext der Nutzlast, neben dem Umschlag. Der Relay kann damit nichts entschlüsseln.
   Erneuert wird es nur nach einem **erfolgreichen** Abgleich; bis dahin, und danach bis die nächste Anfrage
-  den Slot ersetzt, liegt es im Slot `req` (längstens bis zur Selbstreinigung nach 90 Tagen Leerlauf). Im LAN
+  den Slot ersetzt, liegt es im Slot `req` (längstens bis zur Selbstreinigung nach 14 Tagen Leerlauf). Im LAN
   ist dasselbe Token zugleich gültiger Bearer für `GET /v1/ping` (Protokoll, Uhrzeit des Desktops,
   Standardfenster, und damit, ob die Kopplung noch gilt),
 - Zeitpunkte der Nachrichten und deren Größen. Größe je Nachricht: höchstens 1 MiB (1048576 Bytes),
@@ -39,7 +39,9 @@ der Handy-Erfassung nennt den Relay. Derselbe Hinweis steht in `known-limitation
 
 - Ein Slot liegt höchstens bis zum Ersetzen: jede neue Nachricht überschreibt den Slot ihrer Richtung, es gibt
   keine Historie.
-- Aufbewahrung im Leerlauf: 90 Tage. Danach räumt sich die Box selbst auf (Alarm, `idleDays`).
+- Aufbewahrung im Leerlauf: 14 Tage. Spätestens 14 Tage nach der letzten Nachricht räumt sich die Box selbst
+  auf (Alarm, `boxIdleDays`). Nicht übertragene Einträge behält das Handy, bis ein Abgleich gelingt, und sendet
+  sie dann erneut.
 - `DELETE /v1/box` löscht sofort alles und schließt die Verbindungen.
 - Das Box-Geheimnis liegt am Desktop gerätelokal in `mobile_box.json`: gehärtet geschrieben (nur für den
   Nutzer lesbar, unter Windows per ACL), **nicht** im Schlüsselbund und nicht per Drive-Sync. Der Desktop
@@ -54,10 +56,10 @@ der Handy-Erfassung nennt den Relay. Derselbe Hinweis steht in `known-limitation
   - bei der **Deinstallation unter Windows** über `--forget-secrets`, ebenfalls bevor die Dateien gelöscht
     werden.
 - Alles davon ist best effort: ist der Relay nicht erreichbar, wird lokal trotzdem aufgeräumt, und eine nicht
-  erreichte Box verfällt nach 90 Tagen Leerlauf von selbst. Der Schritt „Relay-Boxen“ nennt die Zahl der
+  erreichte Box verfällt nach 14 Tagen Leerlauf von selbst. Der Schritt „Relay-Boxen“ nennt die Zahl der
   nicht erreichten Boxen. Nach dem ersten Ausfall versucht er die übrigen nicht mehr einzeln (sonst dauerte
   das Entfernen bei totem Netz je Box eine volle Wartezeit) und zählt sie mit.
-- Die Oberfläche sagt es: der Widerruf-Dialog nennt die Box am Relay (mit der Frist von 90 Tagen, falls der
+- Die Oberfläche sagt es: der Widerruf-Dialog nennt die Box am Relay (mit der Frist von 14 Tagen, falls der
   Relay nicht erreichbar ist) und was das Handy danach zeigt; der Koppel-Dialog warnt vor dem fotografierten QR-Code.
 
 ## 3. Plattform-Logs

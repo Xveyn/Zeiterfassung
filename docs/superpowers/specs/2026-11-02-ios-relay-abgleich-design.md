@@ -109,7 +109,8 @@ Ist das Gegenüber offline, bleibt der Slot liegen und kommt beim nächsten Verb
 `401 unauthorized`, `400 invalid_request`, `403` (fremde Origin), `426` (kein Upgrade), `429 rate_limited`;
 zu große Nachricht schließt mit 1009. „Kein Logging“, Rate-Limit je Adresse und die Origin-Prüfung
 (Pages-Origin, Anfragen ohne `Origin` = Desktop erlaubt) übernimmt der Relay aus `relay/CLAUDE.md`.
-Selbstreinigung: Alarm alle `idleDays`, höchstens einmal am Tag neu gesetzt.
+Selbstreinigung: Alarm alle `idleDays`, höchstens einmal am Tag neu gesetzt. Nachtrag (#526): die Box hat eine
+eigene Frist `boxIdleDays` (14 Tage), Begründung in `relay/CLAUDE.md`, „Selbstreinigung“.
 
 ## Desktop
 
@@ -179,14 +180,14 @@ Selbstreinigung: Alarm alle `idleDays`, höchstens einmal am Tag neu gesetzt.
 **Ein Ort:** `docs/datenschutz.md` (neu, Skelett in PR 1, jeder PR der Kette ergänzt seinen Teil; PR 5 verlinkt es
 aus README und Koppel-Dialog). Es beschreibt **Datenflüsse, nicht Rechtsauskunft**: wer bekommt was, wo liegt es,
 wie lange, wie wird es gelöscht. Die Datei ist die Quelle für Hinweistexte in der App, damit Text und Verhalten
-nicht auseinanderlaufen (Muster `tests/test_claude_md_claims.py`: Zahlen wie 90 Tage und 1 MiB werden gegen den
+nicht auseinanderlaufen (Muster `tests/test_claude_md_claims.py`: Zahlen wie die Frist der Box und 1 MiB werden gegen den
 Code geprüft). Zu beachten ist grundsätzlich:
 
 1. **Was der Relay sieht — und was nicht.** Pfad, Statuscode, `seq`, `n`, Nonce, Feldnamen, Größe (≤ 1 MiB je
    Slot), Zeitpunkte, IP (Rate-Limit, Cloudflare-Plattform), und das Gerätetoken im Klartext; nie den Inhalt
    (Einträge, Kategorien, Namen). Arbeitszeiten sind Beschäftigtendaten; Ende-zu-Ende ist die Hauptmaßnahme, und genau deshalb darf kein
    Klartext-Pfad entstehen (kein „Vorschau“-Feld, kein Debug-Dump).
-2. **Aufbewahrung und Löschung.** Slots liegen höchstens bis zum Ersetzen, längstens `idleDays` (90) ohne
+2. **Aufbewahrung und Löschung.** Slots liegen höchstens bis zum Ersetzen, längstens `boxIdleDays` (14, #526) ohne
    Aktivität; `DELETE /v1/box` und „Kopplung entfernen“ löschen sofort; „Zeiterfassung entfernen“ (`removal.py`)
    und `--forget-secrets` müssen die Box mit abräumen (PR 3b). Der Nutzer muss das im Dialog nachlesen können.
 3. **Plattform-Logs.** Cloudflare schreibt auf Wunsch Aufruf-Logs (URL, Metadaten, bis 7 Tage). Die Query trägt

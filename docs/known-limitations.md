@@ -615,8 +615,9 @@ Augenhöhe mit den anderen beiden Plattformen.
 
 - **Im WLAN gibt es keinen Zwischenspeicher.** Ist der Desktop beim Trennen nicht erreichbar, erfährt er nichts; das
   Gerät bleibt in Einstellungen → Mobil als gekoppelt stehen, bis es dort widerrufen wird. Die Rückfrage am Handy sagt das
-  vorher. Über den Relay liegt die Abmeldung in der Box, bis sich der Desktop verbindet (läuft er nie, verfällt die Box
-  nach 90 Tagen).
+  vorher. Über den Relay liegt die Abmeldung in der Box, bis sich der Desktop verbindet (verbindet er sich nicht binnen
+  rund zwei Wochen, 13 bis 14 Tage nach der Abmeldung, verfällt die Box samt Abmeldung, und es gilt dasselbe
+  wie im WLAN).
 - **Ältere Desktops kennen die Abmeldung nicht** (`404`); die Rückfrage warnt vorab, wenn die Sync-Antwort die Fähigkeit
   `unpair` nicht trägt.
 - **Nicht übertragene Einträge gehen verloren**, wenn der Abgleich vor dem Löschen scheitert und der Nutzer trotzdem
@@ -701,14 +702,18 @@ für Fragen: `docs/datenschutz.md` (die Web-App verlinkt es im Koppel-Bildschirm
   Zeit verknüpfen (Metadatenrisiko).
 - **Ein fotografierter QR-Code erlaubt das Koppeln von überall im Internet**, solange der Kopplungscode
   gilt (fünf Minuten). Der LAN-QR verlangte Zugang zum Netz. Das Geheimnis der Box im QR-Code gilt, bis die
-  Box gelöscht wird (Widerruf, erneutes Koppeln, „Zeiterfassung entfernen“, 90 Tage Leerlauf); wer es kennt,
+  Box gelöscht wird (Widerruf, erneutes Koppeln, „Zeiterfassung entfernen“, 14 Tage Leerlauf); wer es kennt,
   kann Slots überschreiben, den Desktop verdrängen, unversiegelte Fehler fälschen und die Box löschen —
   Inhalte lesen oder synchronisieren kann er nicht (das braucht den Geräteschlüssel). Der Koppel-Dialog zeigt
   das Geheimnis nie als Text, nur als QR-Code, und warnt.
 - **Der Desktop muss laufen.** Ist er aus oder im Ruhezustand, meldet die Web-App nach höchstens 15 s
   „Desktop hat nicht geantwortet“ (die Box hat die Anfrage angenommen, es kam keine Antwort); automatische
   Abgleiche pausieren dann 30 s. Die Anfrage bleibt in der Box und wird beim nächsten Verbinden des Desktops
-  zugestellt; die Änderungen bleiben auf dem Handy, bis ein Abgleich gelingt.
+  zugestellt; die Änderungen bleiben auf dem Handy, bis ein Abgleich gelingt. Die Box hält sie rund zwei
+  Wochen (13 bis 14 Tage nach der letzten Nachricht des Handys): ist der Desktop länger aus, leert sie sich,
+  und die Änderungen kommen erst mit dem nächsten Abgleich des Handys an, sofern sie dort noch liegen (iOS
+  löscht den Speicher eines Browser-Tabs nach sieben Tagen ohne Nutzung, s. unten). Wer den Desktop nur
+  selten startet, etwa zum Monatsende, öffnet vor dem Bericht einmal die Web-App.
 - **Nach einem Widerruf meldet das Handy dasselbe**, nicht „widerrufen“: der Desktop löscht beim Widerruf die
   Box, und eine gelöschte Box antwortet nie. Der Hinweistext sagt, dass nur neu koppeln hilft, und der
   Widerruf-Dialog am Desktop kündigt es an.
@@ -720,6 +725,15 @@ für Fragen: `docs/datenschutz.md` (die Web-App verlinkt es im Koppel-Bildschirm
   zusammen** (wie beim Push); je Austausch fällt eine Verbindung an. Ist es aufgebraucht, antwortet der
   Relay nicht mehr, bis der Tag um ist. Zahlen des `Box`-Objekts im Dashboard (CPU je 1-MiB-`put`, GB-s im
   Leerlauf) sind **nicht gemessen**.
+- **Speicher für alle zusammen** (#526): der kostenlose Plan hat 5 GB für alle Boxen und Push-Geräte. Jeder
+  kann sich ein Geheimnis ausdenken, also Boxen anlegen und mit Nachrichten bis 1 MiB füllen; ist der Speicher
+  voll, scheitert jeder Abgleich über den Relay, für alle. Verhindern lässt sich das auf dem kostenlosen Plan
+  nicht, nur begrenzen: eine Box räumt sich spätestens **14 Tage** nach ihrer letzten Nachricht selbst auf.
+  Das begrenzt, wie lange Müll **nach dem Ende eines Angriffs** liegen bleibt; wer weiter sendet, hält seine
+  Boxen beliebig lange. Push-Geräte teilen denselben Speicher und räumen sich erst nach 90 Tagen auf; über
+  sie füllt er sich rund neunmal langsamer, dafür bleibt der Müll länger (#540). Eine kürzere Frist nur für Boxen, an
+  denen erst eine Seite angemeldet war, hülfe nicht: wer das Geheimnis erfindet, kann beide Seiten spielen.
+  Eine kleinere Höchstgröße je Nachricht ist #538.
 - **iOS-Eigenheit:** Safari-Tab und installierte Web-App haben getrennten Speicher, und iOS löscht den Speicher
   im Tab nach sieben Tagen ohne Nutzung. Auf einem aktuellen iPhone hat das Koppeln mit der Kamera-App
   funktioniert; je nach iOS-Version öffnet sie den QR-Link aber im Browser statt in der installierten Web-App.

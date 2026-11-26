@@ -93,7 +93,7 @@ def test_the_real_document_has_no_markdown_left_over():
                 assert residue not in segment["text"], (residue, segment["text"][:60])
     plain = pd.plain_text(blocks)
     assert "keine Rechtsberatung" in plain
-    assert "Aufbewahrung im Leerlauf: 90 Tage" in plain
+    assert "Aufbewahrung im Leerlauf: 14 Tage" in plain
 
 
 def test_every_link_of_the_real_document_is_https():
