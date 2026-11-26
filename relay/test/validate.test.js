@@ -176,3 +176,8 @@ test('LIMITS.putsPerMinute is 60', () => {
 test('LIMITS.maxFrame is 1048576', () => {
   assert.equal(LIMITS.maxFrame, 1_048_576);
 });
+
+test('LIMITS.boxIdleDays is 14; the push devices keep idleDays at 90', () => {
+  assert.equal(LIMITS.boxIdleDays, 14);
+  assert.equal(LIMITS.idleDays, 90);
+});

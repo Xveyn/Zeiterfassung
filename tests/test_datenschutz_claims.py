@@ -1,7 +1,7 @@
 """Die Zahlen in `docs/datenschutz.md` gegen den Code des Relays (#358).
 
 Das Dokument nennt zwei exakte Werte, die in `relay/src/validate.js` (`LIMITS`) noch einmal stehen:
-die Frist im Leerlauf (`idleDays`) und die Größe einer Nachricht (`maxFrame`). Beide werden aus den
+die Frist der Box im Leerlauf (`boxIdleDays`) und die Größe einer Nachricht (`maxFrame`). Beide werden aus den
 Dateien geparst, nicht hier kopiert. Findet ein Muster nichts, ist der Test rot: ein Test, der seine
 Erwartung nicht mehr findet und deshalb schweigt, prüft nichts mehr (Muster `test_claude_md_claims.py`).
 """
@@ -31,8 +31,19 @@ def _doc_number(pattern, was):
 
 def test_idle_retention_matches_the_relay():
     in_doc = _doc_number(r"Aufbewahrung im Leerlauf:\s*(\d+)\s*Tage", "die Frist im Leerlauf")
-    in_code = _js_limit("idleDays")
-    assert in_doc == in_code, f"datenschutz.md sagt {in_doc} Tage, validate.js idleDays ist {in_code}."
+    in_code = _js_limit("boxIdleDays")
+    assert in_doc == in_code, f"datenschutz.md sagt {in_doc} Tage, validate.js boxIdleDays ist {in_code}."
+
+
+def test_every_box_retention_in_the_doc_matches_the_relay():
+    """Jede „nach N Tagen Leerlauf“ und „Frist von N Tagen“ im Dokument meint die Box (#526); die
+    Push-Geräte nennt es nicht so."""
+    in_code = _js_limit("boxIdleDays")
+    found = [int(a or b) for a, b in re.findall(r"nach (\d+) Tagen Leerlauf|Frist von (\d+) Tagen", DOC)]
+    assert len(found) >= 3, (
+        "Parser gescheitert: docs/datenschutz.md nennt die Frist der Box nicht mehr dreimal "
+        f"(„nach N Tagen Leerlauf“/„Frist von N Tagen“), gefunden: {found}.")
+    assert set(found) == {in_code}, f"datenschutz.md nennt {found}, validate.js boxIdleDays ist {in_code}."
 
 
 def test_message_size_matches_the_relay():

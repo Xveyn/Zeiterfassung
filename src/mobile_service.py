@@ -400,7 +400,7 @@ class MobileService:
         try:
             cleanup(ids)
         except Exception as exc:
-            # Der Widerruf ist geschrieben; eine nicht gelöschte Box verfällt am Relay nach 90 Tagen.
+            # Der Widerruf ist geschrieben; eine nicht gelöschte Box verfällt am Relay von selbst.
             # Nur der Typ: der Text könnte ein Geheimnis tragen.
             _log.warning("Handy-Erfassung: Relay-Boxen nicht abgeräumt (%s)", type(exc).__name__)
 

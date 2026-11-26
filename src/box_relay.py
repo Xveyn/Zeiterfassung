@@ -2,7 +2,7 @@
 """Die Box eines Handys am Relay löschen (#358), Tk-frei, stdlib-only.
 
 Der Relay (`relay/`) hält je Kopplung eine Box (Postfach des Handy-Abgleichs). Sie verfällt nach
-90 Tagen ohne Nutzung von selbst; wird die Kopplung gelöst, räumt der Desktop sie sofort ab
+`BOX_IDLE_DAYS` Tagen ohne Nutzung von selbst; wird die Kopplung gelöst, räumt der Desktop sie sofort ab
 (`DELETE /v1/box`, das Box-Geheimnis als Bearer). Best effort: ist der Relay nicht erreichbar,
 bleibt das Lösen gültig und die Box verfällt von selbst. `delete_box` wirft deshalb nie und loggt
 weder das Geheimnis noch den Text einer Ausnahme (er könnte es enthalten).
@@ -22,6 +22,9 @@ from src.push_relay import _build_opener as _build_opener  # folgt keinem Redire
 log = logging.getLogger(__name__)
 
 USER_AGENT = "Zeiterfassung (Box-Relay)"
+# Tage ohne `put`, nach denen sich eine Box am Relay selbst leert: `LIMITS.boxIdleDays` in
+# relay/src/validate.js (#526). Steht hier für die Texte, die es dem Nutzer sagen.
+BOX_IDLE_DAYS = 14
 
 
 def _request(secret: str, base_url: str) -> urllib.request.Request:

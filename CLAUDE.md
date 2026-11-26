@@ -1554,7 +1554,7 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
   `plan_removal`/`run_removal`/`execute_removal` (**wirft nie** — `on_done` des
   Runners feuert bei einer Exception nie) und die Hinweise für den Abschluss.
   Reihenfolge: Schlüsselbund → Relay-Boxen (`BOX_STEP`, `delete_box` je Box, best effort; nicht
-  erreichte Boxen verfallen nach 90 Tagen, der Schritt nennt ihre Zahl) → Autostart/Menüeintrag → Zugangsdaten →
+  erreichte Boxen verfallen nach 14 Tagen, der Schritt nennt ihre Zahl) → Autostart/Menüeintrag → Zugangsdaten →
   (nur mit Häkchen) Nutzerdaten, `settings.json` zuletzt → Datenordner nur
   wenn leer. Die App löscht ihre Programmdatei nicht, sie nennt sie
   — außer unter macOS App Translocation (`is_translocated`): der Pfad dort ist

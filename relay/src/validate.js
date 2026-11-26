@@ -8,6 +8,11 @@ export const LIMITS = {
   maxBody: 300_000,        // Bytes eines Request-Bodys; 200 Einträge mit vollem Blob liegen bei ca. 235 KB
   graceSeconds: 900,       // so lange nach `fire_at` wird eine Erinnerung noch gesendet
   idleDays: 90,            // so lange nach der letzten Aktualisierung räumt sich ein Gerät selbst auf
+  // So lange nach dem letzten `put` räumt sich eine Box selbst auf (#526). Kürzer als `idleDays`: jeder kann
+  // Boxen anlegen und mit `maxFrame` füllen, die Frist bestimmt, wie lange solcher Müll das gemeinsame
+  // Speicherkontingent belegt. Die Box ist nur ein Briefkasten, für echte Kopplungen ist Leeren harmlos
+  // (Begründung in relay/CLAUDE.md, „Selbstreinigung“).
+  boxIdleDays: 14,
   testCooldownSeconds: 10, // so lange nach einem gelungenen Test sperrt die Testroute dieses Gerät
   maxFrame: 1_048_576,     // Bytes einer WebSocket-Nachricht der Box
   // `put` je Socket und Minute (Token-Eimer, Stoß bis zu diesem Wert). Ein Socket mit gültigem Geheimnis

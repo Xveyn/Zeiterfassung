@@ -761,9 +761,9 @@ def test_removal_continues_when_relay_unreachable(tmp_path, quiet, monkeypatch):
     assert all(r.ok for r in results), results
     assert not (tmp_path / "token.json").exists()
     box = next(r for r in results if r.name == removal.BOX_STEP)
-    assert "2" in box.note and "90 Tagen" in box.note
+    assert "2" in box.note and "14 Tagen" in box.note
     text = removal.format_summary(results, None, False)
-    assert "90 Tagen" in text
+    assert "14 Tagen" in text
     assert pending not in text and device not in text
 
 

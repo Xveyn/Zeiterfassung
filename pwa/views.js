@@ -628,7 +628,7 @@ export function unpairDialog({ retry, confirm }) {
       lines.push(h('div', { class: `hint ${model.summary.kind === 'ok' ? 'ok' : 'warn'}`, role: 'status' }, model.summary.text));
       if (model.warnDesktop) lines.push(h('div', { class: 'hint warn', role: 'status' }, model.warnDesktop));
       lines.push(h('ul', { class: 'unpair-folgen' },
-        model.notifiesDesktop && h('li', {}, 'Das Handy wird am Desktop abgemeldet, sobald der Desktop online ist.'),
+        model.notifiesDesktop && h('li', {}, 'Das Handy wird am Desktop abgemeldet, sobald der Desktop online ist (über den Relay verfällt die Abmeldung, wenn er rund zwei Wochen lang nicht online kommt).'),
         h('li', {}, 'Alle Daten auf diesem Handy werden gelöscht.'),
         h('li', {}, 'Danach musst du neu koppeln.')));
     }

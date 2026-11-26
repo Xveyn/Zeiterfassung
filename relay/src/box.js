@@ -154,13 +154,15 @@ export class Box {
     closeQuietly(ws, 1011, '');
   }
 
-  /** Leerlauf-Frist und Alarm verschieben, aber höchstens einmal am Tag (jeder `setAlarm` ist ein
-   *  Schreibvorgang im Kontingent). */
+  /** Leerlauf-Frist (`boxIdleDays`) und Alarm verschieben, aber höchstens einmal am Tag (jeder `setAlarm` ist
+   *  ein Schreibvorgang im Kontingent): die Box lebt nach dem letzten `put` also 13 bis 14 Tage. Eine Frist, die
+   *  weiter als einen Tag hinter der neuen liegt, wird ebenfalls neu gesetzt, sonst behielte eine Box eine
+   *  früher mit längerer Frist gesetzte. */
   async #touch() {
     const { storage } = this.ctx;
-    const target = this.now() + LIMITS.idleDays * DAY_MS;
+    const target = this.now() + LIMITS.boxIdleDays * DAY_MS;
     const idle = await read(storage, 'idle');
-    if ((await storage.getAlarm()) !== null && idle !== undefined && target - idle <= DAY_MS) return;
+    if ((await storage.getAlarm()) !== null && idle !== undefined && Math.abs(target - idle) <= DAY_MS) return;
     await storage.put('idle', target);
     await storage.setAlarm(target);
   }

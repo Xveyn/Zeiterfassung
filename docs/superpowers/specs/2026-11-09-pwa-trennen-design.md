@@ -77,7 +77,7 @@ Anti-Ziele (Misserfolg, auch wenn es technisch läuft)
   `ok` des Relays**, nicht auf eine Antwort des Desktops. Der Slot bleibt liegen, bis der Desktop sich
   verbindet und ihn über seinen `have`-Cursor abholt.
 - **Die PWA löscht die Box nicht selbst**, sonst wäre die Abmeldung weg. Die Box räumt der Desktop nach dem
-  Verarbeiten ab (`delete_box`, wie beim Widerruf); verbindet er sich nie, verfällt sie nach 90 Tagen.
+  Verarbeiten ab (`delete_box`, wie beim Widerruf); verbindet er sich nie, verfällt sie nach 14 Tagen (#526).
 - **LAN-Kopplung:** direkter Aufruf; scheitert er (nicht erreichbar), gilt die Warnung der Rückfrage und es
   wird trotzdem lokal gelöscht. Es gibt keinen Zwischenspeicher.
 - **Älterer Desktop** (`404 not_found`): Die Sync-Antwort trägt additiv die Fähigkeit `unpair` (Muster
@@ -164,4 +164,4 @@ Desktop (`pytest`)
 - Geprüft (2026-11-09): Die Box hält `req` im Durable-Object-Speicher; verbindet sich der Desktop, bekommt er
   den Slot, sobald dessen `ver` größer ist als sein `have` (`relay/src/box.js`, `relay_link` übergibt den Cursor
   aus `mobile_box_cursor`). Die Abmeldung muss deshalb die **letzte** Anfrage des Handys sein (ein späteres
-  `put` ersetzt den Slot); die PWA sendet danach nichts mehr. Eine nie abgeholte Box verfällt nach 90 Tagen.
+  `put` ersetzt den Slot); die PWA sendet danach nichts mehr. Eine nie abgeholte Box verfällt nach 14 Tagen (#526).

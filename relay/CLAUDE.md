@@ -38,6 +38,7 @@ von `POST /v1/test`. Reihenfolge im Worker: Route, `OPTIONS`, Methode, Rate-Limi
 | `maxBody` | 300 000 | Bytes eines Request-Bodys (200 Einträge mit vollem Blob liegen bei ca. 235 KB) |
 | `graceSeconds` | 900 | so lange nach `fire_at` (bzw. der ersten Fälligkeit) wird noch gesendet |
 | `idleDays` | 90 | so lange nach der letzten Aktualisierung räumt sich ein Gerät selbst auf |
+| `boxIdleDays` | 14 | so lange nach dem letzten `put` räumt sich eine Box spätestens selbst auf (wegen der Tagesdrossel frühestens nach 13; s. „Selbstreinigung“ unter „Box“) |
 | `testCooldownSeconds` | 10 | Sperre von `POST /v1/test` nach einem gelungenen Test |
 | `maxFrame` | 1 048 576 | Bytes einer WebSocket-Nachricht der Box, **ganz** (Typ-Byte inklusive; Nutzbytes also höchstens `maxFrame − 1`) |
 | `putsPerMinute` | 60 | `put` je Socket und Minute (Token-Eimer, Stoß bis 60); darüber schließt die Box mit 1008 |
@@ -103,13 +104,34 @@ Relay ersetzt den Slot der Absender-Rolle, zählt `ver` hoch, stellt dem Gegenü
   weil das lokale workerd keine Jurisdiktionen kennt („not implemented in workerd“). **Produktion nie `none`.**
   `BOX_JURISDICTION` **nie im Cloudflare-Dashboard setzen:** das nächste `wrangler deploy` setzt den Wert
   zwar zurück, bis dahin legte `none` dort neue Objekte aber außerhalb der EU-Jurisdiktion an.
-- **Selbstreinigung:** Alarm nach `idleDays` (90) ohne Aktivität, höchstens einmal am Tag neu gesetzt (jeder
-  `setAlarm` ist ein Schreibvorgang im Kontingent).
+- **Selbstreinigung:** Alarm nach `boxIdleDays` (**14**) ohne `put`, höchstens einmal am Tag neu gesetzt (jeder
+  `setAlarm` ist ein Schreibvorgang im Kontingent), die Box lebt nach dem letzten `put` also 13 bis 14 Tage. Eine
+  gespeicherte Frist, die mehr als einen Tag hinter der neuen liegt, setzt der nächste `put` ebenfalls neu. Bewusst
+  eine eigene, kürzere Frist als `idleDays` der Push-Geräte (#526):
+  - *Grund:* jeder kann sich ein Geheimnis ausdenken, also Boxen anlegen; jede Verbindung belegt einen Slot bis
+    `maxFrame`. Das Rate-Limit lässt rund 30 Boxen je Minute und Adresse zu, die 5 GB Speicher des Free-Plans
+    (für das ganze Konto) wären so in rund 3 h voll, und danach scheitert jeder Schreibvorgang für alle. Die Frist
+    begrenzt, wie lange solcher Müll **nach dem Ende eines Angriffs** liegen bleibt (die Erholungszeit). Während
+    eines Angriffs hilft sie nicht: jeder `put` verschiebt sie, wer alle 13 Tage ein Byte sendet, hält seine Boxen.
+    Die Push-Geräte teilen denselben Speicher mit 90 Tagen Frist (rund 235 KB je Gerät, zwei Anfragen; rund
+    neunmal langsamer zu füllen als über die Box).
+  - *Keine Frist nur für halb gebundene Boxen* (nur eine Rolle gesehen): wer das Geheimnis erfindet, spielt beide
+    Rollen; zwei Verbindungen ergeben zwei Slots, ob als eine Box mit zwei Rollen oder als zwei halbe. Der Relay
+    sieht nur opake Bytes und kann eine echte Kopplung nicht erkennen.
+  - *Für echte Kopplungen harmlos*, weil die Box nur ein Briefkasten ist: `ver` hat die Uhr als Untergrenze
+    (s. u.), das gespeicherte `have` bleibt gültig; das Handy behält nicht übertragene Tage, bis eine passende
+    Antwort kommt, und sendet sie erneut; ein altes `res` verwirft es ohnehin (`n` passt nicht). Der Preis: ist der
+    Desktop länger als die Frist aus, kommen die letzten Änderungen des Handys erst mit dessen nächstem Abgleich
+    an (sofern sie dort noch liegen), und eine Abmeldung (`/v1/unpair`) verfällt ungelesen.
+  - *Push-Geräte bleiben bei 90 Tagen:* ihr Zeitplan reicht bis 89 Tage voraus und muss ohne geöffnete PWA weiter
+    senden.
+  - Die Frist steht auch in `src/box_relay.py` (`BOX_IDLE_DAYS`, für die Texte von Widerruf und „Entfernen“; Test in
+    `tests/test_box_relay.py`) und in `docs/datenschutz.md` (`tests/test_datenschutz_claims.py`).
 - **`observability` bleibt aus** (`wrangler.toml`), und **das Subprotocol und die Query werden nie
   geloggt** (das Geheimnis steht im Header). „Kein Logging“ gilt für unseren Code; was die Plattform
   mitschreibt, steht in `docs/datenschutz.md`.
-- **Konstante ändern heißt PWA/Desktop mitziehen:** `zeit.v1`, die Typ-Bytes, die Byte-Reihenfolge von `ver`,
-  `maxFrame`, `putsPerMinute`, `ping`/`pong` und die Schließ-Codes (s. „Für die Clients“) stehen auch in den Codecs der Clients (`src/mobile_relay_codec.py`, `pwa/relay-frame.js`) und in der Fixture
+- **Konstante ändern heißt PWA/Desktop mitziehen:** `boxIdleDays` (Desktop-Texte und Datenschutzhinweise, s.
+  „Selbstreinigung“); `zeit.v1`, die Typ-Bytes, die Byte-Reihenfolge von `ver`, `maxFrame`, `putsPerMinute`, `ping`/`pong` und die Schließ-Codes (s. „Für die Clients“) stehen auch in den Codecs der Clients (`src/mobile_relay_codec.py`, `pwa/relay-frame.js`) und in der Fixture
   `pwa/test/fixtures/relay-frames.json`.
 
 ### Für die Clients

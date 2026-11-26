@@ -110,3 +110,14 @@ def test_the_secret_never_reaches_the_log(caplog):
         delete(urllib.error.URLError(f"Fehler bei {SECRET}"))
         delete(TimeoutError(f"zu langsam {SECRET}"))
     assert SECRET not in caplog.text
+
+
+def test_box_idle_days_matches_the_relay():
+    """Die Frist, die Widerruf- und Entfernen-Texte nennen, ist die der Box im Relay (#526)."""
+    import pathlib
+    import re
+    validate = (pathlib.Path(__file__).resolve().parent.parent / "relay" / "src" / "validate.js").read_text(
+        encoding="utf-8")
+    match = re.search(r"\bboxIdleDays:\s*([0-9_]+)", validate)
+    assert match, "Parser gescheitert: `boxIdleDays` steht nicht mehr als Zahl in relay/src/validate.js."
+    assert box_relay.BOX_IDLE_DAYS == int(match.group(1).replace("_", ""))

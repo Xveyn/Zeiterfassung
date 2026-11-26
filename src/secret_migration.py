@@ -209,7 +209,7 @@ def forget_boxes(path: str) -> int:
     """Die Boxen der Handy-Erfassung (#358) am Relay löschen: je Geheimnis aus `mobile_box.json`
     (offenes eingeschlossen) ein `box_relay.delete_box`, nacheinander, nach der ersten nicht
     erreichten keine weitere (höchstens einmal `TIMEOUT_S`). Liefert die Zahl der **nicht**
-    erreichten Boxen (sie verfallen am Relay nach 90 Tagen von selbst).
+    erreichten Boxen (sie verfallen am Relay nach `box_relay.BOX_IDLE_DAYS` Tagen von selbst).
     Wirft nie und liest die Datei nur — der Store schreibt hier nichts; eine nicht lesbare Datei
     bleibt unberührt. Blockiert (Netz): nur im Worker bzw. im Deinstaller. Loggt nie ein Geheimnis."""
     if not os.path.exists(path):
