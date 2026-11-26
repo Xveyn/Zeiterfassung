@@ -96,7 +96,7 @@ def test_every_module_the_doc_names_exists():
     missing = []
     for name in sorted(names):
         candidates = [PWA / name, PWA / "test" / name, PWA / "test" / "fixtures" / name]
-        if name.startswith("pwa/"):
+        if name.startswith(("pwa/", "relay/")):
             candidates = [ROOT / name]
         if not any(path.is_file() for path in candidates):
             missing.append(name)

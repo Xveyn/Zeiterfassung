@@ -1,6 +1,6 @@
 """Schutztest für die Catch-all-Konvention (Xveyn/Zeiterfassung#73).
 
-`src/` hält rund 90 Handler auf `except Exception` / `except BaseException`.
+`src/` hält weit über hundert Handler auf `except Exception` / `except BaseException`.
 Die Dichte ist unkritisch und begründet — Bootstrap, Threading-Ränder und
 Best-Effort-Plattformaufrufe sind genau die Stellen, an denen ein Catch-all
 hingehört. Was auffallen muss, ist nicht die Zahl, sondern ein Handler, der
@@ -8,7 +8,7 @@ hingehört. Was auffallen muss, ist nicht die Zahl, sondern ein Handler, der
 stummes `pass` ist damit endgültig.
 
 Warum ein Test und keine Linter-Regel: `ruff`s `BLE001` (blind-except) meckert
-jeden Catch-all an, also auch die ~90 korrekten — reines Rauschen mit
+jeden Catch-all an, also auch die vielen korrekten — reines Rauschen mit
 anschließender `noqa`-Flut. Diese Regel prüft stattdessen das, worauf es
 ankommt. Muster wie `test_type_annotations.py`.
 

@@ -3,8 +3,9 @@
 > Beschreibung von Datenflüssen, keine Rechtsberatung.
 
 Dieses Dokument sagt, **wer was bekommt, wo es liegt, wie lange und wie es gelöscht wird**. Es ist die
-Quelle für Hinweistexte in der App; der Dialog Einstellungen → App → „Datenschutzhinweise“ zeigt dieses Dokument. Die Zahlen darin prüft `tests/test_datenschutz_claims.py` gegen
-`relay/src/validate.js`. Stand: PR 5 (Abschluss der Kette #358); was noch nicht festliegt, steht als `Offen` mit Verweis auf ein Issue.
+Quelle für Hinweistexte in der App; der Dialog Einstellungen → App → „Datenschutzhinweise“ und die Seite
+„Datenschutzhinweise“ der Web-App zeigen dieses Dokument. Die Frist der Box und die Größe je Nachricht prüft
+`tests/test_datenschutz_claims.py` gegen `relay/src/validate.js`.
 
 ## 1. Was der Relay sieht, und was nicht
 
@@ -41,7 +42,9 @@ der Handy-Erfassung nennt den Relay. Derselbe Hinweis steht in `known-limitation
   keine Historie.
 - Aufbewahrung im Leerlauf: 14 Tage. Spätestens 14 Tage nach der letzten Nachricht räumt sich die Box selbst
   auf (Alarm, `boxIdleDays`). Nicht übertragene Einträge behält das Handy, bis ein Abgleich gelingt, und sendet
-  sie dann erneut.
+  sie dann erneut. Übergang: eine Box, deren letzte Nachricht vor dem Ausrollen dieser Regel (26.11.2026) lag,
+  behält ihre damals gesetzte 90-Tage-Frist, bis wieder eine Nachricht kommt; spätestens Ende Februar 2027 ist
+  auch die letzte solche Box geräumt.
 - `DELETE /v1/box` löscht sofort alles und schließt die Verbindungen.
 - Das Box-Geheimnis liegt am Desktop gerätelokal in `mobile_box.json`: gehärtet geschrieben (nur für den
   Nutzer lesbar, unter Windows per ACL), **nicht** im Schlüsselbund und nicht per Drive-Sync. Der Desktop
@@ -51,6 +54,8 @@ der Handy-Erfassung nennt den Relay. Derselbe Hinweis steht in `known-limitation
   - beim **Widerruf** einer Kopplung (die Boxen widerrufener Geräte),
   - wenn ein Gerät **erneut gekoppelt** wird (seine alte Box) und wenn ein offener Kopplungscode verfällt
     oder der Koppel-Dialog schließt, ohne dass ein Handy gekoppelt hat (die dafür angelegte Box),
+  - wenn sich ein Handy **selbst trennt** (Web-App: Einstellungen → Verbindung → „Trennen und lokale Daten
+    löschen“), sobald der Desktop die Abmeldung erhält (über den Relay liegt sie bis dahin in der Box),
   - bei **„Zeiterfassung entfernen“** (macOS/Linux) im Schritt „Relay-Boxen“, vor dem Löschen der
     Zugangsdaten,
   - bei der **Deinstallation unter Windows** über `--forget-secrets`, ebenfalls bevor die Dateien gelöscht
@@ -61,6 +66,13 @@ der Handy-Erfassung nennt den Relay. Derselbe Hinweis steht in `known-limitation
   das Entfernen bei totem Netz je Box eine volle Wartezeit) und zählt sie mit.
 - Die Oberfläche sagt es: der Widerruf-Dialog nennt die Box am Relay (mit der Frist von 14 Tagen, falls der
   Relay nicht erreichbar ist) und was das Handy danach zeigt; der Koppel-Dialog warnt vor dem fotografierten QR-Code.
+
+**Push-Objekte (Erinnerungen, Abschnitt 10)** halten das Abo des Handys und seinen Zeitplan: höchstens 200
+Einträge, je mit verschlüsseltem Text. Ein neuer Zeitplan ersetzt den alten, Vergangenes fällt heraus. Ein
+Push-Objekt räumt sich selbst auf, wenn es 90 Tage ohne Aktualisierung bleibt (`idleDays`), und sofort, wenn der
+Push-Dienst das Abo als erloschen meldet. Gelöscht wird es außerdem (`DELETE /v1/device`, best effort), wenn das
+Handy die Benachrichtigungen ausschaltet oder sich trennt und wenn der Desktop das Gerät widerruft.
+„Zeiterfassung entfernen“ löscht nur das Relay-Geheimnis am Rechner; das Objekt verfällt dann am Relay.
 
 ## 3. Plattform-Logs
 
@@ -74,9 +86,13 @@ Query trägt nur `role` und `have`; das Geheimnis steht im Header `Sec-WebSocket
 Das Durable Object der Box liegt in der EU-Jurisdiktion von Cloudflare (Ausführung und Speicherung).
 **Nicht** davon erfasst ist der Worker selbst: er läuft pro Anfrage am nächstgelegenen Rand, die IP-Adresse
 wird dort verarbeitet. Die Jurisdiktion lässt sich nachträglich nicht ändern, deshalb war das eine Entscheidung
-von Anfang an. Das bestehende Push-Objekt (Erinnerungen) bleibt, wie es ist. Der Schalter dafür steht in
-`relay/wrangler.toml` und wird nie im Cloudflare-Dashboard gesetzt: bis zum nächsten Ausrollen lägen neue
-Objekte sonst womöglich außerhalb der EU-Jurisdiktion.
+von Anfang an. Der Schalter dafür steht in `relay/wrangler.toml` und wird nie im Cloudflare-Dashboard gesetzt:
+bis zum nächsten Ausrollen lägen neue Boxen sonst womöglich außerhalb der EU-Jurisdiktion.
+
+Das **Push-Objekt** (Erinnerungen, `Device`) liegt **nicht** in der EU-Jurisdiktion: es entstand vor dieser
+Entscheidung, Cloudflare wählt seinen Ort selbst. Ein Umzug hieße neue Objekte für jedes Handy (die Jurisdiktion
+gehört zur Identität des Objekts); deshalb bleibt es dabei. Es hält Abo-Endpunkt, Abo-Schlüssel, die Zeitpunkte
+der Erinnerungen und ihren verschlüsselten Text, keine Einträge.
 
 ## 5. Beteiligte und Drittländer
 
@@ -85,9 +101,10 @@ Objekte sonst womöglich außerhalb der EU-Jurisdiktion.
   [Data Processing Addendum](https://www.cloudflare.com/cloudflare-customer-dpa/).
 - GitHub (Microsoft): Auslieferung der Handy-Web-App über GitHub Pages; dabei sieht GitHub die IP-Adresse
   des Handys. [Datenschutzerklärung](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement).
-- Apple, Google, Mozilla: Web-Push-Dienste (nur für Erinnerungen); sie kennen den Abo-Endpunkt des Handys.
+- Apple, Google, Microsoft, Mozilla: Web-Push-Dienste (nur für Erinnerungen); sie kennen den Abo-Endpunkt
+  des Geräts. Welcher Dienst es ist, bestimmt der Browser (Microsoft etwa bei Edge unter Windows).
   [Apple](https://www.apple.com/legal/privacy/), [Google](https://policies.google.com/privacy),
-  [Mozilla](https://www.mozilla.org/privacy/).
+  [Microsoft](https://privacy.microsoft.com/privacystatement), [Mozilla](https://www.mozilla.org/privacy/).
 
 Ob für einen Nutzer ein Auftragsverarbeitungsvertrag nötig ist, hängt davon ab, wer die App wofür einsetzt
 (privat, Werkstudent mit eigener Erfassung, Arbeitgeber). Das ist ein Hinweis, keine Zusage und keine
@@ -114,7 +131,11 @@ Der Abgleich über den Relay ist **Opt-in je Gerät**: er entsteht nur, wenn der
 Handy-Erfassung einschaltet (der Einschalt-Hinweis nennt den Relay und was er nicht sieht) und ausdrücklich
 „Über Relay koppeln“ wählt (der Koppel-Dialog warnt vor dem fotografierten QR-Code). Ausschalten und Löschen
 gehen jederzeit: Handy-Erfassung ausschalten trennt die Verbindungen, Widerruf, erneutes Koppeln und „Zeiterfassung
-entfernen“ löschen die Box (Abschnitt 2). **Auf dem iPhone und iPad ist der Relay Pflicht für die
+entfernen“ löschen die Box (Abschnitt 2). Am Handy selbst löscht „Trennen und lokale Daten löschen“ (Einstellungen →
+Verbindung) alle Daten der Web-App samt Protokoll, meldet die Benachrichtigungen ab (dabei löscht das Handy sein Push-Objekt,
+best effort) und meldet das Handy am Desktop ab. Erhält der Desktop die Abmeldung (im WLAN nur, wenn er gerade
+erreichbar ist; über den Relay, wenn er sich verbindet, bevor die Box verfällt), löscht er Box, Push-Objekt und
+Geräteschlüssel. Sonst bleibt das Handy dort gekoppelt, bis es widerrufen wird; die Box verfällt dann von selbst. **Auf dem iPhone und iPad ist der Relay Pflicht für die
 Handy-Erfassung** (Safari erreicht den Rechner im WLAN nicht): ohne Relay gibt es dort keinen Abgleich. Das steht
 so in der README und in den Hinweisen der App; es ist keine Wahl, die als solche getarnt wäre.
 
@@ -137,7 +158,9 @@ Geht das Handy verloren, widerruft der Nutzer die Kopplung am Desktop; die Box w
 gelöscht (best effort, s. 2.); der Widerruf-Dialog sagt es vorher.
 
 **Auf dem Handy** liegt das Box-Geheimnis (`box_secret`) wie das Gerätetoken und der Geräteschlüssel in der
-IndexedDB der Web-App; die PWA zeigt es nie an und schreibt es in kein Log und keinen Fehlertext. Sie sendet
+IndexedDB der Web-App, derzeit unverschlüsselt (die Verschlüsselung des lokalen Speichers ist vorbereitet, aber
+noch ausgeschaltet; die App-Sperre verdeckt nur die Oberfläche). Die PWA zeigt es nie an und schreibt es in kein
+Log und keinen Fehlertext. Sie sendet
 nur an die Adresse des Relays (`RELAY_URL`) und an den Desktop im eigenen WLAN. Der Koppel-Link trägt
 Geheimnis und Kopplungscode im Fragment (`#relay=`); die PWA entfernt es nach dem Lesen aus Adresszeile und
 Verlauf. Auf iOS löscht das System den Speicher einer Seite im Browser-Tab nach sieben Tagen ohne Nutzung;
@@ -157,7 +180,7 @@ im Speicher des Browsers (eigene IndexedDB-Datenbank, getrennt von den Einträge
 gesendet: es verlässt das Gerät nur, wenn der Nutzer es kopiert oder teilt.
 
 Aufgezeichnet werden nur Fehler (Art und eine Meldung des Browsers) und je Abgleich eine Zusammenfassung:
-Ergebnis, Dauer, Zahl der Tage und Zahl der Konflikte. Die App übergibt dem Protokoll keine Namen, Kategorien oder
+Ergebnis, Dauer, Zahl der gesendeten und empfangenen Tage, Zahl der Konflikte und die Länge des Lesefensters. Die App übergibt dem Protokoll keine Namen, Kategorien oder
 Einträge, nur feste Texte und Fehlermeldungen des Browsers; diese Meldungen werden zusätzlich gefiltert (Adressen,
 Schlüssel, Daten, Uhrzeiten und Pfade werden durch Platzhalter ersetzt). Der Filter erkennt Muster und ist
 deshalb kein Beweis, dass nichts Persönliches darin steht. Geheimnisse (Abschnitt 9) schreibt die Web-App auch

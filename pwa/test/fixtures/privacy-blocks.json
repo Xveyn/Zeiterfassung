@@ -250,7 +250,7 @@
      "url": null
     },
     {
-     "text": "). Nicht übertragene Einträge behält das Handy, bis ein Abgleich gelingt, und sendet sie dann erneut.",
+     "text": "). Nicht übertragene Einträge behält das Handy, bis ein Abgleich gelingt, und sendet sie dann erneut. Übergang: eine Box, deren letzte Nachricht vor dem Ausrollen dieser Regel (26.11.2026) lag, behält ihre damals gesetzte 90-Tage-Frist, bis wieder eine Nachricht kommt; spätestens Ende Februar 2027 ist auch die letzte solche Box geräumt.",
      "style": "plain",
      "url": null
     }
@@ -381,6 +381,27 @@
    "kind": "bullet",
    "segments": [
     {
+     "text": "wenn sich ein Handy ",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "selbst trennt",
+     "style": "bold",
+     "url": null
+    },
+    {
+     "text": " (Web-App: Einstellungen → Verbindung → „Trennen und lokale Daten löschen“), sobald der Desktop die Abmeldung erhält (über den Relay liegt sie bis dahin in der Box),",
+     "style": "plain",
+     "url": null
+    }
+   ],
+   "level": 1
+  },
+  {
+   "kind": "bullet",
+   "segments": [
+    {
      "text": "bei ",
      "style": "plain",
      "url": null
@@ -445,6 +466,42 @@
    "segments": [
     {
      "text": "Die Oberfläche sagt es: der Widerruf-Dialog nennt die Box am Relay (mit der Frist von 14 Tagen, falls der Relay nicht erreichbar ist) und was das Handy danach zeigt; der Koppel-Dialog warnt vor dem fotografierten QR-Code.",
+     "style": "plain",
+     "url": null
+    }
+   ],
+   "level": 0
+  },
+  {
+   "kind": "paragraph",
+   "segments": [
+    {
+     "text": "Push-Objekte (Erinnerungen, Abschnitt 10)",
+     "style": "bold",
+     "url": null
+    },
+    {
+     "text": " halten das Abo des Handys und seinen Zeitplan: höchstens 200 Einträge, je mit verschlüsseltem Text. Ein neuer Zeitplan ersetzt den alten, Vergangenes fällt heraus. Ein Push-Objekt räumt sich selbst auf, wenn es 90 Tage ohne Aktualisierung bleibt (",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "idleDays",
+     "style": "code",
+     "url": null
+    },
+    {
+     "text": "), und sofort, wenn der Push-Dienst das Abo als erloschen meldet. Gelöscht wird es außerdem (",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "DELETE /v1/device",
+     "style": "code",
+     "url": null
+    },
+    {
+     "text": ", best effort), wenn das Handy die Benachrichtigungen ausschaltet oder sich trennt und wenn der Desktop das Gerät widerruft. „Zeiterfassung entfernen“ löscht nur das Relay-Geheimnis am Rechner; das Objekt verfällt dann am Relay.",
      "style": "plain",
      "url": null
     }
@@ -558,7 +615,7 @@
      "url": null
     },
     {
-     "text": " davon erfasst ist der Worker selbst: er läuft pro Anfrage am nächstgelegenen Rand, die IP-Adresse wird dort verarbeitet. Die Jurisdiktion lässt sich nachträglich nicht ändern, deshalb war das eine Entscheidung von Anfang an. Das bestehende Push-Objekt (Erinnerungen) bleibt, wie es ist. Der Schalter dafür steht in ",
+     "text": " davon erfasst ist der Worker selbst: er läuft pro Anfrage am nächstgelegenen Rand, die IP-Adresse wird dort verarbeitet. Die Jurisdiktion lässt sich nachträglich nicht ändern, deshalb war das eine Entscheidung von Anfang an. Der Schalter dafür steht in ",
      "style": "plain",
      "url": null
     },
@@ -568,7 +625,48 @@
      "url": null
     },
     {
-     "text": " und wird nie im Cloudflare-Dashboard gesetzt: bis zum nächsten Ausrollen lägen neue Objekte sonst womöglich außerhalb der EU-Jurisdiktion.",
+     "text": " und wird nie im Cloudflare-Dashboard gesetzt: bis zum nächsten Ausrollen lägen neue Boxen sonst womöglich außerhalb der EU-Jurisdiktion.",
+     "style": "plain",
+     "url": null
+    }
+   ],
+   "level": 0
+  },
+  {
+   "kind": "paragraph",
+   "segments": [
+    {
+     "text": "Das ",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "Push-Objekt",
+     "style": "bold",
+     "url": null
+    },
+    {
+     "text": " (Erinnerungen, ",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "Device",
+     "style": "code",
+     "url": null
+    },
+    {
+     "text": ") liegt ",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "nicht",
+     "style": "bold",
+     "url": null
+    },
+    {
+     "text": " in der EU-Jurisdiktion: es entstand vor dieser Entscheidung, Cloudflare wählt seinen Ort selbst. Ein Umzug hieße neue Objekte für jedes Handy (die Jurisdiktion gehört zur Identität des Objekts); deshalb bleibt es dabei. Es hält Abo-Endpunkt, Abo-Schlüssel, die Zeitpunkte der Erinnerungen und ihren verschlüsselten Text, keine Einträge.",
      "style": "plain",
      "url": null
     }
@@ -642,7 +740,7 @@
    "kind": "bullet",
    "segments": [
     {
-     "text": "Apple, Google, Mozilla: Web-Push-Dienste (nur für Erinnerungen); sie kennen den Abo-Endpunkt des Handys. ",
+     "text": "Apple, Google, Microsoft, Mozilla: Web-Push-Dienste (nur für Erinnerungen); sie kennen den Abo-Endpunkt des Geräts. Welcher Dienst es ist, bestimmt der Browser (Microsoft etwa bei Edge unter Windows). ",
      "style": "plain",
      "url": null
     },
@@ -660,6 +758,16 @@
      "text": "Google",
      "style": "link",
      "url": "https://policies.google.com/privacy"
+    },
+    {
+     "text": ", ",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "Microsoft",
+     "style": "link",
+     "url": "https://privacy.microsoft.com/privacystatement"
     },
     {
      "text": ", ",
@@ -823,7 +931,7 @@
      "url": null
     },
     {
-     "text": ": er entsteht nur, wenn der Nutzer am Rechner die Handy-Erfassung einschaltet (der Einschalt-Hinweis nennt den Relay und was er nicht sieht) und ausdrücklich „Über Relay koppeln“ wählt (der Koppel-Dialog warnt vor dem fotografierten QR-Code). Ausschalten und Löschen gehen jederzeit: Handy-Erfassung ausschalten trennt die Verbindungen, Widerruf, erneutes Koppeln und „Zeiterfassung entfernen“ löschen die Box (Abschnitt 2). ",
+     "text": ": er entsteht nur, wenn der Nutzer am Rechner die Handy-Erfassung einschaltet (der Einschalt-Hinweis nennt den Relay und was er nicht sieht) und ausdrücklich „Über Relay koppeln“ wählt (der Koppel-Dialog warnt vor dem fotografierten QR-Code). Ausschalten und Löschen gehen jederzeit: Handy-Erfassung ausschalten trennt die Verbindungen, Widerruf, erneutes Koppeln und „Zeiterfassung entfernen“ löschen die Box (Abschnitt 2). Am Handy selbst löscht „Trennen und lokale Daten löschen“ (Einstellungen → Verbindung) alle Daten der Web-App samt Protokoll, meldet die Benachrichtigungen ab (dabei löscht das Handy sein Push-Objekt, best effort) und meldet das Handy am Desktop ab. Erhält der Desktop die Abmeldung (im WLAN nur, wenn er gerade erreichbar ist; über den Relay, wenn er sich verbindet, bevor die Box verfällt), löscht er Box, Push-Objekt und Geräteschlüssel. Sonst bleibt das Handy dort gekoppelt, bis es widerrufen wird; die Box verfällt dann von selbst. ",
      "style": "plain",
      "url": null
     },
@@ -933,7 +1041,7 @@
      "url": null
     },
     {
-     "text": ") wie das Gerätetoken und der Geräteschlüssel in der IndexedDB der Web-App; die PWA zeigt es nie an und schreibt es in kein Log und keinen Fehlertext. Sie sendet nur an die Adresse des Relays (",
+     "text": ") wie das Gerätetoken und der Geräteschlüssel in der IndexedDB der Web-App, derzeit unverschlüsselt (die Verschlüsselung des lokalen Speichers ist vorbereitet, aber noch ausgeschaltet; die App-Sperre verdeckt nur die Oberfläche). Die PWA zeigt es nie an und schreibt es in kein Log und keinen Fehlertext. Sie sendet nur an die Adresse des Relays (",
      "style": "plain",
      "url": null
     },
@@ -1068,7 +1176,7 @@
    "kind": "paragraph",
    "segments": [
     {
-     "text": "Aufgezeichnet werden nur Fehler (Art und eine Meldung des Browsers) und je Abgleich eine Zusammenfassung: Ergebnis, Dauer, Zahl der Tage und Zahl der Konflikte. Die App übergibt dem Protokoll keine Namen, Kategorien oder Einträge, nur feste Texte und Fehlermeldungen des Browsers; diese Meldungen werden zusätzlich gefiltert (Adressen, Schlüssel, Daten, Uhrzeiten und Pfade werden durch Platzhalter ersetzt). Der Filter erkennt Muster und ist deshalb kein Beweis, dass nichts Persönliches darin steht. Geheimnisse (Abschnitt 9) schreibt die Web-App auch hier in keinen Text.",
+     "text": "Aufgezeichnet werden nur Fehler (Art und eine Meldung des Browsers) und je Abgleich eine Zusammenfassung: Ergebnis, Dauer, Zahl der gesendeten und empfangenen Tage, Zahl der Konflikte und die Länge des Lesefensters. Die App übergibt dem Protokoll keine Namen, Kategorien oder Einträge, nur feste Texte und Fehlermeldungen des Browsers; diese Meldungen werden zusätzlich gefiltert (Adressen, Schlüssel, Daten, Uhrzeiten und Pfade werden durch Platzhalter ersetzt). Der Filter erkennt Muster und ist deshalb kein Beweis, dass nichts Persönliches darin steht. Geheimnisse (Abschnitt 9) schreibt die Web-App auch hier in keinen Text.",
      "style": "plain",
      "url": null
     }

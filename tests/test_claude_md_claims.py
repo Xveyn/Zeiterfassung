@@ -296,7 +296,7 @@ class TestNoSpecFile:
 
 
 class TestCatchAllCount:
-    """„`src/` hält rund 90 Handler" — mit Toleranz, nicht auf Gleichheit.
+    """„`src/` hält rund N Handler" — mit Toleranz, nicht auf Gleichheit.
 
     Die Zahl ist eine Größenordnung, keine Invariante: sie steht in der
     CLAUDE.md, um zu sagen „die Dichte ist gemessen, nicht übersehen". Auf
