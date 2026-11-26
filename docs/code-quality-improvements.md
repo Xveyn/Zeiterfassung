@@ -34,9 +34,9 @@ ist stabil, das hier sind keine Bug-Reports.
 ## Verdächtige Stellen (Klärung nötig)
 
 - [ ] **`_strip_for_candidate` ist ein No-op**
-  `src/sync.py:200` ist `{k: v for k, v in item.items()}`, also nur ein
+  `src/sync.py:242` ist `{k: v for k, v in item.items()}`, also nur ein
   shallow copy. Der Name impliziert Filter-Logik, die fehlt. Einziger
-  Aufrufer ist `sync.py:189` (Aufbau von `conflict["candidates"]`). Entweder
+  Aufrufer ist `sync.py:201` (Aufbau von `conflict["candidates"]`). Entweder
   Funktion löschen und die Callsite auf `dict(...)` ändern, oder fehlende
   Strip-Logik nachziehen. Vorher klären, ob Strip versehentlich entfernt wurde.
   **Weiterhin offen** — am 2026-10-26 gegengeprüft, die Funktion ist unverändert ein reiner Shallow-Copy.
@@ -66,7 +66,7 @@ ist stabil, das hier sind keine Bug-Reports.
 
 ## Bewusst nicht angefasst
 
-- **`src/ui.py`** war beim Review ~1050 Zeilen; heute sind es ~1200 — aber die
+- **`src/ui.py`** war beim Review ~1050 Zeilen; heute (2026-11-26) sind es ~1340 — aber die
   damals genannte Sorge hat sich anders aufgelöst als vorgeschlagen: statt
   eines Mixins sind die Sync-Methoden in die eigene Komponente
   `sync_orchestrator.py` gewandert (dazu `grid_renderer.py`,

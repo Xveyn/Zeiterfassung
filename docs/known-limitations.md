@@ -44,11 +44,11 @@ In den Einstellungen steht im Tab **Google** die Aktion **„Sync-Daten kompakti
 
 **Warum manuell statt automatisch:** In einem verteilten LWW-System ist sicheres automatisches GC ein bekannt hartes Problem. Sobald ein Tombstone weg ist, ist die Information „dieser Tag wurde gelöscht" verloren. Ein Gerät, das den Delete nie gesehen hat und noch einen lebenden Eintrag desselben Tages hält, würde ihn wieder auferstehen lassen (Resurrection). Die einzig vollständig sichere Vorbedingung — „alle Geräte haben den Tombstone gesehen" — lässt sich nicht zuverlässig automatisch ableiten. Die Kompaktierung wird daher zu einer bewussten, vom Nutzer ausgelösten Einmal-Aktion, die erfordert, dass alle Geräte aktuell und synchronisiert sind. Ausführliche Begründung: [`superpowers/specs/2026-06-09-tombstone-gc-design.md`](superpowers/specs/2026-06-09-tombstone-gc-design.md).
 
-**Bedingung vor dem Ausführen:** Alle Geräte müssen auf einer Version mit Kompaktierungs-Support laufen und kürzlich synchronisiert haben. Die Aktion prüft beim Start, ob das Remote-Doc das neue Schema v2 trägt — ist das nicht der Fall (älteres Gerät hat zuletzt gepusht), bricht sie mit einem Hinweis ab.
+**Bedingung vor dem Ausführen:** Alle Geräte müssen auf einer Version mit Kompaktierungs-Support laufen und kürzlich synchronisiert haben. Ein älteres Remote-Doc hebt die Aktion vor dem Kompaktieren aufs aktuelle Schema; abgebrochen wird nur, wenn ein Gerät ein **neueres** Schema geschrieben hat, das diese Version nicht versteht (`sync_runtime.run_compaction_blocking`, Grund `newer_version`).
 
 ### Akzeptierte Restrisiken
 
-- **Altes Gerät offline während der Kompaktierung:** Ein Gerät auf einer Version ohne Kompaktierungs-Support, das beim Kompaktieren offline ist und danach mit veralteten, lebenden Daten zurückkehrt, kann Resurrection auslösen, weil es die Self-Heal-Suppression nicht kennt. Mitigation: der v1-Schema-Guard (Best-Effort-Erkennung aktiver v1-Geräte) und die Bestätigung. Ein zum Zeitpunkt der Aktion offline v1-Gerät bleibt unerkennbar — bewusst akzeptiert.
+- **Altes Gerät offline während der Kompaktierung:** Ein Gerät auf einer Version ohne Kompaktierungs-Support, das beim Kompaktieren offline ist und danach mit veralteten, lebenden Daten zurückkehrt, kann Resurrection auslösen, weil es die Self-Heal-Suppression nicht kennt. Mitigation: die Bestätigung vor dem Ausführen; ein solches Gerät erkennt die App nicht — bewusst akzeptiert.
 - **v2-Gerät mit Offline-Edit vor dem Watermark:** Ein v2-Gerät, das beim Kompaktieren offline war und einen lebenden Eintrag mit `modified_at` vor dem Watermark hält, verliert diesen Eintrag beim Zurückkehren (Regel 2 — Self-Heal-Suppression). Extrem selten in der Praxis (offline gewesene Geräte haben typischerweise keine alten unbewegten Einträge).
 - **Clock-Skew:** Wie im bestehenden Sync — bei grob synchronen Uhren vernachlässigbar.
 
@@ -67,36 +67,6 @@ Wert selbst) — auf beiden Geräten derselbe, sodass die Stände nicht
 auseinanderlaufen (#142; vorher gewann die jeweils fremde Seite). Der Konflikt
 wird trotzdem erkannt und im Konfliktdialog zur Entscheidung vorgelegt; die
 Wahl nach Geräte-ID ist nur der Platzhalter bis dahin.
-
-## Sync: Irreführende „älteres Gerät"-Meldung beim Einzelgerät-Upgrade auf v3
-
-Mit dem Multi-Timeslot-/Kategorien-Feature steigt das Sync-Schema auf v3
-(`slots` statt flacher `start/end/pause`-Keys). Der Pull-Pfad lehnt jedes
-pre-v3-Remote-Doc ab (`sync._remote_is_pre_v3` in `src/main.py::_run_pull_in_background`)
-und pausiert mit der Meldung `OLD_REMOTE_VERSION_MSG` („ein anderes Gerät nutzt
-eine ältere App-Version").
-
-**Symptom:** Ein Nutzer mit **nur einem Gerät**, der bisher v2 lokal *und* im
-Sync genutzt hat, sieht beim **ersten** Start nach dem v3-Upgrade genau diese
-Meldung — obwohl es gar kein anderes Gerät gibt. Der Guard greift hier auf das
-**eigene**, zuletzt selbst gepushte v2-Doc auf Drive.
-
-**Self-Heal:** Es korrigiert sich von selbst. Die lokalen Daten sind beim Start
-bereits nach v3 migriert; der nächste Push (manuell oder beim Schließen)
-überschreibt das Drive-Doc mit v3 — der `expected_etag` passt noch auf das
-unveränderte v2-Doc, also kein Konflikt, kein Guard-Abbruch. Ab dem zweiten
-Start ist alles normal.
-
-**Auswirkung:** Reine UX-Kosmetik — **kein Datenverlust, kein Überschreiben**
-fremder Daten. Nur die Meldung ist in diesem Einzelgerät-Fall einmalig
-irreführend.
-
-**Möglicher Fix (später, im Rahmen von PR margenheld/Zeiterfassung#60):** Den
-Pull nicht pausieren, wenn das pre-v3-Remote-Doc ausschließlich Einträge des
-**eigenen** `device_id` enthält (= eigenes Alt-Doc, kein fremdes aktives Gerät)
-— dann still nach v3 migrieren/pushen. Alternativ die Meldung so
-umformulieren, dass sie den Einzelgerät-Fall mit abdeckt. Der Guard für echte
-Multi-Device-Fälle bleibt unangetastet.
 
 ## Windows: Aufblitzen der hellen Titelleiste — behoben, mit Rest
 
@@ -163,9 +133,9 @@ Dialog-Verdrahtung umbaut, verifiziert sie von Hand.
 
 **Herkunft:** Audit-Finding **M16** (margenheld/Zeiterfassung#131) stellte die
 Grundsatzfrage („schließen oder als akzeptierte Lücke dokumentieren"),
-**margenheld/Zeiterfassung#148** schlug den engen `xvfb`-Ausschnitt vor. Beide
-sind mit dieser Entscheidung geschlossen — sie ist damit getroffen, nicht
-vertagt. Ältere Specs, die „Audit M16 offen" schreiben, sind an dieser Stelle
+**margenheld/Zeiterfassung#148** schlug den engen `xvfb`-Ausschnitt vor. M16 ist
+im Sammel-Issue #131 mit dieser Entscheidung abgehakt, #148 ist geschlossen —
+die Entscheidung ist damit getroffen, nicht vertagt. Ältere Specs, die „Audit M16 offen" schreiben, sind an dieser Stelle
 überholt.
 
 ## Linux: Reste nach dem Löschen der AppImage
@@ -174,8 +144,14 @@ Löscht der Nutzer die AppImage, bleiben Menüeintrag und Autostart-Datei
 zurück und zeigen ins Leere. Die App kann nicht aufräumen, wenn sie nicht
 mehr startet, und das AppImage-Format kennt keinen Deinstallations-Hook.
 Gilt gleichermaßen für die zurückbleibenden Nutzerdaten inkl. `token.json`
-und `webhooks.json` — das ist plattformübergreifend erfasst in
-[margenheld/Zeiterfassung#183](https://github.com/margenheld/Zeiterfassung/issues/183).
+und `webhooks.json` (#50).
+
+**Ausweg:** vor dem Löschen der AppImage Einstellungen → App →
+„Zeiterfassung entfernen“ (seit 1.24.0). Das räumt Schlüsselbund,
+Zugangsdaten, Autostart und Menüeintrag ab, auf Wunsch auch Zeiten,
+Einstellungen und Protokoll, und nennt danach die AppImage samt Löschbefehl
+(unter Linux am 2026-11-26 geprüft, #50). Die Grenzen dieses Wegs stehen
+unter „macOS/Linux haben keinen Uninstaller“.
 
 Der Autostart heilt außerdem erst, **nachdem** die neue AppImage einmal
 gestartet wurde. Wer die neue Version herunterlädt und nie öffnet, startet
@@ -271,12 +247,21 @@ lässt (`X-Api-Key`, `Authorization`, `X-Hub-Signature-256`).
 
 ## SMTP: keine Microsoft-Konten
 
-Der SMTP-Versand meldet sich mit Benutzer und Passwort an. Microsoft hat das
-für Outlook.com und Microsoft 365 2026 abgeschaltet (Ablehnung ab März,
-endgültig zum 30.04.2026) — auch App-Passwörter greifen dort nicht mehr, SMTP
-läuft nur noch über OAuth2. Ein Microsoft-Postfach lässt sich deshalb nicht
-als SMTP-Konto einrichten; wer eines nutzen will, geht über die Gmail-API
-oder einen anderen Anbieter.
+Der SMTP-Versand meldet sich mit Benutzer und Passwort an. Für Outlook.com
+(private Konten) verlangt Microsoft seit dem 16.09.2024 in fremden
+Mail-Programmen eine Anmeldung über OAuth2
+([Outlook-Blog](https://techcommunity.microsoft.com/blog/outlook/keeping-our-outlook-personal-email-users-safe-reinforcing-our-commitment-to-secu/4164184));
+auf die Anmeldung mit Passwort ist dort kein Verlass mehr. Für Microsoft 365 (Exchange Online)
+hat Microsoft den Zeitplan im Januar 2026 geändert
+([Exchange-Team-Blog](https://techcommunity.microsoft.com/blog/exchange/updated-exchange-online-smtp-auth-basic-authentication-deprecation-timeline/4489835)):
+bis Ende Dezember 2026 bleibt die Anmeldung mit Passwort für SMTP AUTH
+unverändert, danach ist sie in bestehenden Tenants standardmäßig aus
+(Administratoren können sie wieder einschalten), in neuen Tenants von Anfang
+an; den endgültigen Termin will Microsoft in der zweiten Hälfte 2027
+nennen. Ein Microsoft-365-Postfach geht als SMTP-Konto also nur, solange
+der Tenant das erlaubt; dauerhaft tragfähig ist es nicht. Wer ein
+Microsoft-Postfach nutzen will, geht besser über die Gmail-API oder einen
+anderen Anbieter.
 
 Ein eigener OAuth2-Flow für SMTP (XOAUTH2) würde das lösen, wäre aber ein
 zweiter vollständiger Auth-Flow neben dem bestehenden — bewusst nicht gebaut.
@@ -368,8 +353,12 @@ Der Windows-Uninstaller ruft `Zeiterfassung.exe --forget-secrets` und wartet
 auf dessen Ende (`ewWaitUntilTerminated`), bevor er die Dateien löscht — aus
 ihnen stammen die Schlüssel. Antwortet der Schlüsselbund nicht, greift pro
 Eintrag der 30-Sekunden-Watchdog, und die Zeiten summieren sich (Token, jeder
-Webhook, jedes SMTP-Konto im Schlüsselbund) — die Deinstallation steht dann
-entsprechend lange ohne sichtbaren Fortschritt.
+Webhook, jedes SMTP-Konto und jeder Geräteschlüssel eines Handys
+`mobile:<id>` im Schlüsselbund) — die Deinstallation steht dann
+entsprechend lange ohne sichtbaren Fortschritt. Dazu löscht `--forget-secrets`
+die Relay-Boxen der Handys; ist der Relay nicht erreichbar, wartet es dafür
+einmal bis zu 10 Sekunden und versucht die übrigen Boxen nicht mehr (sie
+verfallen am Relay von selbst).
 Sie läuft danach normal weiter, die betroffenen Einträge bleiben stehen.
 
 ### macOS/Linux haben keinen Uninstaller
@@ -388,7 +377,8 @@ Wer die Schlüsselbund-Einträge stattdessen von Hand entfernen will, findet sie
 in der „Schlüsselbundverwaltung" (macOS) bzw. „Passwörter und Schlüssel"
 (Linux, GNOME Keyring/Seahorse — abhängig vom installierten
 Secret-Service-Backend), und zwar unter **zwei** Service-Namen:
-`Zeiterfassung:<Schlüssel>` (Refresh-Token, Webhook-Secrets) und exakt
+`Zeiterfassung:<Schlüssel>` (Refresh-Token, Webhook-Secrets, Geräteschlüssel
+der Handys als `Zeiterfassung:mobile:<id>`) und exakt
 `Zeiterfassung` (SMTP-Passwörter, Konto-ID als Benutzername;
 `keyring_store.SERVICE`). Eine Suche nur nach dem Präfix `Zeiterfassung:`
 übersähe die SMTP-Passwörter.
@@ -396,16 +386,22 @@ Secret-Service-Backend), und zwar unter **zwei** Service-Namen:
 Die vollständige Schritt-für-Schritt-Anleitung steht in der README unter
 „Vollständig entfernen".
 
-Seit der Version, die diesen Eintrag einführt (siehe CHANGELOG), gibt es
-„Zeiterfassung entfernen" (Einstellungen → App). Zwei Grenzen:
+Seit 1.24.0 gibt es „Zeiterfassung entfernen" (Einstellungen → App). Drei
+Grenzen:
 
 - Der Schritt „Schlüsselbund-Einträge" meldet ✓, sobald `--forget-secrets`
   durchlief — der läuft Eintrag für Eintrag durch und schluckt Einzelfehler
   (Timeout, gesperrter Schlüsselbund). Ein ✓ heißt „ausgeführt", nicht
   „nachgeprüft"; Fehler stehen nur im Protokoll, und mit dem Häkchen
-  „Nutzerdaten" löscht die App auch dieses.
+  „Auch Zeiten, Einstellungen und Protokoll löschen" löscht die App auch dieses.
 - Die Programmdatei löscht die App nicht (Linux: `$APPIMAGE`, macOS: `.app`).
-  Unter macOS ist der Ablauf nicht auf einem Mac geprüft worden.
+  Unter Linux ist der Ablauf geprüft (2026-11-26, abgeschottet neben einer
+  echten Installation, #50), unter macOS nicht auf einem Mac.
+- Push-Objekte am Relay (Erinnerungen) löscht der Schritt nicht: das lokale
+  Relay-Geheimnis geht mit den Zugangsdaten, das Objekt verfällt am Relay
+  nach 90 Tagen ohne Aktualisierung. Wer es sofort los sein will, schaltet
+  vorher am Handy die Benachrichtigungen aus oder widerruft das Gerät in
+  Einstellungen → Mobil.
 
 ## macOS: kein Selbst-Update
 
@@ -443,8 +439,9 @@ Augenhöhe mit den anderen beiden Plattformen.
   Betriebssystem nicht zu ändern — direkt daneben liegt `token.json`, das mehr
   wert ist. Bewusst kein Schlüsselbund: Skripte müssen das Token lesen können.
   Die API verschiebt diese Grenze nicht.
-- **Kein TLS.** Auf Loopback bedeutungslos. Mit der LAN-Freigabe (#221) wird das
-  eine Entscheidung.
+- **Kein TLS.** Auf Loopback bedeutungslos. Die Handy-Instanz im LAN (#221)
+  verschlüsselt stattdessen die Nutzdaten Ende-zu-Ende (s. „Handy-Erfassung“
+  unten).
 - **Nur solange die App läuft.** Der Server lebt im App-Prozess (Single-Writer,
   siehe #92); ohne laufende App ist die API nicht erreichbar. Wer sie praktisch
   braucht, schaltet Autostart ein.
@@ -485,13 +482,14 @@ Augenhöhe mit den anderen beiden Plattformen.
   (28 Zeichen, ≈139 Bit) steht nie im Netz; der Abgleich läuft mit einem eigenen, zufälligen
   Geräteschlüssel, den die Kopplungsantwort verschlüsselt mitbringt — ein später abfotografierter
   QR-Code öffnet keinen Abgleich. **Sichtbar bleibt**, dass ein Handy mit dem Rechner spricht,
-  wann und wie viel (Adressen, Zeitpunkte, Größen), und `GET /v1/ping` (Version, Serverzeit).
+  wann und wie viel (Adressen, Zeitpunkte, Größen), und `GET /v1/ping` (Protokollversion, Serverzeit,
+  Standardfenster).
   **Keine Forward Secrecy:** wer später den Geräteschlüssel erbeutet, kann Mitschnitte von vorher
   lesen. Wer die Verbindung aktiv stört (Pakete verwerfen), kann den Abgleich verhindern, aber
   nichts lesen oder schreiben. Das Gerätetoken steht weiter im Klartext-Header, ist aber ohne den
   Schlüssel wertlos. Weitere Maßnahmen: Funktion standardmäßig aus, Bindung nur an die gewählte
   Adresse, Token pro Gerät (nur als Hash gespeichert, widerrufbar, 30 Tage ab letztem Abgleich),
-  kurzlebiger, einmaliger Kopplungscode. Im WLAN nicht möglich bleibt Firefox und iOS (Mixed Content, s. u.);
+  kurzlebiger, einmaliger Kopplungscode. Im WLAN nicht möglich sind Safari (iPhone, iPad) und vermutlich Firefox (Mixed Content, s. u.);
   dafür gibt es den Weg über den Relay (Abschnitt „Abgleich über den Relay“ unten, #358). HTTPS direkt vom
   Desktop (die frühere Alternative aus #249) ist nicht geplant: der Relay ist der Weg dafür.
 - **Wo der Geräteschlüssel am Rechner liegt.** Im Schlüsselbund des Betriebssystems (Windows
@@ -517,8 +515,9 @@ Augenhöhe mit den anderen beiden Plattformen.
   nur in der Theorie, auch eine Kollision beim DB-Namen `zeiterfassung` gibt es nicht.
   **Regel:** unter `xveyn.github.io` kein Projekt veröffentlichen, das Fremdcode (CDN, Pakete)
   lädt, ohne vorher diese Grenze neu zu bewerten. Entfällt sie, ist die eigene Origin für die
-  PWA die einzige strukturelle Lösung (`PWA_ORIGIN`/`PWA_URL` in `src/mobile_routes.py`, alle
-  Handys müssten neu koppeln); ein anderer DB-Name allein schützt nicht.
+  PWA die einzige strukturelle Lösung (`PWA_ORIGIN`/`PWA_URL` in `src/pwa_constants.py`, dazu
+  `PAGES_ORIGIN` in `relay/src/worker.js`; alle Handys müssten neu koppeln); ein anderer DB-Name
+  allein schützt nicht.
 - **Verbindungsplätze.** Die Handy-Instanz nimmt höchstens 32 gleichzeitige Verbindungen an, davon höchstens 8 je
   Absender-Adresse; weitere werden sofort geschlossen (angenommen wird vor der Anmeldung). Das bremst ein einzelnes
   Gerät im WLAN, das Plätze belegt. Wer mehrere Adressen im Netz nutzt, kann trotzdem alle 32 halten (je Verbindung
@@ -566,18 +565,19 @@ Augenhöhe mit den anderen beiden Plattformen.
 - **Die Uhr des Handys zählt.** Bei gleichzeitigen Änderungen am selben Tag gewinnt der
   neuere Zeitstempel (bei Änderungen auf beiden Seiten zunächst als Konflikt). Weicht die Uhr um mehr als 2 Minuten ab, warnt die Web-App; bei mehr
   als 15 Minuten lehnt der Abgleich ab.
-- **Das Handy kennt standardmäßig die letzten 90 Tage.** Es kann bis zur Obergrenze, die der
-  Desktop vorgibt (Einstellungen → Mobil, höchstens 365 Tage), ältere Zeiten nachladen. Tage
-  außerhalb des geladenen Fensters und alles ab morgen wirken dort leer, auch wenn die App
-  Einträge hat. Wer dort speichert, ersetzt sie ohne Konflikt; der Editor warnt vor dem Fenster
-  und ab übermorgen (für morgen nicht). Solche Tage verschwinden nach dem nächsten Abgleich
-  wieder vom Handy (#265, #273, #250). Bei sehr großen Beständen (viele Slots je Tag) kürzt der
+- **Das Handy kennt standardmäßig die letzten 90 Tage und die nächsten 14.** Es kann bis zur
+  Obergrenze, die der Desktop vorgibt (Einstellungen → Mobil, höchstens 365 Tage), ältere Zeiten
+  nachladen. Tage vor dem geladenen Fenster und mehr als 14 Tage nach heute wirken dort leer, auch
+  wenn die App Einträge hat; die Arbeitszeit solcher Tage ist im Editor **gesperrt**, damit ein
+  Speichern keinen unsichtbaren Desktop-Eintrag ersetzt (#273), mit „Ältere Zeiten laden“ als
+  Ausweg vor dem Fenster. Nicht gesperrt ist ein Tag, zu dem das Handy schon einen Datensatz
+  hält. Ein älterer Desktop ohne `window_ahead_days` liefert nichts nach heute; das Handy lässt dann noch morgen bearbeiten (Spielraum für die Uhr), und ein Speichern dort kann einen Desktop-Eintrag von morgen ohne Konflikt ersetzen (#265, #250). Bei sehr großen Beständen (viele Slots je Tag) kürzt der
   Desktop das Fenster auf ein Datenbudget von 768 KiB; die Wochenansicht sagt dann „wegen der
   Datenmenge“. Mehr als 365 Tage gibt es nur am Desktop.
 - **Mehr als 400 nicht übertragene Tage** gehen in Päckchen zu höchstens 400 innerhalb eines
   Abgleichs hinaus (`MAX_DAYS_PER_REQUEST`, neueste zuerst); der Server lehnt mehr als 400 je
   Anfrage weiter ab. Scheitert ein späteres Päckchen, bleiben die vorherigen angewendet und der
-  Rest „nicht übertragen“ bis zum nächsten Lauf. Offene Review-Reste dazu: #262.
+  Rest „nicht übertragen“ bis zum nächsten Lauf.
 - **Geräteverwaltung und Urlaub sind gerätelokal.** Die Liste der gekoppelten Handys
   und der Urlaub reisen nicht per Drive-Sync; das Handy zeigt keinen Urlaub. Reservierungen
   zeigt und bearbeitet es, sofern „Reservierungen verwenden“ am Rechner an ist.
@@ -638,6 +638,26 @@ Augenhöhe mit den anderen beiden Plattformen.
 - **Passkeys der App-Sperre** bleiben auf dem Handy: aus dem Web lässt sich ein Passkey nicht löschen.
 - **iOS:** Safari-Tab und installierte App haben getrennten Speicher; gelöscht wird nur der, in dem man gerade ist.
 
+## App-Sperre der Web-App (#490): bekannte Grenzen
+
+Die Web-App lässt sich mit der Geräte-Entsperrung sperren (Einstellungen → Verbindung, Abschnitt „Sperre“).
+
+- **Eine Komfort-Sperre, kein Schutz der gespeicherten Daten.** Sie verdeckt die Oberfläche. Die Daten
+  liegen weiter im Speicher des Browsers, und zwar **unverschlüsselt**: die Verschlüsselung des lokalen
+  Speichers ist vorbereitet, aber noch ausgeschaltet (`pwa/vault.js`, `ENCRYPT_AT_REST`). Dazu gehören auch
+  Gerätetoken, Geräteschlüssel und Box-Geheimnis. Wer an den Speicher des Browsers kommt (Kopie des Geräts,
+  Entwicklerwerkzeuge), liest ihn ohne die Sperre.
+- **Die Signatur der Entsperrung wird nicht geprüft.** Ohne Server gäbe es niemanden, dem sie etwas belegte,
+  und Skript im selben Ursprung umgeht die Sperre ohnehin. Geprüft werden Challenge, Typ, Herkunft des
+  Authenticators, Credential-ID und die Flags „Anwesenheit“ und „Verifizierung“ (`pwa/lock.js`).
+- **Die Vorschau im App-Wechsler** wird nicht verdeckt.
+- **Notausgang ist nur „Neu koppeln“:** er löscht alle lokalen Daten der Web-App, nicht übertragene Tage
+  gehen verloren. Ein „Sperre zurücksetzen, Daten bleiben“ gibt es bewusst nicht: Browser melden „abgebrochen“
+  und „Passkey nicht gefunden“ gleich, und wer das Handy in der Hand hat, käme so an die Einträge.
+- **Der Passkey hängt am Host** (`xveyn.github.io`): zieht die Web-App um, ist er unbrauchbar und die Sperre
+  muss neu eingerichtet werden.
+- **Geprüft** in Chromium (virtueller Authenticator); auf iOS und in Firefox noch nicht.
+
 ## Push-Relay (#331): ein neuer Vertrauens-Ort
 
 Die Handy-Erfassung kennt bisher nur GitHub Pages (statische PWA) und die LAN-Verbindung zum
@@ -649,8 +669,8 @@ läuft.
   Abo-Schlüssel, das Zufallsgeheimnis des Handys (gespeichert nur als Hash, der Worker sieht es aber bei jeder Anfrage im Klartext), die Zeitpunkte der Erinnerungen und ein
   verschlüsseltes Blob. Das genügt für „es gibt ein Gerät, das zu diesen Zeiten benachrichtigt wird".
 - **Was er nicht sieht:** Arbeitszeiten, Kategorien, Namen. Der Text der Benachrichtigung ist mit einem
-  Schlüssel verschlüsselt, den nur Handy und Service Worker kennen. Die Push-Dienste (Google, Mozilla)
-  sehen zusätzlich Metadaten, den Inhalt nicht.
+  Schlüssel verschlüsselt, den nur Handy und Service Worker kennen. Die Push-Dienste (Google, Mozilla,
+  Apple, Microsoft) sehen zusätzlich Metadaten, den Inhalt nicht.
 - **Eine am Handy eingetragene Zeit nimmt die Erinnerung nur heraus, wenn der neue Plan den Relay erreicht.**
   Die Web-App sendet ihn sofort nach dem Speichern (auch ohne Desktop, #507) und wiederholt bei einem Fehler. Ist
   das Handy dabei ohne Netz und wird die App geschlossen, bevor es wieder Netz hat, kommt die Erinnerung trotzdem;
@@ -733,7 +753,9 @@ für Fragen: `docs/datenschutz.md` (die Web-App verlinkt es im Koppel-Bildschirm
   Boxen beliebig lange. Push-Geräte teilen denselben Speicher und räumen sich erst nach 90 Tagen auf; über
   sie füllt er sich rund neunmal langsamer, dafür bleibt der Müll länger (#540). Eine kürzere Frist nur für Boxen, an
   denen erst eine Seite angemeldet war, hülfe nicht: wer das Geheimnis erfindet, kann beide Seiten spielen.
-  Eine kleinere Höchstgröße je Nachricht ist #538.
+  Eine kleinere Höchstgröße je Nachricht ist #538. **Übergang:** eine Box, deren letzte Nachricht vor dem
+  Ausrollen der 14-Tage-Regel (26.11.2026) lag, behält ihre damals gesetzte 90-Tage-Frist, bis wieder eine
+  Nachricht kommt (dann gilt die neue); spätestens Ende Februar 2027 ist auch der letzte solche Rest geräumt.
 - **iOS-Eigenheit:** Safari-Tab und installierte Web-App haben getrennten Speicher, und iOS löscht den Speicher
   im Tab nach sieben Tagen ohne Nutzung. Auf einem aktuellen iPhone hat das Koppeln mit der Kamera-App
   funktioniert; je nach iOS-Version öffnet sie den QR-Link aber im Browser statt in der installierten Web-App.
@@ -742,8 +764,6 @@ für Fragen: `docs/datenschutz.md` (die Web-App verlinkt es im Koppel-Bildschirm
   installierten Web-App, der Desktop unter Linux und macOS (#421; Windows ist bestätigt),
   Chrome auf Android über den Relay. Firefox auf Android ist geprüft: Koppeln, Abgleich und Push
   (2026-11-09).
-- **Offene Randfälle:** #422 (Koppel-Dialog), #423 („verdrängt“ ohne Ausweg), #425 und #426 (Relay-Transport der
-  Web-App, Tests und Doku).
 
 ## Slot-Notizen (#519): bekannte Grenzen
 
@@ -774,8 +794,9 @@ daraus folgt, ist in einer gemischten Flotte nicht ganz zu schließen.
   bei gleichem Stempel über die Textform); ein danach neu angelegter Tag ohne Schlüssel kann dann von
   einem Gerät, das noch einen Stand mit Notiz hält, die alte Notiz zurückbekommen.
 - **Welche Neuanlagen den Schlüssel tragen.** Legt ein neuer Desktop einen Tag über einem Tombstone
-  mit Schlüssel neu an, trägt der neue Tag ihn sofort und erbt nichts. Das Handy (die PWA schickt
-  heute kein `notiz`) und ein altes Gerät legen den Tag ohne Schlüssel an; er bekommt ihn im Merge,
+  mit Schlüssel neu an, trägt der neue Tag ihn sofort und erbt nichts. Eine PWA, die für den Tag kein
+  `notiz` sendet (älterer, noch gecachter Stand oder ein Tag ohne Notizwissen, s. `pwa/CLAUDE.md`), und
+  ein altes Gerät legen den Tag ohne Schlüssel an; er bekommt ihn im Merge,
   sobald das mergende Gerät den Tombstone mit Schlüssel hält (`notes: {}`, Stempel + 1 s). Beim
   Handy ist das immer der Fall, der Desktop hält den Tombstone selbst. **Grenze:** synchronisiert ein
   Gerät, das noch den Stand mit Notiz von vor dem Löschen hält, den ohne Schlüssel neu angelegten Tag
@@ -828,6 +849,19 @@ daraus folgt, ist in einer gemischten Flotte nicht ganz zu schließen.
   vergisst das Handy sein Notizwissen für diesen Tag und sendet ihn ohne `notiz`: der Desktop behält so seine Notizen,
   statt sie still zu löschen. Eine in genau dieser Fassung getippte Notiz geht dabei nicht hinaus und
   verschwindet vom Handy.
+
+## Slot-Reihenfolge (#520): bekannte Grenzen
+
+Die Slots eines Tages stehen chronologisch, nach Kategorie oder in einer eigenen Reihenfolge
+(Einstellungen → Arbeitszeit → „Slots eines Tages“, `slot_order_mode`, synchronisiert).
+
+- **Reservierungen bleiben in Zeilenreihenfolge.** Kalender-Termin und Sende-Erinnerung hängen positionsweise
+  an ihren Slots; ein Umsortieren im Speicher ließe sie auf andere Slots wandern. Die Anzeige sortiert trotzdem.
+- **Das Handy liest den Modus nur.** Ändern lässt er sich am Desktop.
+- **Eine noch gecachte Web-App von vor der Slot-Reihenfolge** speichert einen Tag beim Bearbeiten
+  chronologisch: eine eigene Reihenfolge dieses Tages geht dann verloren, bis das Update der Web-App ankommt
+  (kein Konflikt, kein Datenverlust an den Zeiten selbst).
+- **Lokale API und Sync-Doc** liefern die gespeicherte Reihenfolge, nicht die angezeigte.
 
 ## Beschädigte oder fremde Daten (Storage)
 

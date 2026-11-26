@@ -11,8 +11,8 @@ name: Gitleaks
 # Repos in Organisationen eine Lizenz. Das Release-Binary ist frei, und der Pin
 # samt SHA256-Prüfung entspricht der Supply-Chain-Linie des Repos (kein `latest`).
 #
-# Bewusst KEIN Required Check: ob er ins Ruleset kommt, entscheidet der
-# Maintainer (das Ruleset liegt außerhalb des Repos, s. „Branch Protection").
+# Required Check im Ruleset „Protect master“ (das Ruleset liegt außerhalb des
+# Repos; die Liste steht in CLAUDE.md, „Branch Protection“).
 
 on: [push, pull_request]
 

@@ -1,5 +1,7 @@
 # Projekt-Übernahme — Fork-Promotion nach `Xveyn/Zeiterfassung`
 
+> Stand eingefroren; aktueller Schutz siehe `CLAUDE.md`, Branch Protection.
+
 > [!NOTE]
 > **Der Umzug ist am 2026-08-26 vollzogen.** `Xveyn/Zeiterfassung` ist das
 > kanonische Repository (`fork: false`, kein `parent`), trägt alle 48 Tags, und

@@ -29,6 +29,14 @@ ui.py::App  ── schlanker KOORDINATOR (kein God-Object mehr)
    └─ UpdateCoordinator   (update_coordinator.py) — Update-Lebenszyklus (Check, Toast/Banner, Tray, Beenden)
 ```
 
+Daneben baut `App` Dienste, die je eine Aufgabe außerhalb des Grids tragen und unten
+beschrieben sind: `ReminderScheduler`/`SendReminderScheduler` (Erinnerungs-Polls),
+`ApiService` (lokale API), `MobileService`/`RelayService` (Handy-Erfassung, LAN und Relay),
+`RemovalState` („Zeiterfassung entfernen“), `ScaleBanner`/`ScaleWatcher` (Skalierung beim
+Monitorwechsel, nur Linux) und `TopmostRelief` („Immer im Vordergrund“ während eines
+Schlüsselbund-Prompts). Sie folgen demselben Muster: Konstruktor-Injektion, Rückfluss per
+Callback, kein Import von `src.ui`.
+
 `App` hält den fachlichen Zustand und die Widget-Chrome (Header/Footer/Tray), die
 Komponenten kapseln je eine Verantwortlichkeit. Datenfluss läuft App → Komponente
 (per Methodenaufruf / Konstruktor), Rückfluss per **injizierten Callbacks** (App reicht
@@ -65,8 +73,8 @@ Rendering der Monats-/Wochenansicht inkl. Double-Buffer und Fenster-Geometrie.
   (aktuelle reqheight) neu auf das fixe Fenster. Genutzt vom View-/Spalten-Wechsel in
   `refresh()`, beim Wechsel der Footer-Reservierungsbreite (Stundenlohn zur Laufzeit
   gesetzt/entfernt — `_update_footer` reserviert 20 vs. 42 Zeichen, s.u.) **und** extern vom
-  `UpdateBanner` (als `on_resize`), dessen Ein-/Ausblenden die nötige Höhe ändert, ohne
-  View/Spalten zu wechseln. `resizable(False, False)` bleibt. Die **Breite ratcht**:
+  `UpdateBanner` und vom `ScaleBanner` (je als `on_resize`), deren Ein-/Ausblenden die nötige
+  Höhe ändert, ohne View/Spalten zu wechseln. `resizable(False, False)` bleibt. Die **Breite ratcht**:
   `_fixed_width` wächst mit der breitesten je angeforderten reqwidth mit, schrumpft aber nie
   wieder — startet die App ohne Lohn (schmaler Footer, `measure_max_width` pinnt schmal) und
   der Nutzer trägt später einen Lohn ein, wächst das Fenster einmalig auf die breite Variante
@@ -83,14 +91,14 @@ Thread-Mechanik **und** die proaktiven Startup-Tasks.
   liefert das Ergebnis via `marshal` (= `App._marshal_to_ui`) an `on_done` auf dem
   **UI-Thread**. Auch `SyncOrchestrator` nutzt `run()` — es gibt nur dieses eine Muster.
 - Eigene Tasks: `refresh_token`, `fetch_sender_email`, `check_update`, `reconcile_on_start`,
-  `trigger_reconcile`. Deren Gate ist der Parameter `calendar_active` (= `App._calendar_push_active`,
-  d. h. `gcal_enabled`): den Reservierungs-Store reichen sie nur
+  `trigger_reconcile`, `purge_vacations` (Urlaubstermine aus dem Kalender räumen) und
+  `migrate_secrets` (Start-Umzug der Secrets in den Schlüsselbund). Dazu `wait_idle(timeout)`:
+  wartet laufende Jobs ab („Zeiterfassung entfernen“, Skalierungs-Neustart). Gate von `reconcile_on_start`/`trigger_reconcile` ist der Parameter `calendar_active` (= `App._calendar_push_active`,
+  d. h. `gcal_enabled`; `purge_vacations` hängt bewusst nicht daran): den Reservierungs-Store reichen die beiden nur
   durch, wenn `reservations_enabled` an ist — ohne ihn pusht `run_calendar_reconcile` nur Urlaub. UI-Arbeit (Dialoge/Banner/Refresh) bleibt beim Aufrufer — `App`,
   für den Update-Check der `UpdateCoordinator` — und kommt als Callback.
-- Tk-frei, keine Google-Imports auf Modulebene; `run_calendar_reconcile` kommt
-  seit R1 als normaler **Top-Level-Import aus `src.sync_runtime`**
-  (`background_tasks.py:16`) — vorher lag es in `src.main` und musste wegen
-  des damaligen Circular-Import-Risikos lazy importiert werden.
+- Tk-frei, keine Google-Imports auf Modulebene; `run_calendar_reconcile` kommt als normaler
+  **Top-Level-Import aus `src.sync_runtime`**.
 
 ### SyncOrchestrator (`sync_orchestrator.py`)
 Drive-Sync: manueller Sync, Tray-Sync, Pull-Callbacks, Status-Label, Quit-Push, Fehler-
@@ -102,11 +110,11 @@ Tests genutzt). Reine Formatier-Helfer `_status_view`/`_tray_toast` sind ohne Tk
   das **lokale** Datum über `time_utils.local_date_of_iso`, weil `last_pull_at` in UTC steht.
   Ein minütlicher `root.after`-Tick (`start_day_watch`/`poll_day_change`, Muster wie
   `ReminderScheduler`) zieht das über Mitternacht nach; er rendert nur bei echtem
-  Datumswechsel neu. `App` startet ihn nach `attach_widgets` und stoppt ihn in beiden
-  Shutdown-Pfaden.
+  Datumswechsel neu. `App` startet ihn nach `attach_widgets` und stoppt ihn in allen drei
+  Shutdown-Pfaden (Beenden, Entfernen, Skalierungs-Neustart).
 - Header-Widgets per `attach_widgets(...)`; Tray **lazy** über `get_tray=lambda: App._tray`
   (einzige Quelle bleibt `App._tray`); `run_push_blocking` kommt aus `src.sync_runtime`
-  (seit R1 ein normaler Top-Level-Import — vorher lazy aus `src.main`).
+  (normaler Top-Level-Import).
 - `App.on_sync_pull_success`/`on_sync_pull_error` bleiben als dünne Delegatoren (Public-API
   für `main.py`). `tray.stop()`/`root.destroy()` bleiben in `App._quit_with_sync_push`.
 
@@ -127,7 +135,7 @@ Browser-Download aus `_open_download`. `open_settings_dialog(...,
 initial_tab=...)` ist der dafür ergänzte, sonst unveränderte Default-Pfad
 (`dialog.py`).
 
-**Zweiter Banner-Zustand seit dem Automatik-Schalter (Task 9):**
+**Zweiter Banner-Zustand (Automatik-Schalter):**
 `show_ready_to_install(release)` zeigt (oder aktualisiert) den Banner mit
 „Update bereit — wird beim Beenden installiert" statt „Version X verfügbar" —
 ohne Install-/Download-Button, es gibt nichts mehr zu klicken. Anders als
@@ -209,11 +217,12 @@ liefert `None`, wenn sich nicht ermitteln ließ, ob ein Passwort existiert
 `share_task`, `smtp_dialog.do_test`) melden das als eigenen Fehlerfall statt
 sich mit leerem Passwort anzumelden.
 
-**Datenschicht-Locking (Audit H1/H2/M1):** Fünf der sieben Stores
+**Datenschicht-Locking (Audit H1/H2/M1):** Fünf Stores
 (`storage`/`settings`/`conflicts_store`/`reservations`/`vacations`) teilen
 sich einen in `main()` erzeugten `RLock` (Konstruktor-Param `lock=`; ohne
-Injektion legt jeder Store einen eigenen an — Tests bleiben unverändert); nur
-`webhook_store`, `smtp_store` und `mobile_store` bringen bewusst ihren eigenen mit (s. „Daten- &
+Injektion legt jeder Store einen eigenen an — Tests bleiben unverändert); alle übrigen
+(`webhook_store`, `smtp_store` und die gerätelokalen `mobile_*`-Stores: Geräte, Schlüssel,
+Relay- und Box-Geheimnisse, Box-Cursor) bringen bewusst ihren eigenen mit (s. „Daten- &
 Persistenz-Schicht" unten). Die Sync-Flows
 (`run_pull_in_background`/`run_push_blocking`/`run_compaction_blocking`, alle in `sync_runtime.py`/
 `reconcile_reservations`) klammern Snapshot→Merge→Apply mit diesem `data_lock`
@@ -244,7 +253,12 @@ Konfliktcheck → Speichern unter demselben `data_lock` aus und rufen die UI nur
 `App._marshal_to_ui` (`ctx.on_change`, nach dem Lock). `App._quit_with_sync_push` stoppt die API
 VOR dem finalen Push, damit nach dem Snapshot keine Route mehr schreibt.
 
-**Ein dritter Thread-Ort neben dem Accept-Loop in `single_instance` und dem API-Server** ist die WebSocket-Verbindung zum Relay (`relay_link.py`, Handy-Abgleich über die Box, PR 3b): je Box ein Leser-Thread (`relay-box-<marke>`) und für alle Boxen **ein** Arbeits-Thread (`relay-worker`), der `relay_adapter.RelayAdapter.process` über den Handler des Dienstes (`relay_service`) nacheinander ruft; dazu kurzlebige `relay-close`-Threads, damit niemand auf einen Close-Handshake wartet. Der Leser ruft nie Handler, `on_idle` oder Cursor — ein Abgleich dauert Sekunden, der Heartbeat darf nicht warten. Die Threads liegen wie der API-Server **außerhalb** von `BackgroundTaskRunner`; `wait_idle` wartet nicht auf sie, `RelayService.shutdown()` (an denselben drei Stellen wie `MobileService.shutdown()`) schließt die Sockets und wartet höchstens `LinkTiming.join_s`. Alle Regeln (Sperren, Reihenfolge, Heartbeat, Backoff) stehen im nächsten Absatz. Design: `docs/superpowers/specs/2026-11-02-ios-relay-abgleich-design.md`, Abschnitt „Desktop“.
+Ein kurzlebiger Nebenfaden liegt ebenfalls außerhalb des Runners: `MobileKeyStore.request_load`
+startet je fehlendem Geräteschlüssel einen Daemon-Thread `mobile-keys-load`, der ihn aus dem
+Schlüsselbund nachlädt (gedrosselt, `LOAD_RETRY_SECONDS`). `wait_idle` wartet nicht auf ihn; er
+fasst nur den Speicher-Cache von `mobile_keys` an.
+
+**Ein dritter Thread-Ort neben dem Accept-Loop in `single_instance` und dem API-Server** ist die WebSocket-Verbindung zum Relay (`relay_link.py`, Handy-Abgleich über die Box): je Box ein Leser-Thread (`relay-box-<marke>`) und für alle Boxen **ein** Arbeits-Thread (`relay-worker`), der `relay_adapter.RelayAdapter.process` über den Handler des Dienstes (`relay_service`) nacheinander ruft; dazu kurzlebige `relay-close`-Threads, damit niemand auf einen Close-Handshake wartet. Der Leser ruft nie Handler, `on_idle` oder Cursor — ein Abgleich dauert Sekunden, der Heartbeat darf nicht warten. Die Threads liegen wie der API-Server **außerhalb** von `BackgroundTaskRunner`; `wait_idle` wartet nicht auf sie, `RelayService.shutdown()` (an denselben drei Stellen wie `MobileService.shutdown()`) schließt die Sockets und wartet höchstens `LinkTiming.join_s`. Alle Regeln (Sperren, Reihenfolge, Heartbeat, Backoff) stehen im nächsten Absatz. Design: `docs/superpowers/specs/2026-11-02-ios-relay-abgleich-design.md`, Abschnitt „Desktop“.
 
 **Regeln der Relay-Verbindung** (die eine Stelle dafür; die Modul-Docstrings von `relay_link`/`relay_service` verweisen hierher):
 
@@ -286,7 +300,10 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
   nimmt einen Grund für die Logzeile, `backup_corrupt(path, reason)` kopiert statt zu verschieben (für
   Dateien, die gleich repariert werden; eine schon vorhandene Sicherung mit gleichem Inhalt wird
   wiederverwendet, damit ein nicht zurückschreibbarer Stand nicht bei jedem Start eine Kopie anlegt). Genutzt von `storage`,
-  `reservations`, `conflicts_store`, `mobile_store` (beide Helfer) und `settings` (nur der Schreib-Helfer).
+  `reservations`, `conflicts_store`, `vacations`, `mobile_store`, `mobile_box_cursor` (beide Helfer),
+  `settings` (nur der Schreib-Helfer) sowie `mobile_keys`,
+  `mobile_relay_store` und `mobile_box_store` (nur der Lese-Helfer; geschrieben wird dort gehärtet
+  über `secure_file.write_secret_json`).
   Wer einen neuen JSON-Store baut, nimmt diese beiden Funktionen — nicht die Mechanik
   erneut abschreiben.
   **Bewusst eigen geblieben:** `settings._quarantine_corrupt` und
@@ -339,7 +356,9 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
   `get_all_raw`/`apply_merge` bleiben Rohformat für den Sync.
   `reservations.py` — Reservierungen
   (zukünftige Soll-Zeiten, eigenes Konzept). `settings.py` — Einstellungen mit Defaults.
-- `conflicts_store.py` — lokale Sync-Konfliktliste. `category_defaults.py` — Default-Kategorien.
+- `conflicts_store.py` — lokale Sync-Konfliktliste. `category_defaults.py` — Logik der
+  Per-Kategorie-Standardzeiten (`category_times`, `resolve_slot_defaults`); `default_times.py` — die
+  Darstellung der globalen Standardzeiten (Allgemein/Tageweise), beide Tk-frei.
 - `webhook_store.py` — gerätelokaler Store der Webhook-Konfiguration
   (`webhooks.json`). Bekommt bewusst **nicht** den geteilten `data_lock` aus
   dem „Datenschicht-Locking"-Absatz oben, sondern legt sich einen eigenen an
@@ -350,7 +369,7 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
   über den `icacls`-Subprozess (bis 15 s + Retries) halten und damit jeden
   anderen Store blockierten. Details/Tests: `tests/test_store_locking.py`.
   Enthält Konfiguration **und** Secrets, wird deshalb wie `token.json`
-  gehärtet geschrieben (`secure_file.harden_windows_acl`, s.u.) und steht
+  gehärtet geschrieben (`secure_file.write_secret_json`, s.u.) und steht
   **nicht** im Sync-Doc.
 
   `smtp_store.py` — gerätelokaler Store der SMTP-Konten (`smtp.json`).
@@ -408,16 +427,16 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
   ohne Importe aus `src`: `mobile_routes` und `mobile_relay_codec` nutzen dieselben Werte, ohne dass der Codec die
   Routenebene mitlädt. Zieht das Repo um, ziehen beide Konstanten und die Doku mit.
 
-  `mobile_box_store.py` — Box-Geheimnisse der Handy-Erfassung über den Relay (`mobile_box.json`, #358), gerätelokal und über `secure_file.write_secret_json` gehärtet geschrieben, nur bei einer Änderung; eigener Lock, schreibgeschützt bei neuerem Schema (`MobileBoxReadOnly`), reist nicht per Drive-Sync. **Getrennt** vom Push-Speicher `mobile_relay.json` (`mobile_relay_store`): anderes Geheimnis, anderer Zweck, zwei unverknüpfte Handles am Relay. API: `pending`/`get`/`known_ids`/`all_secrets` (lesen, **ohne Sperre**: der Stand des letzten gelungenen Schreibens, damit der UI-Poll des Mobil-Tabs nie auf den `icacls`-Aufruf eines Schreibvorgangs wartet), `open_pending(now)` (neues offenes Geheimnis, liefert `(neues, altes)`), `clear_pending`, `bind(device_id, expected=None)` (offenes Geheimnis zum Gerät; mit `expected` nur, wenn es dem offenen entspricht, sonst `(None, None)` ohne Schreiben — die Verbindungsschicht übergibt das Geheimnis der Box, auf der die Koppel-Anfrage ankam), `remove`, `retain`; ersetzte und entfernte Geheimnisse gibt der Store zurück, **das Löschen am Relay ist Sache des Aufrufers** (`box_relay.delete_box`). Das Geheimnis liegt bewusst in einer gehärteten Datei und nicht im Schlüsselbund (wie das Push-Geheimnis; Begründung im Modul-Docstring: ein geleaktes Box-Geheimnis liest keine Inhalte, die braucht `k_dev` im Schlüsselbund; ein Schlüsselbund-Zugriff blockiert bis 30 s und darf den Verbindungs-Thread nicht aufhalten); steht in `removal.CREDENTIAL_FILES`, `installer.iss` und `.gitignore`. **Lebenszyklus des offenen Geheimnisses (für 3b):** der Kopplungscode lebt nur im Speicher (`PairingSession`); ein `pending` in der Datei ist nach einem Neustart verwaist (kein Code kann es je einlösen). 3b räumt es deshalb beim Start und beim Schließen des Koppel-Dialogs bzw. Ablauf des Codes ab (`clear_pending()` plus `box_relay.delete_box`) und verbindet sich nie mit einer offenen Box ohne offene Kopplungssitzung. Scheitert `bind` nach einer gelungenen Kopplung (`OSError`), ist das Gerät gekoppelt, seine Box aber noch `pending`: das nächste `open_pending` gäbe sie als „altes“ Geheimnis zurück, und wer es löscht, löscht die Box, die das Handy benutzt (heilbar durch Neu-Koppeln) — 3b loggt den Fehlschlag, wiederholt `bind` mit der `paired_device_id` der erneuten Zustellung (`RelayAdapter.process`) und löscht das „alte“ Geheimnis eines `open_pending` nie, solange es gebunden oder in Benutzung ist. Verdrahtet seit PR 3b: `main.py` baut den Store, `RelayService` (`relay_service.py`) ruft `open_pending`/`bind`/`clear_pending`/`retain`; die Lebenszyklus-Regeln oben setzt dieser Dienst um (offenes Geheimnis beim ersten `apply` abgeräumt, `bind(expected=…)`, ungebundener Rest bleibt verbunden und wird erneut gebunden, `open_pairing` lehnt solange ab).
+  `mobile_box_store.py` — Box-Geheimnisse der Handy-Erfassung über den Relay (`mobile_box.json`, #358), gerätelokal und über `secure_file.write_secret_json` gehärtet geschrieben, nur bei einer Änderung; eigener Lock, schreibgeschützt bei neuerem Schema (`MobileBoxReadOnly`), reist nicht per Drive-Sync. **Getrennt** vom Push-Speicher `mobile_relay.json` (`mobile_relay_store`): anderes Geheimnis, anderer Zweck, zwei unverknüpfte Handles am Relay. API: `pending`/`get`/`known_ids`/`all_secrets` (lesen, **ohne Sperre**: der Stand des letzten gelungenen Schreibens, damit der UI-Poll des Mobil-Tabs nie auf den `icacls`-Aufruf eines Schreibvorgangs wartet), `open_pending(now)` (neues offenes Geheimnis, liefert `(neues, altes)`), `clear_pending`, `bind(device_id, expected=None)` (offenes Geheimnis zum Gerät; mit `expected` nur, wenn es dem offenen entspricht, sonst `(None, None)` ohne Schreiben — die Verbindungsschicht übergibt das Geheimnis der Box, auf der die Koppel-Anfrage ankam), `remove`, `retain`; ersetzte und entfernte Geheimnisse gibt der Store zurück, **das Löschen am Relay ist Sache des Aufrufers** (`box_relay.delete_box`). Das Geheimnis liegt bewusst in einer gehärteten Datei und nicht im Schlüsselbund (wie das Push-Geheimnis; Begründung im Modul-Docstring: ein geleaktes Box-Geheimnis liest keine Inhalte, die braucht `k_dev` im Schlüsselbund; ein Schlüsselbund-Zugriff blockiert bis 30 s und darf den Verbindungs-Thread nicht aufhalten); steht in `removal.CREDENTIAL_FILES`, `installer.iss` und `.gitignore`. **Lebenszyklus des offenen Geheimnisses** (verwaistes `pending` nach einem Neustart, Abräumen beim Schließen des Koppel-Dialogs, gescheitertes `bind`): umgesetzt von `RelayService`, die Regeln stehen an einer Stelle unter „Threading-Modell“, „Regeln der Relay-Verbindung“. `main.py` baut den Store; `RelayService` ruft `open_pending`/`bind`/`clear_pending`/`remove`. `retain` hat derzeit keinen Aufrufer in `src/`.
 
-  `box_relay.py` — löscht die Box eines Handys am Relay (`delete_box(secret)`, `DELETE /v1/box`, Box-Geheimnis als Bearer), Tk-frei, stdlib-only, folgt keinem Redirect (Opener aus `push_relay`). Best effort: wirft nie, `True` bei 2xx und bei `401` (Box schon weg), sonst `False`; loggt weder Geheimnis noch Ausnahmetext; blockiert, nur im Worker aufrufen. Ist der Relay nicht erreichbar, bleibt das Lösen gültig und die Box verfällt nach `BOX_IDLE_DAYS` (14, gleich `LIMITS.boxIdleDays` im Relay) Tagen Leerlauf. Aufrufer seit PR 3b: `RelayService` (Widerruf, ersetzte Box, verwaistes offenes Geheimnis), `removal` (Schritt „Relay-Boxen“) und `secret_migration.forget_all(boxes=True)` (`--forget-secrets`).
+  `box_relay.py` — löscht die Box eines Handys am Relay (`delete_box(secret)`, `DELETE /v1/box`, Box-Geheimnis als Bearer), Tk-frei, stdlib-only, folgt keinem Redirect (Opener aus `push_relay`). Best effort: wirft nie, `True` bei 2xx und bei `401` (Box schon weg), sonst `False`; loggt weder Geheimnis noch Ausnahmetext; blockiert, nur im Worker aufrufen. Ist der Relay nicht erreichbar, bleibt das Lösen gültig und die Box verfällt nach `BOX_IDLE_DAYS` (14, gleich `LIMITS.boxIdleDays` im Relay) Tagen Leerlauf. Aufrufer: `RelayService` (Widerruf, ersetzte Box, verwaistes offenes Geheimnis), `removal` (Schritt „Relay-Boxen“) und `secret_migration.forget_all(boxes=True)` (`--forget-secrets`).
 
-  `relay_adapter.py` — (Gegenstück der PWA: `pwa/relay-transport.js`, s. `pwa/CLAUDE.md`, „Relay-Abgleich“) `RelayAdapter(ctx).process(payload) -> RelayResult(frame, paired_device_id)` (und `handle(payload) -> bytes | None`, nur das Frame): `paired_device_id` ist nur nach einer gelungenen Kopplung gesetzt (auch bei der erneuten Zustellung aus dem Zwischenspeicher), ermittelt am gestiegenen `pair_count` ohne den versiegelten Inhalt zu lesen — damit bindet die Verbindungsschicht das offene Box-Geheimnis (`MobileBoxStore.bind(device_id, expected=…)`); Box und Gerät prüft der Adapter nicht gegeneinander (geantwortet wird auf der Box, auf der der Rahmen ankam). Den Umschlag reicht er kompakt und ohne `\uXXXX` an `dispatch` weiter. Er beantwortet die Nutzlast einer Relay-Anfrage über dieselbe Routenebene wie der LAN-Weg (`mobile_routes.dispatch`), Tk-frei, ohne I/O. Verträge: jede Antwort trägt die Nonce `n` der Anfrage (auch unversiegelte Fehler); ohne gültiges `n` (oder nicht dekodierbar) **keine** Antwort (`None`). Abgleich: `last_seq` ist das gespeicherte `record["last_seq"]` des Gerätedatensatzes, nie ein Zähler im Adapter; `seq <= last_seq` ⇒ keine Antwort, ebenso meldet `dispatch` selbst `409 replay` ⇒ keine Antwort (ein `409` überschriebe in der Box die gute Antwort). Kopplung: die Erfolgsantwort wird unter dem SHA-256 der Nutzlast-Bytes zwischengespeichert (höchstens 8 Einträge, 330 s) und bei identischem `req` erneut ausgeliefert, Fehler nie; der Speicher liegt im Prozess, nach einem Neustart zwischen Kopplung und erneuter Zustellung kommt `403 invalid_code`. `handle` wirft nie eine `Exception` (Programmfehler ⇒ `500 internal` mit `n`; geloggt nur Typen und Statuscodes). Zu große Antwort ⇒ Ersatzrahmen `413 response_too_large`, **obwohl die Anfrage schon angewendet ist** (`last_seq` vorgerückt, Token erneuert): das Handy arbeitet mit dem alten Token weiter, solange es als vorheriges gilt, das `413` wiederholt sich, bis das Fenster kleiner ist. **Ein Adapter je `MobileContext`, `handle` aus genau einem Arbeits-Thread**; gleiche Kopplungs-Nutzlasten gleichzeitig werden nicht zusammengelegt. Verdrahtet seit PR 3b: ein Adapter je `RelayService`, aufgerufen aus dem einen Arbeits-Thread von `relay_link`.
+  `relay_adapter.py` — (Gegenstück der PWA: `pwa/relay-transport.js`, s. `pwa/CLAUDE.md`, „Relay-Abgleich“) `RelayAdapter(ctx).process(payload) -> RelayResult(frame, paired_device_id)` (und `handle(payload) -> bytes | None`, nur das Frame): `paired_device_id` ist nur nach einer gelungenen Kopplung gesetzt (auch bei der erneuten Zustellung aus dem Zwischenspeicher), ermittelt am gestiegenen `pair_count` ohne den versiegelten Inhalt zu lesen — damit bindet die Verbindungsschicht das offene Box-Geheimnis (`MobileBoxStore.bind(device_id, expected=…)`); Box und Gerät prüft der Adapter nicht gegeneinander (geantwortet wird auf der Box, auf der der Rahmen ankam). Den Umschlag reicht er kompakt und ohne `\uXXXX` an `dispatch` weiter. Er beantwortet die Nutzlast einer Relay-Anfrage über dieselbe Routenebene wie der LAN-Weg (`mobile_routes.dispatch`), Tk-frei, ohne I/O. Verträge: jede Antwort trägt die Nonce `n` der Anfrage (auch unversiegelte Fehler); ohne gültiges `n` (oder nicht dekodierbar) **keine** Antwort (`None`). Abgleich: `last_seq` ist das gespeicherte `record["last_seq"]` des Gerätedatensatzes, nie ein Zähler im Adapter; `seq <= last_seq` ⇒ keine Antwort, ebenso meldet `dispatch` selbst `409 replay` ⇒ keine Antwort (ein `409` überschriebe in der Box die gute Antwort). Kopplung: die Erfolgsantwort wird unter dem SHA-256 der Nutzlast-Bytes zwischengespeichert (höchstens 8 Einträge, 330 s) und bei identischem `req` erneut ausgeliefert, Fehler nie; der Speicher liegt im Prozess, nach einem Neustart zwischen Kopplung und erneuter Zustellung kommt `403 invalid_code`. `handle` wirft nie eine `Exception` (Programmfehler ⇒ `500 internal` mit `n`; geloggt nur Typen und Statuscodes). Zu große Antwort ⇒ Ersatzrahmen `413 response_too_large`, **obwohl die Anfrage schon angewendet ist** (`last_seq` vorgerückt, Token erneuert): das Handy arbeitet mit dem alten Token weiter, solange es als vorheriges gilt, das `413` wiederholt sich, bis das Fenster kleiner ist. **Ein Adapter je `MobileContext`, `handle` aus genau einem Arbeits-Thread**; gleiche Kopplungs-Nutzlasten gleichzeitig werden nicht zusammengelegt. Verdrahtet: ein Adapter je `RelayService`, aufgerufen aus dem einen Arbeits-Thread von `relay_link`.
   `ws_client.py` — die **einzige** Stelle, die die Bibliothek `websockets` (gepinnt 17.4, sync-Client) kennt; `relay_link` programmiert nur gegen `Socket`/`Connect`. `connect(secret, have)` → `Socket` mit `recv(timeout)`/`send`/`close`; `Sec-WebSocket-Protocol: zeit.v1, <Geheimnis>`, kein `Origin`, TLS-Prüfung an, Proxy der Bibliothek (`HTTPS_PROXY`) bleibt Standard. `legacy=True` (ohne `with` warnt 17.x), `compression=None`. Jede Bibliotheksausnahme wird in `SocketClosed`/`SocketTimeout`/`OSError` mit festem Text übersetzt (`from None`): sie kann URL und Header, also das Geheimnis, tragen. Ein Netzfehler beim Verbinden wird `ConnectFailed` (ein `OSError`) mit der Art der Ursache (`kind` = Klassenname, z. B. `gaierror`), die `relay_link` loggt — nie ihr Text. Die Bibliothek bekommt einen eigenen Logger (`src.ws_client.lib`, fest WARNING), weil sie im DEBUG jede Kopfzeile loggt. Hängt ein `send` an einem toten Netz (es hält die Sperre der Bibliothek, also auch den Heartbeat), bricht ein Wächter die Verbindung hart ab (`shutdown(SHUT_RDWR)` plus `close_socket()`): der des `send` nach `SEND_TIMEOUT_S` (30 s), der von `close()` nach `ABORT_AFTER_S`; `close()` kehrt so zügig zurück (Handshake höchstens `CLOSE_TIMEOUT_S`). Blockiert, nur im Worker/Link-Thread. Grenzen: unter Linux im Docker geprüft; das Verhalten des harten Abbruchs unter macOS (POSIX-Semantik) ist nicht ausgeführt.
 
   `relay_link.py` — Verbindungsschicht (`RelayLink`, `LinkTiming`): je Box ein Leser-Thread (Heartbeat `ping`/`pong`, Backoff), ein gemeinsamer Arbeits-Thread, je Box höchstens ein wartender Slot („neuester gewinnt“), `put` unter einer Sendesperre je Box (nie zwei Schreiber), `set_boxes`/`states`/`shutdown` aus jedem Thread, nie blockierend über `connect`/`recv`/`send`/Handler. Schließcodes: `1000 replaced` ⇒ nicht neu verbinden, `1000 wiped` ⇒ Cursor auf 0 und neu verbinden, `1008` ⇒ mindestens `throttled_wait_s` warten, sonst Backoff. Je Geheimnis nie zwei gleichzeitige `connect` (`_live`-Warteketten). Das Geheimnis steht nie in Log, Thread-Name oder Status (`short_mark`: sechs Zeichen von sha256). Bekannte Grenzen: `put` (und der Heartbeat derselben Box, er wartet auf dieselbe Sendesperre) kann bei hängendem Netz bis zum Sende-Wächter des Sockets (`ws_client.SEND_TIMEOUT_S`, 30 s) bzw. bis zu `close()` blockieren; der Backoff setzt nach jeder gelungenen Verbindung zurück (eine flatternde Verbindung wartet nie lange).
 
-  `relay_service.py` — `RelayService`: die **Regeln** über dem Link (`apply`/`shutdown`/`reopen` wie `MobileService`; `open_pairing`/`close_pairing`/`forget_devices` im Worker; `states_by_device` liest nur Speicher und darf im UI-Thread laufen). Verbunden sind: gebundene Boxen, das offene nur bei aktiver Kopplungssitzung, ungebundene Reste; bei `mobile_enabled` aus oder beim Beenden keine. Binden, Aufräumen verwaister offener Geheimnisse, Löschen ersetzter Boxen am Relay (nach dem Lock, mit Cursor-Verwurf) und gescheitertes `bind` (Rest im Speicher, erneut gebunden in `_on_idle` und vor `open_pairing`) stehen unter „Threading-Modell“, „Regeln der Relay-Verbindung“. `_pair_lock` serialisiert Koppel-Anfrage und Schnappschuss-plus-`set_boxes` gegen Öffnen/Schließen/Abräumen (Reihenfolge `_pair_lock` → `devices_lock` → `sync_guard` → `data_lock`; nie über einem Netzaufruf). `MobileService` ruft `forget_devices` über `set_box_cleanup` nach der Gerätesperre; `forget_devices(None)` räumt nur widerrufene/unbekannte Geräte, bedingungsloses Abräumen läuft direkt über `MobileBoxStore`/`delete_box` in `removal`/`forget_all`. Die Oberfläche (PR 3c): der Koppel-Dialog im Modus „relay“ (`open_pair_dialog(…, relay=, runner=, mode="relay")`) ruft `open_pairing` und `close_pairing` ausschließlich über den `BackgroundTaskRunner` (Dateizugriff, `delete_box`); die Worker laufen ungeordnet, deshalb schließt der Dialog nach einem Öffnen, das erst nach dem Schließen ankommt, noch einmal — und **nur seine eigene Sitzung**: `open_pairing` liefert `RelayPairing(link, code)`, `close_pairing(code)` schließt über `PairingSession.close_if` nur bei übereinstimmendem Code (ein spätes Schließen trifft so nie die Sitzung eines inzwischen geöffneten anderen Dialogs; das Abräumen eines offenen Geheimnisses ohne aktive Sitzung läuft weiter). `open_pairing` liefert bei Ablehnung `None` ohne Grund — der Dialog zeigt einen Text für alle Ursachen (`tab_rules.RELAY_PAIR_REFUSED_TEXT`) und schließt dabei seine **eigene** alte Sitzung (der Dienst schließt bei Ablehnung keine fremde, ein LAN-Dialog kann sie besitzen); eine Ausnahme im Worker wird zum eigenen Text `RELAY_PAIR_ERROR_TEXT` (der Runner ruft `on_done` sonst nie). Die Entscheidung liegt Tk-frei in `tab_rules.relay_open_view`. Grenze: wirft `open_pairing` erst nach dem Öffnen der Sitzung, ist deren Code dem Dialog unbekannt; sie läuft nach fünf Minuten ab und das Aufräumen (`_on_idle`) holt das offene Geheimnis dann ab. Der Mobil-Tab (`tab_mobile`, nur mit `relay_service`) hat dafür „Über Relay koppeln“, aktiv bei gespeichertem `mobile_enabled` (nicht am LAN-Status), und hängt je Gerät mit Box den Zustand aus `states_by_device` an die Zeile (`tab_rules.device_row_text(…, relay_state)`); der Dev-Server (`scripts/pwa_devserver.py`) baut keinen Relay-Dienst.
+  `relay_service.py` — `RelayService`: die **Regeln** über dem Link (`apply`/`shutdown`/`reopen` wie `MobileService`; `open_pairing`/`close_pairing`/`forget_devices` im Worker; `states_by_device` liest nur Speicher und darf im UI-Thread laufen). Verbunden sind: gebundene Boxen, das offene nur bei aktiver Kopplungssitzung, ungebundene Reste; bei `mobile_enabled` aus oder beim Beenden keine. Binden, Aufräumen verwaister offener Geheimnisse, Löschen ersetzter Boxen am Relay (nach dem Lock, mit Cursor-Verwurf) und gescheitertes `bind` (Rest im Speicher, erneut gebunden in `_on_idle` und vor `open_pairing`) stehen unter „Threading-Modell“, „Regeln der Relay-Verbindung“. `_pair_lock` serialisiert Koppel-Anfrage und Schnappschuss-plus-`set_boxes` gegen Öffnen/Schließen/Abräumen (Reihenfolge `_pair_lock` → `devices_lock` → `sync_guard` → `data_lock`; nie über einem Netzaufruf). `MobileService` ruft `forget_devices` über `set_box_cleanup` nach der Gerätesperre; `forget_devices(None)` räumt nur widerrufene/unbekannte Geräte, bedingungsloses Abräumen läuft direkt über `MobileBoxStore`/`delete_box` in `removal`/`forget_all`. Die Oberfläche: der Koppel-Dialog im Modus „relay“ (`open_pair_dialog(…, relay=, runner=, mode="relay")`) ruft `open_pairing` und `close_pairing` ausschließlich über den `BackgroundTaskRunner` (Dateizugriff, `delete_box`); die Worker laufen ungeordnet, deshalb schließt der Dialog nach einem Öffnen, das erst nach dem Schließen ankommt, noch einmal — und **nur seine eigene Sitzung**: `open_pairing` liefert `RelayPairing(link, code)`, `close_pairing(code)` schließt über `PairingSession.close_if` nur bei übereinstimmendem Code (ein spätes Schließen trifft so nie die Sitzung eines inzwischen geöffneten anderen Dialogs; das Abräumen eines offenen Geheimnisses ohne aktive Sitzung läuft weiter). `open_pairing` liefert bei Ablehnung `None` ohne Grund — der Dialog zeigt einen Text für alle Ursachen (`tab_rules.RELAY_PAIR_REFUSED_TEXT`) und schließt dabei seine **eigene** alte Sitzung (der Dienst schließt bei Ablehnung keine fremde, ein LAN-Dialog kann sie besitzen); eine Ausnahme im Worker wird zum eigenen Text `RELAY_PAIR_ERROR_TEXT` (der Runner ruft `on_done` sonst nie). Die Entscheidung liegt Tk-frei in `tab_rules.relay_open_view`. Grenze: wirft `open_pairing` erst nach dem Öffnen der Sitzung, ist deren Code dem Dialog unbekannt; sie läuft nach fünf Minuten ab und das Aufräumen (`_on_idle`) holt das offene Geheimnis dann ab. Der Mobil-Tab (`tab_mobile`, nur mit `relay_service`) hat dafür „Über Relay koppeln“, aktiv bei gespeichertem `mobile_enabled` (nicht am LAN-Status), und hängt je Gerät mit Box den Zustand aus `states_by_device` an die Zeile (`tab_rules.device_row_text(…, relay_state)`); der Dev-Server (`scripts/pwa_devserver.py`) baut keinen Relay-Dienst.
 
   `mobile_box_cursor.py` — `have` je Box (`MobileBoxCursor`: `get`/`advance`/`reset`/`retain`), dauerhaft in `mobile_box_cursor.json` (`{schema_version, have: {sha256(Geheimnis): ver}}`, nur Hashes, kein Geheimnis, `json_store.atomic_write_json` ohne ACL-Härtung wie `mobile_store`, eigener Lock, kaputte Datei wird quarantäniert). Schreibfehler werfen nie: der Wert bleibt im Speicher, schlimmstenfalls kommt eine Antwort nach einem Neustart noch einmal (der Adapter ist über `last_seq` gesichert). Vorgerückt wird vor dem Handler, zurückgesetzt bei `wiped`.
 
@@ -498,7 +517,7 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
   Die Einstellungen `mobile_push_enabled`/`_reservation`/`_send`/`_suppress_toast` sind gerätelokal. Der Desktop-Toast
   entfällt nur, wenn `App._phone_covers` (Speicher, UI-Thread) wahr liefert — beide Scheduler markieren einen
   abgedeckten Termin trotzdem als gefeuert.
-  `build_response` ist rein: Fenster `[heute − Fenster, heute]` (gewährt über `grant_window`, vom Budget `fit_window` gekürzt, #250/#292) plus gesendete Tage, offene Eintrags-Konflikte
+  `build_response` ist rein: Fenster `[heute − Fenster, heute + WINDOW_AHEAD_DAYS]` (14 Tage nach vorn, nicht im Budget; gewährt über `grant_window`, vom Budget `fit_window` gekürzt, #250/#292) plus gesendete Tage, offene Eintrags-Konflikte
   mit Gerätenamen aus der Registry, alle Slots über `storage.sanitize_slot`. `on_change` ruft die Route
   nach Freigabe von Guard und Lock.
 
@@ -542,7 +561,7 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
   ist additiv bis `MAX_DEVICES` und wirft dann die ältesten Einträge weg. Wer
   hier einen GC sucht: es gibt bewusst keinen.
 - `sync.py` — pure Sync-Logik (LWW-Merge, Konflikterkennung); importiert
-  `SYNCED_SETTING_KEYS` aus `settings.py` **und** `_REQUIRED_ENTRY_KEYS` aus `storage.py`
+  `SYNCED_SETTING_KEYS` aus `settings.py` **und** `REQUIRED_ENTRY_KEYS` aus `storage.py`
   (beide Single Source of Truth, nicht hier neu definieren). `validate_remote_doc`
   prüft ein migriertes Remote-Doc auf die Merge-Invarianten (Pflichtfelder,
   `modified_at`-Typ), bevor ein `KeyError`/`ValueError` mitten im Merge landet
@@ -818,6 +837,13 @@ Wert.
   `get_resource_path()` ist das Gegenstück: gebündelte Programmdaten
   (`sys._MEIPASS`), nicht Nutzerdaten. Icon-/Asset-Zugriffe gehen über diese
   Funktion — über `get_base_path()` fanden sie auf Linux und macOS nichts.
+- Weitere Tk-freie Bausteine (Beschreibung je Modul in der Root-`CLAUDE.md`, „Struktur“):
+  `self_update.py` (Asset laden, gegen `SHA256SUMS` prüfen, anwenden; Regeln unter „Update-Weg“
+  dort), `mime_message.py` (Mail-Nachricht für Gmail und SMTP, zwei der drei UTF-8-Pflichten),
+  `startup_info.py` (die zwei Startzeilen des Logs), `netinfo.py` (LAN-Adressen der
+  Handy-Instanz), `qr.py` (QR-Matrix für den Koppel-Dialog), `topmost_relief.py` (hebt „Immer im
+  Vordergrund“ während eines Schlüsselbund-Prompts auf; `App` baut `TopmostRelief` und hängt es
+  per `keyring_store.set_activity_hook` an), `scale_watch.py` (s. `dpi.py` unten; der zugehörige Banner `scale_banner.py` ist Tk-Code).
 - `src/desktop_entry.py` — Freedesktop-`.desktop`-Dateien: schreibt den
   Menüeintrag (`$XDG_DATA_HOME/applications/`, Fallback `~/.local/share/…`)
   und besitzt die `Exec=`-Quoting-Regel (`exec_line`, Audit N17), die
@@ -951,8 +977,8 @@ Wert.
   `recv()`), Lingering close (erst `SHUT_WR`, dann kurz leer lesen: kein RST mit
   ungelesenem Body, kein `TIME_WAIT` auf dem API-Port). Verbindungsabbrüche und
   Timeouts loggen nur auf DEBUG; ein Body-Timeout ist 408. `set_verifier` tauscht den Prüfer ohne Neustart (Token-Rotation).
-- `mobile_routes.py` / `mobile_service.py` — die Handy-Instanz (#221) auf demselben `ApiServer`. `mobile_routes`: exakte Pfade, keine Query-Parameter. `POST /v1/pair` ist die einzige öffentliche Route; sie nimmt nur einen **Umschlag** (Klartext oder falsche Version = `400 invalid_protocol` mit `supported_protocol` im Fehler, ohne den Code anzufassen), den `PairingSession.try_open` mit dem aus dem aktiven Kopplungscode abgeleiteten Schlüssel öffnet. Alles, was sich nicht öffnen lässt — falscher, abgelaufener, verbrauchter Code, „kein Code aktiv“, ungültiger Inhalt (auch eine ungültige `device_id`, sie steckt im verschlüsselten Inhalt) —, ist dieselbe `403 invalid_code`, ohne Zähler und ohne Sperre. Die Antwort trägt Token und den frischen zufälligen Geräteschlüssel, verschlüsselt. `POST /v1/sync` ist ein Umschlag (`seq` streng steigend, sonst `409 replay`; `400 decrypt_failed` bei falschem Schlüssel/Zusatzdaten; `401 encryption_required` bei einer Kopplung ohne Schlüssel; `503 key_unavailable`, solange der Schlüssel noch nicht aus dem Schlüsselbund geladen ist — nie blockieren), liest den Datensatz unter `devices_lock` neu und prüft das vorgelegte Token **gegen den frischen Stand** (`_still_valid`: ein Widerruf, eine Erneuerung, ein erneutes Koppeln oder der Ablauf kann zwischen Prüfer und Handler liegen; ob das Token jetzt das *vorherige* ist, bestimmt der frische Datensatz, nie der `via_previous` des Prüfers — sonst verdrängt eine wiederholte Anfrage ein noch nie ausgeliefertes Token), ruft `mobile_sync.perform_sync` und erneuert **erst danach** das Token (`renew(…, keep_previous=principal.via_previous)`) und speichert `last_pull_at` im selben Abschnitt (Vertrag #254: ein wiederholter Erstabgleich erzeugt keinen zweiten Konflikt); bei jeder Ablehnung bleiben Token und `last_pull_at` unverändert (der Zähler `last_seq` wird nach **jedem** entschlüsselten Paket gespeichert, auch bei einem unerwarteten Fehler). Sperrreihenfolge `devices_lock` → `sync_guard` → `data_lock`. `mobile_service`: wie `ApiService` (`apply()` im Worker, `shutdown()`/`reopen()`), aber ohne Token-Datei; bindet `pick_address(mobile_address, lan_candidates())`, nie `0.0.0.0`, `allowed_hosts` genau `<ip>:<port>`, `allowed_origins` genau `PWA_ORIGIN`. Eine verschwundene Adresse ist `error`/`address_gone` und startet **nichts** (kein stiller Wechsel); das Stoppen eines laufenden Servers (und das Ausschalten der Handy-Erfassung) schließt die Kopplungssitzung; lief keiner (keine LAN-Adresse), bleibt sie offen, weil sie dem Relay-Weg gehören kann (`RelayService.open_pairing`). Geräteverwaltung (`list_devices`, `revoke`, `revoke_all`) und `pair_link` liegen im Dienst, weil sie den `devices_lock` teilen; `revoke`/`revoke_all` schreiben, also im Worker; `list_devices` liest nur den Speicher und darf im UI-Thread laufen. Settings `mobile_enabled`/`mobile_port`/`mobile_address` und `mobile_notice_accepted` (der Hinweis beim ersten Einschalten wurde bestätigt) sind gerätelokal. **Verdrahtung (PR 5):** `main.py` baut den `MobileStore` (`mobile_devices.json`), `App(mobile_store=…)` den `MobileService` (ohne Store `self._mobile = None`, alle Aufrufstellen prüfen darauf); `_apply_mobile_setting` läuft beim Start und nach jedem Speichern der Einstellungen, `shutdown()` in `_quit_with_sync_push` (vor dem finalen Push), `remove_application` (vor jedem Worker) und `restart_for_scaling` (vor dem Spawn, bei Fehlschlag `reopen()` und `apply()`); `tests/test_mobile_wiring.py` hält das am Quelltext fest. **Relay-Dienst (PR 3b):** `main.py` baut `MobileBoxStore` und `MobileBoxCursor` (Datenordner), `App(mobile_box_store=…, mobile_box_cursor=…)` den `RelayService` direkt nach dem `MobileService` und hängt ihn über `set_box_cleanup` an dessen Geräteverwaltung; `_apply_mobile_setting` ruft zusätzlich `RelayService.apply`, `shutdown()` läuft an denselben drei Stellen **nach** `MobileService.shutdown()`, und `restart_for_scaling` ruft bei Fehlschlag `reopen()` und `apply()`; `tests/test_relay_wiring.py` hält das am Quelltext fest. Ohne Stores bleibt der Dienst `None`. Der Reiter „Mobil" (`tab_mobile.py`, nur mit Dienst) schreibt wie `ApiTab` nur die Formularfelder; Koppeln und Widerrufen wirken sofort, Widerruf über den Runner. Der Koppel-Dialog (`mobile_pair_dialog.py`, Modus „lan“ oder „relay“, s. `relay_service.py` oben) schließt beim Verlassen die Kopplungssitzung, das Stoppen des laufenden Servers tut es ebenso. Scheitert das Speichern des Geräts, nachdem der Code eingelöst ist (Platte voll, Datei gesperrt), loggt `_pair`, ruft `MobileContext.on_pair_failed` (Dienst: Zähler `pair_failures`) und wirft weiter — das Handy bekommt die allgemeine 500; der Dialog vergleicht den Zähler mit dem Stand beim Öffnen des Codes und zeigt „Koppeln fehlgeschlagen“ (`tab_rules.pair_poll_view`, Zustand `failed`) statt „abgelaufen“. Regeln zur Verträglichkeit mit älteren und neueren PWA-Ständen (additiv vs. brechend, eingefrorene Vorgänger-Fixtures): `pwa/CLAUDE.md`, Abschnitt „Kompatibilität“. Lesefenster (#250): das Fenster der Antwort reicht von `heute − Fenster` bis `heute + WINDOW_AHEAD_DAYS` (14, #265; die Antwort nennt es als `window_ahead_days`, die Tage nach heute zählen nicht ins Budget); die Anfrage trägt optional `window_days` (Wunsch), die Antwort `window_days` (gewährt, `mobile_sync.grant_window` auf `mobile_window_max_days` geklemmt, von `fit_window` auf das Mengenlimit gekürzt) und `window_max_days`; die Route liest die Einstellung bei **jedem** Abgleich, eine geänderte Obergrenze wirkt also sofort.
-- **Abmeldung durch das Handy (#499).** `POST /v1/unpair` (`mobile_routes._unpair`) hat dieselbe Prüfung wie `/v1/sync` (Token gegen den frisch gelesenen Datensatz, `seq`, Entschlüsseln mit Pfad `/v1/unpair`), widerruft den Datensatz mit `mobile_pairing.revoke_by_device` (`revoked_by="device"`, `revoked_at`) und antwortet verschlüsselt `{ok: true}`; erst nach dem Freigeben der Sperren ruft `MobileContext.on_unpaired(device_id, name)`. `MobileService._on_unpaired` räumt im Worker auf (`_release_device`: Schlüssel, Relay-Geheimnis samt Push-Objekt, Relay-Box — derselbe Schwanz wie `revoke`) und reicht den Namen an `App._on_mobile_unpaired`, das über `_marshal_to_ui` den Hinweis zeigt (`unpair_notice.py`: Dialog bei sichtbarem Fenster, Tray-Toast bei verstecktem, sonst Log mit nur der ID). Die Sync-Antwort trägt `unpair: true` (Fähigkeit). Über den Relay liegt die Anfrage in der Box, bis der Desktop sich verbindet; `relay_adapter` antwortet einer wiederholten Zustellung mit `token_revoked`. Der Reiter „Mobil“ zeigt ein so getrenntes Gerät weiter („vom Handy getrennt am …“, `tab_rules.visible_devices`/`is_device_unpaired`), der Knopf heißt dann „Entfernen“ und ruft `MobileService.dismiss` (entfernt nur solche Datensätze; vom Desktop widerrufene bleiben für die Neukopplungs-Erkennung).
+- `mobile_routes.py` / `mobile_service.py` — die Handy-Instanz (#221) auf demselben `ApiServer`. `mobile_routes`: exakte Pfade, keine Query-Parameter. `POST /v1/pair` ist die einzige öffentliche Route; sie nimmt nur einen **Umschlag** (Klartext oder falsche Version = `400 invalid_protocol` mit `supported_protocol` im Fehler, ohne den Code anzufassen), den `PairingSession.try_open` mit dem aus dem aktiven Kopplungscode abgeleiteten Schlüssel öffnet. Alles, was sich nicht öffnen lässt — falscher, abgelaufener, verbrauchter Code, „kein Code aktiv“, ungültiger Inhalt (auch eine ungültige `device_id`, sie steckt im verschlüsselten Inhalt) —, ist dieselbe `403 invalid_code`, ohne Zähler und ohne Sperre. Die Antwort trägt Token und den frischen zufälligen Geräteschlüssel, verschlüsselt. `POST /v1/sync` ist ein Umschlag (`seq` streng steigend, sonst `409 replay`; `400 decrypt_failed` bei falschem Schlüssel/Zusatzdaten; `401 encryption_required` bei einer Kopplung ohne Schlüssel; `503 key_unavailable`, solange der Schlüssel noch nicht aus dem Schlüsselbund geladen ist — nie blockieren), liest den Datensatz unter `devices_lock` neu und prüft das vorgelegte Token **gegen den frischen Stand** (`_still_valid`: ein Widerruf, eine Erneuerung, ein erneutes Koppeln oder der Ablauf kann zwischen Prüfer und Handler liegen; ob das Token jetzt das *vorherige* ist, bestimmt der frische Datensatz, nie der `via_previous` des Prüfers — sonst verdrängt eine wiederholte Anfrage ein noch nie ausgeliefertes Token), ruft `mobile_sync.perform_sync` und erneuert **erst danach** das Token (`renew(…, keep_previous=principal.via_previous)`) und speichert `last_pull_at` im selben Abschnitt (Vertrag #254: ein wiederholter Erstabgleich erzeugt keinen zweiten Konflikt); bei jeder Ablehnung bleiben Token und `last_pull_at` unverändert (der Zähler `last_seq` wird nach **jedem** entschlüsselten Paket gespeichert, auch bei einem unerwarteten Fehler). Sperrreihenfolge `devices_lock` → `sync_guard` → `data_lock`. `mobile_service`: wie `ApiService` (`apply()` im Worker, `shutdown()`/`reopen()`), aber ohne Token-Datei; bindet `pick_address(mobile_address, lan_candidates())`, nie `0.0.0.0`, `allowed_hosts` genau `<ip>:<port>`, `allowed_origins` genau `PWA_ORIGIN`. Eine verschwundene Adresse ist `error`/`address_gone` und startet **nichts** (kein stiller Wechsel); das Stoppen eines laufenden Servers (und das Ausschalten der Handy-Erfassung) schließt die Kopplungssitzung; lief keiner (keine LAN-Adresse), bleibt sie offen, weil sie dem Relay-Weg gehören kann (`RelayService.open_pairing`). Geräteverwaltung (`list_devices`, `revoke`, `revoke_all`) und `pair_link` liegen im Dienst, weil sie den `devices_lock` teilen; `revoke`/`revoke_all` schreiben, also im Worker; `list_devices` liest nur den Speicher und darf im UI-Thread laufen. Settings `mobile_enabled`/`mobile_port`/`mobile_address` und `mobile_notice_accepted` (der Hinweis beim ersten Einschalten wurde bestätigt) sind gerätelokal. **Verdrahtung:** `main.py` baut den `MobileStore` (`mobile_devices.json`), `App(mobile_store=…, mobile_keys=…)` den `MobileService` (nur mit beiden; sonst `self._mobile = None`, alle Aufrufstellen prüfen darauf); `main.py` baut daneben `MobileKeyStore` (`mobile_keys.json`) und `MobileRelayStore` (`mobile_relay.json`) und reicht sie mit; `_apply_mobile_setting` läuft beim Start und nach jedem Speichern der Einstellungen, `shutdown()` in `_quit_with_sync_push` (vor dem finalen Push), `remove_application` (vor jedem Worker) und `restart_for_scaling` (vor dem Spawn, bei Fehlschlag `reopen()` und `apply()`); `tests/test_mobile_wiring.py` hält das am Quelltext fest. **Relay-Dienst:** `main.py` baut `MobileBoxStore` und `MobileBoxCursor` (Datenordner), `App(mobile_box_store=…, mobile_box_cursor=…)` den `RelayService` direkt nach dem `MobileService` und hängt ihn über `set_box_cleanup` an dessen Geräteverwaltung; `_apply_mobile_setting` ruft zusätzlich `RelayService.apply`, `shutdown()` läuft an denselben drei Stellen **nach** `MobileService.shutdown()`, und `restart_for_scaling` ruft bei Fehlschlag `reopen()` und `apply()`; `tests/test_relay_wiring.py` hält das am Quelltext fest. Ohne Stores bleibt der Dienst `None`. Der Reiter „Mobil" (`tab_mobile.py`, nur mit Dienst) schreibt wie `ApiTab` nur die Formularfelder; Koppeln und Widerrufen wirken sofort, Widerruf über den Runner. Der Koppel-Dialog (`mobile_pair_dialog.py`, Modus „lan“ oder „relay“, s. `relay_service.py` oben) schließt beim Verlassen die Kopplungssitzung, das Stoppen des laufenden Servers tut es ebenso. Scheitert das Speichern des Geräts, nachdem der Code eingelöst ist (Platte voll, Datei gesperrt), loggt `_pair`, ruft `MobileContext.on_pair_failed` (Dienst: Zähler `pair_failures`) und wirft weiter — das Handy bekommt die allgemeine 500; der Dialog vergleicht den Zähler mit dem Stand beim Öffnen des Codes und zeigt „Koppeln fehlgeschlagen“ (`tab_rules.pair_poll_view`, Zustand `failed`) statt „abgelaufen“. Regeln zur Verträglichkeit mit älteren und neueren PWA-Ständen (additiv vs. brechend, eingefrorene Vorgänger-Fixtures): `pwa/CLAUDE.md`, Abschnitt „Kompatibilität“. Lesefenster (#250): das Fenster der Antwort reicht von `heute − Fenster` bis `heute + WINDOW_AHEAD_DAYS` (14, #265; die Antwort nennt es als `window_ahead_days`, die Tage nach heute zählen nicht ins Budget); die Anfrage trägt optional `window_days` (Wunsch), die Antwort `window_days` (gewährt, `mobile_sync.grant_window` auf `mobile_window_max_days` geklemmt, von `fit_window` auf das Mengenlimit gekürzt) und `window_max_days`; die Route liest die Einstellung bei **jedem** Abgleich, eine geänderte Obergrenze wirkt also sofort.
+- **Abmeldung durch das Handy (#499).** `POST /v1/unpair` (`mobile_routes._unpair`) hat dieselbe Prüfung wie `/v1/sync` (Token gegen den frisch gelesenen Datensatz, `seq`, Entschlüsseln mit Pfad `/v1/unpair`). Fehlt der Geräteschlüssel noch im Cache (kurz nach dem Start läuft der Relay-Abgleich vor dem Laden der Schlüssel), wartet `_await_key` **vor** der Gerätesperre höchstens `KEY_WAIT_SECONDS` (5 s) auf das Nachladen, im Server- bzw. Relay-Arbeitsthread; ohne das würde die Abmeldung beantwortet, aber nie wieder zugestellt. Sonst gilt „nie blockieren“ (`503 key_unavailable`). Die Route widerruft den Datensatz mit `mobile_pairing.revoke_by_device` (`revoked_by="device"`, `revoked_at`) und antwortet verschlüsselt `{ok: true}`; erst nach dem Freigeben der Sperren ruft `MobileContext.on_unpaired(device_id, name)`. `MobileService._on_unpaired` räumt im Worker auf (`_release_device`: Schlüssel, Relay-Geheimnis samt Push-Objekt, Relay-Box — derselbe Schwanz wie `revoke`) und reicht den Namen an `App._on_mobile_unpaired`, das über `_marshal_to_ui` den Hinweis zeigt (`unpair_notice.py`: Dialog bei sichtbarem Fenster, Tray-Toast bei verstecktem, sonst Log mit nur der ID). Die Sync-Antwort trägt `unpair: true` (Fähigkeit). Über den Relay liegt die Anfrage in der Box, bis der Desktop sich verbindet; `relay_adapter` antwortet einer wiederholten Zustellung mit `token_revoked`. Der Reiter „Mobil“ zeigt ein so getrenntes Gerät weiter („vom Handy getrennt am …“, `tab_rules.visible_devices`/`is_device_unpaired`), der Knopf heißt dann „Entfernen“ und ruft `MobileService.dismiss` (entfernt nur solche Datensätze; vom Desktop widerrufene bleiben für die Neukopplungs-Erkennung).
 - `api_service.py` — Lebenszyklus der lokalen API: `ApiService(settings, base_path,
   context, run=…)`. `apply()` liest `api_enabled`/`api_port` (beide gerätelokal) und
   bringt den Server im **Worker** in den passenden Zustand (Token laden blockiert);
@@ -969,7 +995,8 @@ Wert.
   `apply()` setzt sofort `starting` (Token-Laden blockiert unter Windows bis 15 s), und
   `_publish` meldet immer den **aktuellen** `.status`, nie das Ergebnis eines zu spät
   fertigen Workers. `rotate()` (Worker!) erneuert das Token und tauscht den Prüfer des
-  laufenden Servers aus — unter demselben `_lock` wie der Start, sodass der Server nach
+  laufenden Servers aus (Ergebnis `RotateResult(ok, reason)`: `closed` nach `shutdown()`,
+  `rotate_failed`, wenn das Schreiben scheitert) — unter demselben `_lock` wie der Start, sodass der Server nach
   jeder Verschränkung genau das Token akzeptiert, das in der Datei steht; scheitert das
   Schreiben (jede Ausnahme, nicht nur `OSError`), bleibt das alte gültig. War der Grund
   für die ruhende API `token_unavailable`, startet eine gelungene Rotation sie (über
@@ -982,8 +1009,8 @@ Wert.
 - `single_instance.py` — Tk-freier Single-Instance-Guard. Erste Instanz leitet einen Port aus
   `get_base_path()` ab und bindet einen Listener (`SO_EXCLUSIVEADDRUSE` Windows, `SO_REUSEADDR` Unix).
   Folgeinstanzen melden sich per SHOW/PING-Protokoll und beenden sich. `main.py` ruft `acquire()`
-  vor dem Tk-Aufbau, `serve(show_fn)` danach. `App.restart_for_scaling` und `_quit_with_sync_push`
-  rufen `release()`. Blockiert den Start nie — ist der Port von Fremd-Software belegt (keine ZEIT-OK),
+  vor dem Tk-Aufbau, `serve(show_fn)` danach. `App._quit_with_sync_push`, `remove_application` und
+  `restart_for_scaling` rufen `release()`. Blockiert den Start nie — ist der Port von Fremd-Software belegt (keine ZEIT-OK),
   läuft die App ungeschützt weiter (geloggt, akzeptierter Degraded-Fall).
 - `device_id.py` — stabile, hardware-abgeleitete Geräte-ID (`derive_device_id()`, SHA-256 mit
   App-Salt über Windows `MachineGuid`/macOS `IOPlatformUUID`/Linux `/etc/machine-id`) für installierte
@@ -995,12 +1022,16 @@ Wert.
 - `dpi.py` — Windows-DPI-Awareness (#157) und Linux-`Xft.dpi` (Xveyn#167). `main.py` ruft
   `init_system_scale(tk_version=tk.TkVersion)` **vor** `_create_root` (danach lässt Windows die
   Awareness nicht mehr ändern; unter Linux liest es `Xft.dpi` über libX11, nur unter Tk 8), danach
-  `migrate_ui_scale(settings)` (einmalige Linux-Umrechnung eines ausgleichenden `ui_scale`), und
-  reicht den Systemfaktor an
+  `migrate_ui_scale(settings)` (einmalige Linux-Umrechnung eines ausgleichenden `ui_scale`) und
+  `neutralize_xft_dpi()` (Tk sieht `Xft.dpi` im eigenen Prozess als 96, sonst skalierte sein
+  Schriftbackend ein zweites Mal; ebenfalls vor `_create_root`), und reicht den Systemfaktor an
   `_apply_ui_scaling`, das `init_fonts(root, ui_scale × systemfaktor)` setzt und vorher per
   `pin_tk_scaling` `tk scaling` auf 96 dpi festnagelt (sonst vergrößerte Tk die Punkt-Schriften ein
   zweites Mal). `system_scale()`/`scale_hint()` speisen den Hinweis unter dem Skalierungsregler im
-  App-Tab. Tk-frei, Win32-Aufrufe als Default-Argumente (getestet in `tests/test_dpi.py`); jeder
+  App-Tab. `system_scale_changed()` liest `Xft.dpi` bei laufender App neu; darauf pollt
+  `scale_watch.ScaleWatcher` (5 s, nur Linux) und meldet einen Monitorwechsel an `App`, die
+  `scale_banner.ScaleBanner` zeigt (Neustart-Knopf) bzw. mit `auto_scale_restart` selbst neu startet
+  (`scale_watch.may_auto_restart`). Regeln und Grenzen: Root-`CLAUDE.md`, „UI-Skalierung“. Tk-frei, Win32-Aufrufe als Default-Argumente (getestet in `tests/test_dpi.py`); jeder
   Fehler endet in Faktor 1,0 und dem alten, unscharfen Verhalten, nie in einem verhinderten Start.
   Unter macOS No-op. Begründung und Grenzen: Root-`CLAUDE.md`, „UI-Skalierung".
 - `main.py::_hold_app_mutex` — hält einen benannten Win32-Mutex (`_APP_MUTEX_NAME`, nur installierte
@@ -1010,7 +1041,7 @@ Wert.
   Manager), der bei aktivem Minimize-to-Tray scheitert (`App._on_close` behandelt das dabei
   gesendete `WM_CLOSE` nur als Fenster-Verstecken).
 - `tray/` — Paket seit R7 (#51), Importpfad bleibt `src.tray`: `__init__.py` ist die
-  Fassade (`TrayIcon`, `is_supported`, die beiden Opt-in-Gates, `_select_backend`),
+  Fassade (`TrayIcon`, `is_supported`, das macOS-Opt-in `_macos_tray_opt_in`, die Linux-Prüfung `_linux_tray_available`, `_select_backend`),
   `model.py` das backend-agnostische Menü-Modell (`build_menu_model` — die testbare
   Naht), und je ein Backend in `windows.py` (pystray), `mac.py` (natives
   NSStatusItem, margenheld/Zeiterfassung#88) und `linux.py` (StatusNotifierItem über
@@ -1029,19 +1060,19 @@ Wert.
   AppIndicator-Extension) bleibt das Tray aus, bevor Minimize-to-Tray das Fenster
   in einen Infobereich schicken könnte, den es nicht gibt.
 
-Das Tray-Icon läuft, sobald `minimize_to_tray` **oder** `reminders_enabled` aktiv ist (`ui.py::_apply_tray_setting`); bei nur `reminders_enabled` dient es ausschließlich als Toast-Kanal.
+Das Tray-Icon läuft, sobald `minimize_to_tray`, `reminders_enabled` **oder** `send_reminder_enabled` aktiv ist (`ui.py::_apply_tray_setting`); ohne `minimize_to_tray` dient es ausschließlich als Toast-Kanal der Erinnerungen.
 
 Die Menüeinträge kommen aus **`ui.py::App._tray_actions()`** — eine Liste `(label, callback,
-visible)`, die beide Backends rendern (pystray-Schleife bzw. `tray.build_menu_model`). Neue
+visible)`, die alle drei Backends rendern (pystray-Schleife unter Windows, `tray.build_menu_model` unter macOS und Linux). Neue
 Einträge gehören dorthin, nicht in ein Backend. Die Callbacks laufen im Backend-Thread und
 marshallen selbst per `root.after(0, …)`. „Nach Updates suchen" (`UpdateCoordinator.tray_check`) ist der
 einzige Eintrag mit eigenem Hintergrund-Job: er übergeht den Frequenz-Throttle des
 Hintergrund-Checks, meldet sein Ergebnis in **jedem** Fall als Toast (`updater.
 manual_check_toast_text`) und blockt über `_update_check_running` den Doppelklick.
 
-Die `visible`-Callable wird auf Windows und Linux LIVE ausgewertet (pystray baut
-das Popup neu, dbusmenu fragt vor jedem Öffnen `AboutToShow`), auf macOS ist sie
-ein Snapshot vom Tray-Start.
+Die `visible`-Callable wird auf allen drei Plattformen LIVE ausgewertet (pystray baut
+das Popup neu, dbusmenu fragt vor jedem Öffnen `AboutToShow`, macOS wertet sie im
+Menü-Delegate `menuNeedsUpdate_` vor jedem Öffnen aus).
 
 ## Dialoge (`src/dialogs/`)
 
@@ -1175,13 +1206,17 @@ landet der Fehlschlag in der Statuszeile, nicht in einer Messagebox; ein Modal
 beim bloßen Öffnen wäre dieselbe Zumutung.
 `check_token_status` ist das Gegenstück für die Zeile „Anmeldung": es nutzt
 `mail.refresh_token_if_needed` (nicht-interaktiv, erneuert still, wenn der
-Refresh-Token noch trägt) und mappt auf `valid`/`no_token`/`reauth`/`unknown`.
+Refresh-Token noch trägt) und mappt auf `valid`/`no_token`/`reauth`/`unknown`, dazu `keyring`, wenn der Schlüsselbund
+nicht antwortet (s. „Google-Integration“).
 `unknown` (offline) ist bewusst von `reauth` getrennt — „nicht prüfbar" als
 „abgelaufen" anzuzeigen schickte den Nutzer grundlos durch einen Re-Consent.
 Die Zeile ergänzt „Berechtigungen" daneben: die sagt, **welche** Scopes
 gewährt sind, diese, **ob** der Token überhaupt noch trägt.
 Weitere Dialoge: `share_dialog`, `import_dialog`, `category_dialog`,
-`conflicts_dialog`, `scopes_dialog`. `period_picker` ist kein Dialog, sondern der von
+`conflicts_dialog`, `scopes_dialog`, `vacation_dialog` (Urlaub verwalten, Einstieg
+Einstellungen → Arbeitszeit; die Tk-freie Planung `plan_vacation_save`/`blocking_days` liegt in
+`vacation_plan.py`, der Dialog importiert sie zurück) und `mobile_pair_dialog` (Koppel-Dialog,
+Modus „lan“ oder „relay“; Verträge unter `relay_service.py` und `mobile_routes.py` oben). `period_picker` ist kein Dialog, sondern der von
 `send_dialog` + `export_dialog` geteilte Zeitraum+Kategorie+Vorschau-Baustein. Er baut den Schalter
 „Nach Notiz aufschlüsseln“ nur, wenn der Bestand mindestens eine Notiz hat (`slot_notes.has_notes`);
 er steht unter „Nach Kategorie aufschlüsseln“ und ist ausgegraut, solange dieses aus ist, weil die

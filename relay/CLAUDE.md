@@ -22,7 +22,7 @@ kennt, erreicht das Objekt nicht und kann es nicht besetzen.
 | `POST /v1/test` | sofort einen Test-Push mit der festen Nutzlast `TEST_PAYLOAD` (`push.js`) senden, ohne Zeitplan und Alarm anzufassen. Je Gerät höchstens alle `LIMITS.testCooldownSeconds` (10 s). Antworten: `204` gesendet · `409 no_subscription` · `410 gone` (Abo tot, Objekt geräumt) · `429 too_soon` · `502 push_failed` (Push-Dienst nahm es nicht an; ein misslungener Versuch startet die Abkühlzeit nicht). Der Body nennt die Ursache als `cause`: HTTP-Status des Push-Dienstes (100–599), `network` (kein Status) oder `build` (Nachricht nicht baubar, etwa kaputte VAPID-Secrets); `sendPush` meldet sie über den Rückruf `report`, `device.js` lässt alles andere weg (nie Endpoint, Header oder Text, der Relay loggt weiter nichts; #473) Die Web-App erkennt die Nutzlast im Service Worker (`pwa/push-message.js`, ein Test hält die Konstante gleich) und der Desktop ruft die Route aus Einstellungen → Mobil (`src/push_relay.py`) |
 
 Fehler (alle als `{error: …}`): `401 unauthorized` (Geheimnis fehlt/ungültig), `400 invalid_request`
-(mit deutscher `message`), `409 no_subscription` (Zeitplan vor Abo), `404 not_found`,
+(mit deutscher `message`; bei `GET /v1/box/ws` mit ungültigem `role`/`have` ohne), `409 no_subscription` (Zeitplan vor Abo), `404 not_found`,
 `405 method_not_allowed` (mit `Allow`), `413 too_large` (Body über `LIMITS.maxBody`),
 `429 rate_limited` (Rate-Limit je Absender-Adresse, `worker.js`) bzw. `429 too_soon` (Abkühlzeit von
 `POST /v1/test`, `device.js`), `500 internal` (ohne Details); dazu `410 gone` und `502 push_failed`
@@ -47,7 +47,8 @@ Wiederholung nach einem Fehlschlag (`BACKOFF_SECONDS` in `src/schedule.js`): nac
 10 min; danach, oder wenn der Versuch hinter der Frist läge, wird der Eintrag aufgegeben.
 
 **Konstante ändern heißt PWA/Desktop mitziehen:** `pwa/reminders-plan.js` spiegelt `maxItems` als `MAX_ITEMS`
-(200) und `maxAheadDays` als `MAX_AHEAD_MS` (89 Tage, einen Tag unter der Grenze). Das Rate-Limit (30 Anfragen/60 s) steht in `wrangler.toml`.
+(200) und `maxAheadDays` als `MAX_AHEAD_MS` (89 Tage, einen Tag unter der Grenze), `pwa/push-blob.js` `maxBlob` als
+`MAX_BLOB` (1024). Das Rate-Limit (30 Anfragen/60 s) steht in `wrangler.toml`.
 
 ### Werte, die zusammenpassen müssen
 
@@ -161,7 +162,9 @@ Schließ-Codes der Box (`box.js`) und was der Client darauf tun muss:
   `413 response_too_large` (`encode_too_large_response`).
 - Rahmen-Typen vom Relay, die der Client nicht kennt, **muss** er übergehen — so kann später z. B. ein
   `0x04 peer` (Anwesenheit) dazukommen, ohne alte Clients zu brechen.
-- PR 4 (Aufteilung großer Nachrichten) muss seinen Takt **unter** `putsPerMinute` (60/min) halten.
+- Eine Aufteilung großer Nachrichten gibt es nicht: je Austausch geht genau ein `put`, zu Großes endet in
+  `request_too_large` (PWA) bzw. `413 response_too_large` (Desktop). Käme sie, müsste ihr Takt **unter**
+  `putsPerMinute` (60/min) bleiben.
 - **Gegenstücke der Rahmen:** `pwa/relay-frame.js` und `src/mobile_relay_codec.py` kodieren und dekodieren sie, die
   Fixture `pwa/test/fixtures/relay-frames.json` hält beide zusammen; `relay/test/frames-contract.test.js` prüft den
   Relay gegen dieselbe Fixture. Konstante ändern heißt beide Codecs und die Fixture mitziehen.
@@ -193,6 +196,10 @@ Schließ-Codes der Box (`box.js`) und was der Client darauf tun muss:
   geht die Anfrage durch). Je Adresse, nicht je Geheimnis — ein Angreifer erfindet beliebig viele Geheimnisse.
   Eine WAF-Regel im Dashboard geht hier nicht: sie braucht eine Zone, `workers.dev` ist keine.
 - `scripts/gen-vapid.mjs` — erzeugt das VAPID-Paar.
+- `tsconfig.json`, `env.d.ts` — Typprüfung per JSDoc (#513, CI-Job `typecheck-js`, Required Check): `npm run typecheck`
+  erzeugt zuerst mit `wrangler types --strict-vars false` die `Env`-Typen aus `wrangler.toml` nach
+  `worker-configuration.d.ts` (gitignored) und prüft dann alle Dateien unter `src/` (`checkJs`). Die Secrets
+  `VAPID_PRIVATE`/`VAPID_SUBJECT` stehen nicht in `wrangler.toml` und deshalb von Hand in `env.d.ts`. Braucht Node ≥ 22.
 
 ## Regeln
 
@@ -206,7 +213,7 @@ Schließ-Codes der Box (`box.js`) und was der Client darauf tun muss:
 - **Ausgerollt wird von `.github/workflows/relay-deploy.yml`** nach dem Merge auf `master` (Environment `relay-production`, Secrets `CLOUDFLARE_API_TOKEN`/`CLOUDFLARE_ACCOUNT_ID` nur im Schritt „Ausrollen“; Einrichtung in `README.md`). Ein Test hält die Sicherheitsmerkmale fest (`tests/test_relay_deploy.py`). Von Hand geht `npx wrangler deploy` weiter.
 - Die Tests laufen mit `node --test` ohne `wrangler`; `device.js` wird mit einem In-Memory-Speicher
   (`test/fake-storage.js`) getestet. `wrangler dev` braucht **Node ≥ 22** (`engines`).
-- Wer eine Konstante in `LIMITS` oder die Routen ändert, zieht die PWA und das Design mit (s. „Konstante ändern heißt PWA mitziehen“ oben).
+- Wer eine Konstante in `LIMITS` oder die Routen ändert, zieht die PWA und das Design mit (s. „Konstante ändern heißt PWA/Desktop mitziehen“ oben).
 
 ## Gemessen
 

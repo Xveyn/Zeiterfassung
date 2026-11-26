@@ -2,7 +2,7 @@
 """Dev-Server für die Handy-PWA: die ECHTE Handy-Instanz plus `pwa/` statisch.
 
     python scripts/pwa_devserver.py                 # Web :8099, Handy-Server :17654
-    python scripts/pwa_devserver.py --address 127.0.0.1
+    python scripts/pwa_devserver.py --address 192.168.1.20   # nur private LAN-Adressen, die PWA lehnt Loopback ab
 
 Startet den `MobileService` der App (gleiche Routen, gleiche Prüfungen, gleiche Sync-Logik) auf
 einer temporären Datenablage und serviert `pwa/` unter `http://localhost:<port>/`. `localhost`

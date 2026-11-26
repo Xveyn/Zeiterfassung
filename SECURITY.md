@@ -10,9 +10,10 @@ gilt für
   gewählte LAN-Adresse). Beide sind standardmäßig **aus**,
 - die **Handy-PWA** der Handy-Erfassung (Verzeichnis `pwa/`), die im Browser des
   Handys läuft und mit der Handy-Instanz des Desktops spricht,
-- den **Push-Relay** (Verzeichnis `relay/`), einen Cloudflare Worker im Internet, der
-  Erinnerungen als Push an die PWA weiterleitet. Er ist optional und der einzige Teil,
-  der nicht im eigenen Netz läuft.
+- den **Relay** (Verzeichnis `relay/`), einen Cloudflare Worker im Internet. Er leitet
+  Erinnerungen als Push an die PWA weiter und trägt den Abgleich zwischen Handy und
+  Desktop, wo kein WLAN-Abgleich geht (iPhone, iPad; in Firefox vermutlich ebenso). Er ist optional und der
+  einzige Teil, der nicht im eigenen Netz läuft.
 
 ## Unterstützte Versionen
 
@@ -44,7 +45,7 @@ bekommt es an einem sicheren Zeitpunkt ohne Rückfrage. Ein Fix erreicht die PWA
 damit sofort, den Desktop erst mit dem nächsten Release. Beide Seiten können also
 unterschiedlich alt sein; die Verträge zwischen ihnen sind darauf ausgelegt
 (`pwa/CLAUDE.md`, Abschnitt „Kompatibilität“). Die Build-Kennung der PWA
-(`N/X.Y.Z (sha)`: Änderungen seit dem Desktop-Release, dessen Version, Commit) steht im Verbindungsdialog der PWA.
+(`N/X.Y.Z (sha)`: Änderungen seit dem Desktop-Release, dessen Version, Commit) steht in der PWA unter Einstellungen → Updates („Handy-App“).
 
 ## Schwachstelle melden
 
@@ -134,9 +135,21 @@ ausschalten. Im Einzelnen:
   Push-Dienste (Google, Mozilla, Apple, Microsoft) sehen Metadaten, nicht den Inhalt.
   Das Geheimnis liegt am Desktop in `mobile_relay.json`; die Box-Geheimnisse der Handy-Erfassung über den Relay liegen getrennt davon in `mobile_box.json` (ebenfalls gehärtet geschrieben, nicht im Drive-Sync). Beim Widerruf eines Handys
   löscht der Desktop dessen Relay-Objekt (best effort), sonst verfällt es nach 90 Tagen.
-  Fällt der Relay aus oder wird er missbraucht, entfallen nur die Push-Erinnerungen
+  Fällt der Relay aus oder wird er missbraucht, entfallen die Push-Erinnerungen
   (Rate-Limit je Absender-Adresse, kein Konto). Details: `relay/CLAUDE.md` und
   [`docs/known-limitations.md`](docs/known-limitations.md#push-relay-331-ein-neuer-vertrauens-ort).
+- **Abgleich über den Relay** (iPhone, iPad, Firefox: „Über Relay koppeln“). Handy und
+  Desktop tauschen ihre Ende-zu-Ende-verschlüsselten Umschläge über eine Box am Relay
+  aus. Der Relay sieht dabei Metadaten (Zeitpunkte und Größen der Nachrichten, das
+  Gerätetoken im Klartext neben dem Umschlag) und die IP-Adressen, nie Einträge,
+  Kategorien oder Namen. Der Koppel-QR-Code trägt das Box-Geheimnis und den
+  Kopplungscode: wer ihn fotografiert, kann sich koppeln, solange der Code gilt (fünf
+  Minuten); die App zeigt das Geheimnis nie als Text. Eine Box räumt sich spätestens 14
+  Tage nach ihrer letzten Nachricht selbst auf (Boxen von vor dem 26.11.2026 behalten ihre
+  alte 90-Tage-Frist bis zur nächsten Nachricht, spätestens Ende Februar 2027 sind sie
+  geräumt), beim Widerruf löscht der Desktop sie sofort (best effort). Fällt der Relay aus, steht für diese Geräte der Abgleich still; die Einträge
+  bleiben auf dem Handy, bis er wieder geht. Details:
+  [`docs/known-limitations.md`](docs/known-limitations.md#abgleich-über-den-relay-358-ein-zweiter-vertrauens-ort).
 - **Updates der PWA** laufen über GitHub Pages. Vertrauensanker ist TLS zu
   `xveyn.github.io`; der ausgelieferte Code ist nicht signiert.
 

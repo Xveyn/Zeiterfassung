@@ -95,11 +95,14 @@ Zeiterfassung/
 │   ├── sync_orchestrator.py # Drive-Sync-Steuerung (manuell/Tray/Pull/Quit, Fehler-Aufbereitung)
 │   ├── update_banner.py   # GitHub-Release-Hinweis-Banner
 │   ├── update_coordinator.py # Update-Lebenszyklus: Start-Check, Toast/Banner, Tray-Check, Anwenden beim Beenden
-│   ├── dialogs/           # Modal-Dialoge (entry, send, export, settings [Paket, ein Modul je Tab; SMTP und Webhooks im Versand-Tab], share, import, conflicts, category, scopes, webhook, smtp, vacation, mobile_pair, removal) + geteilte Bausteine (period_picker, date_row, slot_rows)
+│   ├── dialogs/           # Modal-Dialoge (entry, send, export, settings [Paket, ein Modul je Tab; SMTP und Webhooks im Versand-Tab], share, import, conflicts, category, scopes, webhook, smtp, vacation, mobile_pair, removal, privacy) + geteilte Bausteine (period_picker, date_row, slot_rows)
 │   ├── json_store.py      # Gemeinsame Mechanik der lokalen JSON-Stores (atomares Schreiben, Quarantäne)
 │   ├── storage.py         # JSON-Persistenz der Zeiteinträge
+│   ├── slot_notes.py      # Notiz am Ist-Zeit-Slot: Regeln, Format auf Platte und im Sync (Tk-frei)
+│   ├── slot_order.py      # Reihenfolge der Slots eines Tages (chrono/category/custom), pure Logik
 │   ├── settings.py        # Einstellungen mit Standardwerten
 │   ├── category_defaults.py # Per-Kategorie-Standardzeiten (allgemein oder je Wochentag), pure Logik
+│   ├── default_times.py   # Globale Standardzeiten: Darstellung „Allgemein“/„Tageweise“, pure Logik
 │   ├── report.py          # HTML- & PDF-Reportgenerierung
 │   ├── mime_message.py    # Gemeinsamer MIME-Bau für Gmail-API und SMTP (UTF-8-Charset, Betreff-Header, Header-Injection-Abwehr)
 │   ├── mail.py            # Gmail OAuth2-Authentifizierung & Versand
@@ -118,6 +121,7 @@ Zeiterfassung/
 │   ├── sync_journal.py    # Crash-Recovery für den Sync-Apply (Write-Ahead-Journal)
 │   ├── sync_history.py    # Persistenter „hat je gesynct/abgeglichen"-Marker (Tombstone-Schutz)
 │   ├── conflicts_store.py # Lokale Persistenz der Konfliktliste
+│   ├── conflict_view.py   # Anzeige-Modell des Konfliktdialogs (Karten, Unterschiede), Tk-frei
 │   ├── share.py           # Export/Import von Arbeitszeiten als Share-JSON
 │   ├── share_message.py   # Mail zum Teilen: Betreff, HTML-Body, Anhangsname
 │   ├── reservations.py    # Reservierungen (zukünftige Soll-Zeiten)
@@ -135,8 +139,9 @@ Zeiterfassung/
 │   ├── oauth_utils.py     # Gemeinsame OAuth-Token-Boilerplate (Persistenz, Scope-Upgrade) für mail/drive/gcal
 │   ├── tray/              # Infobereich-Icon (Minimize-to-Tray): Plattform-Fassade,
 │   │                      #   Menü-Modell und je ein Backend für Windows (pystray),
-│   │                      #   macOS (NSStatusItem) und Linux (StatusNotifierItem) — die
-│   │                      #   letzten beiden dormant/opt-in
+│   │                      #   macOS (NSStatusItem, Opt-in ZEIT_MACOS_TRAY=1) und Linux
+│   │                      #   (StatusNotifierItem, an, sobald die Sitzung einen
+│   │                      #   StatusNotifierWatcher hat)
 │   ├── autostart.py       # Plattformabhängiger Autostart (Windows-Registry/macOS/Linux)
 │   ├── desktop_entry.py   # Freedesktop-.desktop-Eintrag + Icon-Kopie (Linux-Anwendungsmenü)
 │   ├── secure_file.py     # Zugriffsschutz für lokale Secrets (Windows-ACL via icacls)
@@ -153,7 +158,7 @@ Zeiterfassung/
 │   ├── api_vacation_write.py # … Schreibpfad des Urlaubs
 │   ├── vacation_plan.py   # Planung beim Anlegen einer Urlaubsperiode (aus dem Dialog gezogen, auch von der API genutzt)
 │   ├── mobile_service.py  # Handy-Erfassung (#221): Lebenszyklus der LAN-Instanz
-│   ├── mobile_routes.py   # … Routen (/v1/pair, /v1/ping, /v1/sync) als verschlüsselte Umschläge
+│   ├── mobile_routes.py   # … Routen (/v1/pair, /v1/ping, /v1/sync, /v1/unpair) als verschlüsselte Umschläge
 │   ├── mobile_sync.py     # … fachlicher Kern des Abgleichs
 │   ├── mobile_reservations.py # … Reservierungen im Abgleich
 │   ├── mobile_settings.py # … Einstellungen (Kategorien, Standardzeiten) im Abgleich
@@ -164,11 +169,23 @@ Zeiterfassung/
 │   ├── mobile_keys.py     # … Geräteschlüssel im Schlüsselbund, Datei als Fallback
 │   ├── mobile_relay_store.py # … Relay-Geheimnisse der Handys (gehärtet)
 │   ├── mobile_box_store.py # … Box-Geheimnisse der Relay-Kopplung (gehärtet)
+│   ├── mobile_box_cursor.py # … `have` je Box (nur Hashes, kein Geheimnis)
+│   ├── mobile_relay_codec.py # … Codec des Relay-Abgleichs (Rahmen, Nutzlast, Koppel-Link), Gegenstück pwa/relay-frame.js
+│   ├── relay_adapter.py   # … beantwortet Relay-Anfragen über die Routen der Handy-Instanz
+│   ├── relay_link.py      # … Verbindungsschicht zum Relay (Leser-Threads, Heartbeat, Backoff)
+│   ├── relay_service.py   # … Regeln und Lebenszyklus der Relay-Verbindung
+│   ├── ws_client.py       # … WebSocket-Adapter (einzige Stelle der Bibliothek websockets)
+│   ├── unpair_notice.py   # … Hinweis, wenn sich ein Handy selbst getrennt hat
+│   ├── pwa_constants.py   # … Adresse der gehosteten Handy-PWA (PWA_ORIGIN/PWA_URL)
 │   ├── push_relay.py      # Spricht den Push-Relay an (Abräumen beim Widerruf, Testbenachrichtigung)
+│   ├── box_relay.py       # Löscht die Box eines Handys am Relay (DELETE /v1/box)
 │   ├── netinfo.py         # LAN-Adressen (nur RFC 1918) für die Handy-Erfassung
 │   ├── qr.py              # QR-Code-Matrix für den Koppel-Dialog (segno)
 │   ├── removal.py         # „Zeiterfassung entfernen" (macOS/Linux): Plan und Ausführung
+│   ├── privacy_doc.py     # Datenschutzhinweise: parst die gebündelte docs/datenschutz.md für den Dialog
 │   ├── dpi.py             # Systemfaktor der UI-Skalierung (Windows-DPI-Awareness, Linux-Xft.dpi)
+│   ├── scale_watch.py     # Erkennt einen Monitorwechsel mit anderer Skalierung (Linux)
+│   ├── scale_banner.py    # Banner „Skalierung passt nicht zum Monitor" mit Neustart-Knopf
 │   ├── ui_queue.py        # Thread-sichere Übergabe von Worker-Callbacks an den UI-Thread
 │   ├── auto_update.py     # Auto-Update-Policy (stiller Download, Vormerken bis zum Beenden)
 │   ├── updater.py         # GitHub-Releases-Check (stdlib-only, Frequenz konfigurierbar)
@@ -177,6 +194,7 @@ Zeiterfassung/
 │   ├── holidays_de.py     # Feiertags-Lookup (python-holidays)
 │   ├── time_utils.py      # Zeitberechnung und Validierung
 │   ├── logging_setup.py   # File-Logging + globaler Excepthook
+│   ├── startup_info.py    # Die zwei Startzeilen des Logs (Build/Plattform, Schalter)
 │   ├── platform_open.py   # os.startfile/open/xdg-open-Wrapper
 │   ├── theme/             # Dark-Theme: Palette, Fonts, Widget-Fabriken, Fenster-Chrome,
 │   │                      #   Geometrie-Helfer, themed messagebox-Drop-ins und
@@ -192,7 +210,7 @@ Zeiterfassung/
 ├── docs/                  # Specs/Plans, Known Limitations
 ├── scripts/               # Entwickler-Skripte (nicht Teil der App), s. scripts/README.md
 │   ├── build.py           # Plattform-Dispatcher für den PyInstaller-Build
-│   ├── resolve_readme_version.py # Versionsmarker dieser README und Screenshot-Namen
+│   ├── resolve_readme_version.py # Versionsmarker der README und Screenshot-Namen
 │   ├── release_notes.py   # Release-Body aus dem CHANGELOG-Abschnitt
 │   ├── archive_changelog.py   # ältere CHANGELOG-Abschnitte ins Archiv
 │   ├── coverage_gate.py   # Coverage-Untergrenze für die Tk-freien Module (CI)
@@ -200,18 +218,20 @@ Zeiterfassung/
 │   ├── pwa_icons.py       # erzeugt pwa/icons aus dem Markenbild
 │   ├── pwa_stamp.py       # stempelt die Build-Kennung der Handy-PWA (pages.yml)
 │   ├── qr_fixtures.py     # Referenz-Matrizen für den QR-Decoder der PWA
+│   ├── privacy_fixtures.py # Blöcke der Datenschutzhinweise für den Parser-Gleichlauf (pwa/test/fixtures)
 │   ├── demo_data.py       # Demo-Daten für Screenshots und zum Ausprobieren
 │   ├── webhook_testserver.py  # lokaler Test-Empfänger für den Webhook-Versand
 │   └── smtp_testserver.py     # lokaler Test-Mailserver für den SMTP-Versand
 ├── .github/workflows/     # CI: test.yml, build.yml, release.yml, pages.yml (PWA veröffentlichen),
-│                          #   readme-version.yml, relay-deploy.yml (Relay ausrollen)
+│                          #   readme-version.yml, relay-deploy.yml (Relay ausrollen),
+│                          #   gitleaks.yml (Secret-Scan über die ganze Historie)
 ├── installer.iss          # Inno Setup Script (Windows-Installer)
 ├── requirements.txt       # Python-Abhängigkeiten (App-Laufzeit, exakt gepinnt)
 ├── requirements-test.txt  # Test-/CI-Abhängigkeiten (pytest & Co., exakt gepinnt)
 ├── pyproject.toml         # Konfiguration für ruff, pytest, coverage und pyright
 └── (Laufzeitdaten)        # settings.json, zeiterfassung.json u.a. entstehen im
-                           # Repo-Modus hier — vollständige Liste im Abschnitt
-                           # „Datenspeicherung"
+                           # Repo-Modus hier — vollständige Liste in der README,
+                           # Abschnitt „Datenspeicherung"
 ```
 
 </details>
@@ -279,7 +299,7 @@ Node 22 oder neuer (`engines` in `relay/package.json`). Die Tests brauchen kein 
 
 **Drei Werte müssen übereinstimmen:** `RELAY_URL` in `pwa/relay-client.js` und `src/push_relay.py` (ein Test in `tests/test_push_relay.py` hält beide zusammen) sowie `VAPID_PUBLIC` in `relay/wrangler.toml` und `pwa/relay-client.js` (kein Test; wechseln darf man ihn nie, alle Abos hängen daran).
 
-Zusätzliche Abhängigkeiten, nur für `relay/` (`relay/package.json`, exakt gepinnt): `@block65/webcrypto-web-push` 2.0.0 (Web-Push mit VAPID) und `wrangler` 4.153.0 (Dev-Dependency, Deploy und `wrangler dev`).
+Zusätzliche Abhängigkeiten, nur für `relay/` (`relay/package.json`, exakt gepinnt): `@block65/webcrypto-web-push` 2.0.0 (Web-Push mit VAPID), `wrangler` 4.153.0 (Dev-Dependency, Deploy und `wrangler dev`) und `typescript` 5.9.3 (Dev-Dependency, Typprüfung per `npm run typecheck`).
 
 ## Build
 
@@ -362,9 +382,11 @@ bewährt hat:
   im Build unterdrückt sonst jede Spur.
 - **README-Zeilen für Unveröffentlichtes markieren:** Die README beschreibt den
   Stand von `master`, nicht den des letzten Releases. Wer ein Feature dort
-  einträgt, das noch nicht released ist, hängt `*(ab X.Y.Z)*` an den fetten
-  Namen — sonst liest die Startseite des Repositories von etwas, das es im
-  Download noch nicht gibt.
+  einträgt, das noch nicht released ist, hängt `*(ab --VERSION--)*` an den
+  fetten Namen — den Platzhalter, keine geratene Versionsnummer — sonst liest
+  die Startseite des Repositories von etwas, das es im Download noch nicht
+  gibt. Der Release-PR löst ihn mit `python scripts/resolve_readme_version.py`
+  auf (Details in der `CLAUDE.md`).
 - **Plattform-Labels:** Betrifft ein PR nur macOS oder Linux, trägt er
   `platform:macos` bzw. `platform:linux` — bei KDE- oder GNOME-spezifischem
   Verhalten zusätzlich `platform:kde` bzw. `platform:gnome`. Vor dem Merge

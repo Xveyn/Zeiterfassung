@@ -291,7 +291,7 @@ Checks:
 
 **Das Ruleset liegt außerhalb des Repos und driftet lautlos.** Bis 2026-09-25
 nannte diese Liste `test-macos`/`test-windows`, das Ruleset verlangte sie aber
-längst nicht mehr — `tests/test_claude_md_claims.py` prüft die Liste nur gegen
+längst nicht mehr (seither stehen sie wieder in beiden) — `tests/test_claude_md_claims.py` prüft die Liste nur gegen
 die Jobs in `test.yml` und `gitleaks.yml`, nicht gegen GitHub. Wer die Liste oder das Ruleset
 ändert, gleicht beides mit dem `gh api`-Aufruf oben ab.
 
@@ -383,7 +383,7 @@ bis zum Linux-Test von `1.23.1-pre.2` nicht.
 
 | Plattform | Voraussetzung | Ausgabe |
 |-----------|---------------|---------|
-| Windows | Inno Setup 6 unter `%LOCALAPPDATA%\Programs\Inno Setup 6\` | `dist/Zeiterfassung_Setup.exe` |
+| Windows | Inno Setup 6 (`ISCC` auf dem `PATH`, unter `%ProgramFiles%`/`%ProgramFiles(x86)%` oder `%LOCALAPPDATA%\Programs\Inno Setup 6\`) | `dist/Zeiterfassung_Setup.exe` |
 | macOS | `brew install create-dmg` | `dist/Zeiterfassung-<ver>-arm64.dmg` (CI baut nur Apple Silicon; Intel-Runner `macos-13` hat de-facto unbrauchbare Queue-Zeiten) |
 | Linux | `apt install libfuse2` + `appimagetool` auf `$PATH` | `dist/Zeiterfassung-<ver>-<arch>.AppImage` |
 
@@ -656,7 +656,7 @@ Traceback-/Catch-all-Ausgabe → nativ.
 
 ### Ein Catch-all loggt, meldet oder trägt eine Begründung (Xveyn#73)
 
-`src/` hält rund 155 Handler auf `except Exception` / `except BaseException`.
+`src/` hält rund 170 Handler auf `except Exception` / `except BaseException`.
 Die **Dichte ist unkritisch und gewollt**: sie sitzen im Bootstrap, an
 Threading-Rändern und an Best-Effort-Plattformaufrufen — genau dort, wo ein
 Catch-all hingehört. Eine Bestandsaufnahme über alle Handler ergab, dass 96 %
@@ -676,9 +676,11 @@ ist damit endgültig. Also:
   gemischte Logik ist eine Wette darauf, dass niemand später eine fünfte
   Zeile hineinschiebt.
 - **`except BaseException` nur zum Aufräumen-und-Weiterwerfen** (die
-  `os.replace`-Pfade in `oauth_utils`/`smtp_store`/`webhook_store`/
-  `sync_journal`) oder zur Weitergabe über eine Thread-Grenze
-  (`keyring_store`). Sonst schluckte es auch Strg+C.
+  `os.replace`-Pfade in `secure_file`/`json_store`/`sync_journal` und den
+  Stores, ein halb geöffnetes Socket in `api_server`/`smtp`, das Zurückrollen von Speicherzustand in
+  `api_service`/`mobile_keys`) oder zur
+  Weitergabe über eine Thread-Grenze (`keyring_store`). Sonst schluckte es
+  auch Strg+C.
 - **Best-Effort heißt nicht spurlos.** Schlägt Win32-Fensterchrome fehl, sieht
   der Dialog nur nativ aus — das rechtfertigt kein `pass`, sondern ein
   `log.debug(..., exc_info=True)`. Beide Aufrufer prüfen vorher
@@ -686,7 +688,7 @@ ist damit endgültig. Also:
   Windows-Fehler und keine Plattform-Unverträglichkeit.
 
 Durchgesetzt wird das von **`tests/test_catch_all_handlers.py`**, nicht vom
-Linter: `ruff`s `BLE001` meckerte jeden Catch-all an, also auch die ~105
+Linter: `ruff`s `BLE001` meckerte jeden Catch-all an, also auch die rund 160
 korrekten — reines Rauschen mit anschließender `noqa`-Flut. Der Test prüft
 stattdessen genau die vier Punkte oben. Muster wie
 `tests/test_type_annotations.py`.
@@ -839,9 +841,9 @@ Schwellen liegen exakt auf 360/540.
 
 Im Kalender gilt ein striktes Modell: **Linksklick** öffnet den Tages-Dialog
 zum Anlegen/Bearbeiten (Ist-Zeit *und* Reservierung), **Rechtsklick** löscht.
-Rechtsklick löscht nie ohne Bestätigung; liegen an einem Tag Ist-Zeit **und**
-Reservierung, fragt ein Checkbox-Dialog (`themed_ask_delete_choice`), was
-gelöscht wird. Gebunden an `<Button-3>` auf allen Zelltypen
+Rechtsklick löscht nie ohne Bestätigung; liegt an einem Tag mehr als eine
+löschbare Einheit (Ist-Slots, Reservierungs-Slots, ein Urlaub), fragt ein
+Checkbox-Dialog (`themed_ask_delete_choice`), was gelöscht wird. Gebunden an `<Button-3>` auf allen Zelltypen
 (`src/ui.py::_delete_day`, für Eintrags-, Leer- und Feiertagszellen).
 
 Der Tages-Dialog (`src/dialogs/entry_dialog.py`) ist deshalb bewusst **rein
@@ -862,10 +864,10 @@ sind die Zeiten bewusst gesetzt und bleiben unangetastet.
 Rechtsklick (`<Button-3>`) auf macOS unzuverlässig (Sekundärklick ist je nach
 Tk-Version `<Button-2>` bzw. Control-Klick). Damit Löschen auf dem Mac
 erreichbar bleibt, zeigt die Tageszelle **dort** ein kleines ✕ oben links,
-sobald der Tag löschbare Einheiten hat (Ist-Zeit oder aktive Reservierung).
+sobald der Tag löschbare Einheiten hat (Ist-Zeit, aktive Reservierung oder Urlaub).
 Der ✕-Button löst denselben Lösch-Pfad wie der Rechtsklick aus
 (`App._delete_day` inkl. Bestätigung/Slot-Auswahl). Gesteuert über
-`_should_show_delete_button` (`theme/geometry.py`) + `App._add_delete_button` (`ui.py`).
+`_should_show_delete_button` (`theme/geometry.py`) + `GridRenderer._add_delete_button` (`grid_renderer.py`).
 Der Tages-Dialog hat auf **allen** Plattformen keine Lösch-Buttons. Auf
 Windows/Linux ist Löschen ausschließlich der Rechtsklick.
 
@@ -926,13 +928,15 @@ Regeln:
   ohne Erklärung von dem ab, was der Verwaltungs-Dialog für dieselbe Periode
   zeigt.
 
-  Gerufen wird `cap_by_worktime` an den **drei** Ausgabewegen — `report.generate_report`,
-  `report.generate_pdf` und `webhook.build_json_payload` — jeweils gegen den
-  bereits zeitraum- **und** kategoriegefilterten Ausschnitt. Das ist kein
+  Gerufen wird `cap_by_worktime` an den **vier** Ausgabewegen — `report.generate_report`,
+  `report.generate_pdf`, `webhook.build_json_payload` und den Auswertungen der lokalen
+  API (`api_summary`, `/v1/summary/…`) — jeweils gegen den bereits zeitraum- **und**
+  kategoriegefilterten Ausschnitt (die API filtert nur nach Zeitraum); dazu die Vorschau des Zeitraum-Pickers
+  (`period_picker.vacation_preview`). Das ist kein
   Detail: filtert jemand auf eine Kategorie, zehrt nur die dort *sichtbare*
   Arbeitszeit den Urlaub auf, sonst gingen Ist-Zeit, Urlaub und „Zu vergüten
   gesamt" auf derselben Seite nicht auf. Die 0-Minuten-Tage bleiben auch hier
-  ausgenommen. Wer einen vierten Ausgabeweg baut, ruft die Funktion mit.
+  ausgenommen. Wer einen weiteren Ausgabeweg baut, ruft die Funktion mit.
 - **Gelöscht wird immer die ganze Periode.** Einzelne Tage aus der Mitte
   herauszubrechen würde die `days`-Invariante (lückenlos von `from` bis `to`)
   verletzen; Korrekturen laufen über den Verwaltungs-Dialog.
@@ -1111,7 +1115,7 @@ entscheidet die Widget-Klasse über die Einheit (Entry zählt Zeichen, Canvas
 Pixel), das wäre aus dem AST heraus geraten — dort bleibt es Handarbeit.
 
 **Zwei Dinge skalieren an zentraler Stelle**, nicht beim Aufrufer:
-`theme/widgets.py::label_button` skaliert seine Innenabstände selbst (alle 75
+`theme/widgets.py::label_button` skaliert seine Innenabstände selbst (alle
 Buttons der App laufen darüber, **kein** direkter `tk.Button`), und
 `apply_notebook_style` die Maße der Reiter.
 
@@ -1134,7 +1138,7 @@ Einstellungen bleiben also erreichbar. Die Schätzung ist proportional (seit
 `FIT_TOLERANCE` federt genau das ab, sonst warnte die App bei 175 % auf 1080p,
 wo es real passt.
 
-**Bewusst nicht skaliert:** die rund 540 `padx`/`pady` der einzelnen Dialoge und
+**Bewusst nicht skaliert:** die rund 450 `padx`/`pady` in `src/` (rund 350 davon in den Dialogen) und
 die 1-px-Ränder (`highlightthickness`). Rein optisch, mechanisch über die halbe
 UI verteilt, und UI wird hier nicht automatisiert getestet (s. „Getestet wird
 Logik, nicht UI") — das Verhältnis aus Risiko und Gewinn stimmt nicht. Seit der
@@ -1245,9 +1249,9 @@ Zwei Regeln beim Ergänzen:
 
 ## Tests / CI
 
-`.github/workflows/test.yml` installiert gezielt nur die Pakete, die die Tests brauchen — gepinnt in **`requirements-test.txt`** (`pytest`, `holidays`, `google-api-python-client`, `google-auth`, `google-auth-oauthlib`), **nicht** `requirements.txt`. Grund: `pycairo` (transitive Dep von `xhtml2pdf`) braucht Cairo-Systemheader auf Ubuntu und bricht sonst den CI-Build. Der Import von `xhtml2pdf` in `src/report.py::generate_pdf` ist lazy, daher laufen die Report-Tests ohne die Lib. `holidays` und die Google-Libs sind pure Python ohne C-Deps und problemlos installierbar — letztere sind nötig, weil Tests `src.ui` importieren (z.B. `tests/test_ui_delete.py`), dessen Importkette die Google-Wrapper zieht.
+`.github/workflows/test.yml` installiert gezielt nur die Pakete, die die Tests brauchen — gepinnt in **`requirements-test.txt`** (`pytest`, `holidays`, `google-api-python-client`, `google-auth`, `google-auth-oauthlib`, `segno`, `cryptography`, `websockets`, nur unter Linux `dbus-fast`), **nicht** `requirements.txt`. Grund: `pycairo` (transitive Dep von `xhtml2pdf`) braucht Cairo-Systemheader auf Ubuntu und bricht sonst den CI-Build. Der Import von `xhtml2pdf` in `src/report.py::generate_pdf` ist lazy, daher laufen die Report-Tests ohne die Lib. `holidays` und die Google-Libs sind pure Python ohne C-Deps und problemlos installierbar — letztere sind nötig, weil Tests `src.ui` importieren (z.B. `tests/test_ui_delete.py`), dessen Importkette die Google-Wrapper zieht.
 
-Die Test-Deps sind **exakt gepinnt** (Audit N25) — beim Bump gegen Python 3.12 gegenchecken (alle rein-Python, daher auf jedem Matrix-Python installierbar). Jobs (alle mit `cache: pip` auf `requirements-test.txt`):
+Die Test-Deps sind **exakt gepinnt** (Audit N25) — beim Bump gegen Python 3.12 gegenchecken (rein Python oder mit fertigen Wheels für 3.12–3.14 — `cryptography`, `websockets`, `dbus-fast` —, daher auf jedem Matrix-Python installierbar). Jobs (die Python-Jobs mit `cache: pip` auf `requirements-test.txt`):
 
 - **changes** — Torwächter: ermittelt, ob der Lauf überhaupt Code betrifft.
   Alle folgenden Jobs hängen per `if: needs.changes.outputs.code == 'true'`
@@ -1268,7 +1272,7 @@ Die Test-Deps sind **exakt gepinnt** (Audit N25) — beim Bump gegen Python 3.12
 - **test-macos** / **test-windows** — Plattform-Verifikation (je 3.12; macOS zieht zusätzlich `pyobjc-framework-Cocoa`).
 - **lint** — `ruff check .`. **typecheck** — `pyright` (gepinnt `1.1.411`).
 - **lint-js** — `biome lint --error-on-warnings` über `pwa/`, `relay/src`, `relay/test`, `relay/scripts` und `tests/*.mjs` (Xveyn#501). Biome kommt als gepinntes Release-Binary mit SHA256-Prüfung (wie gitleaks), nicht als npm-Paket: die PWA bleibt ohne Abhängigkeiten; beim Bump Version, Summe und `$schema` in `biome.json` zusammen ändern. `biome.json` im Root schaltet Formatierung und Import-Sortierung aus und die Stil-Regeln ab, die keinen Fehler finden; an sind die empfohlenen Regeln plus `noUndeclaredVariables`, `noUnusedVariables`, `noUnusedImports`, `noFloatingPromises` und `noMisusedPromises`. Ein bewusst nicht abgewartetes Versprechen trägt `void` davor. Ebenfalls **nicht** in der Liste der Required Checks (Aufnahme entscheidet der Maintainer, dann beides abgleichen). Lokal: Binary laden und `biome lint` im Repo-Root.
-- **typecheck-js** — `tsc --noEmit` per JSDoc (Xveyn#513), kein Build, die Dateien bleiben `.js`. In `pwa/` prüft nur, wer `// @ts-check` am Dateianfang trägt (`checkJs` ist aus): die Liste wächst pro PR, Muster `tests/test_type_annotations.py`; heute `pwa/store.js` (`@typedef Meta`: die `null`-Felder stehen als `X | null`, `null` heißt dort „älterer Desktop“). Dazu kommen `pwa/sync.js` und `pwa/view-model.js` (Fremddaten-Grenze und Anzeigemodell) sowie `pwa/slot-order.js`; Optionsobjekte mit Vorgabe `= {}` brauchen ein `@param`, sonst leitet `tsc` den Typ `{}` ab. In `relay/` wird alles geprüft; die `Env`-Typen erzeugt `wrangler types --strict-vars false` aus `wrangler.toml` (Datei gitignored, `npm run typecheck` erzeugt sie), die Secrets `VAPID_PRIVATE`/`VAPID_SUBJECT` stehen von Hand in `relay/env.d.ts`. TypeScript ist in beiden Ordnern die einzige devDependency, exakt gepinnt (`npm ci` im Job); zur Laufzeit bleibt die PWA ohne Abhängigkeiten, `pages.yml` veröffentlicht weder `package-lock.json` noch `tsconfig.json`. **Required Check** (seit der Aufnahme ins Ruleset). Lokal: `npm run typecheck` in `pwa/` bzw. `relay/` (Node ≥ 22).
+- **typecheck-js** — `tsc --noEmit` per JSDoc (Xveyn#513), kein Build, die Dateien bleiben `.js`. In `pwa/` prüft nur, wer `// @ts-check` am Dateianfang trägt (`checkJs` ist aus): die Liste wächst pro PR, Muster `tests/test_type_annotations.py`; heute `pwa/store.js` (`@typedef Meta`: die `null`-Felder stehen als `X | null`, `null` heißt dort „älterer Desktop“). Dazu kommen `pwa/sync.js` und `pwa/view-model.js` (Fremddaten-Grenze und Anzeigemodell) sowie `pwa/slot-order.js`; Optionsobjekte mit Vorgabe `= {}` brauchen ein `@param`, sonst leitet `tsc` den Typ `{}` ab. In `relay/` wird `src/` vollständig geprüft (nicht `test/` und `scripts/`, `relay/tsconfig.json`); die `Env`-Typen erzeugt `wrangler types --strict-vars false` aus `wrangler.toml` (Datei gitignored, `npm run typecheck` erzeugt sie), die Secrets `VAPID_PRIVATE`/`VAPID_SUBJECT` stehen von Hand in `relay/env.d.ts`. TypeScript ist in `pwa/` die einzige devDependency, in `relay/` steht daneben `wrangler`; beide exakt gepinnt (`npm ci` im Job); zur Laufzeit bleibt die PWA ohne Abhängigkeiten, `pages.yml` veröffentlicht weder `package-lock.json` noch `tsconfig.json`. **Required Check** (seit der Aufnahme ins Ruleset). Lokal: `npm run typecheck` in `pwa/` bzw. `relay/` (Node ≥ 22).
 - **pwa** — `node --test` im Ordner `pwa/` (Node 22, `actions/setup-node`), hinter `changes` wie die übrigen Jobs. Bewusst **nicht** in der Liste der Required Checks oben: das Ruleset liegt außerhalb des Repos, die Aufnahme entscheidet der Maintainer (dann beides abgleichen, s. „Branch Protection"). `pwa/**` zählt als Code (nicht als Doku) und löst die ganze Matrix aus.
 - **relay** — `npm ci` und `node --test` im Ordner `relay/` (Node 22, `actions/setup-node`), hinter `changes` wie `pwa`. Ebenfalls **nicht** in der Liste der Required Checks (Aufnahme entscheidet der Maintainer, dann beides abgleichen). `relay/**` zählt als Code und löst die ganze Matrix aus. Der Job prüft zusätzlich die Konfiguration mit `wrangler deploy --dry-run` (ohne Token). Ausgerollt wird nicht hier, sondern von **`relay-deploy.yml`** nach dem Merge auf `master` (Environment `relay-production` mit den Cloudflare-Secrets, nur `master`, ohne zweite Freigabe — der Merge ist das Gate; Einrichtung in `relay/README.md`).
 
@@ -1318,7 +1322,7 @@ Muster jemals das Verhalten der App ändern? Dann gehört sie nicht dazu.
 
 ### Coverage-Untergrenze: nur Tk-frei
 
-Die Gesamt-Coverage liegt bei rund 60 % und bleibt **ohne** Gate: Tk-Code wird
+Die Gesamt-Coverage liegt bei rund 70 % und bleibt **ohne** Gate: Tk-Code wird
 bewusst nicht automatisiert getestet (s. „Getestet wird Logik, nicht UI"), sein
 Anteil drückt die Zahl. Ein `fail_under` darauf färbte den Build dauerhaft rot
 oder läge so tief, dass es nichts mehr misst — deshalb Audit N24.
@@ -1411,8 +1415,8 @@ und dort getestet. Wer ein Feature baut, dessen Logik nur im Widget lebt, hat
 sie am falschen Ort — nicht einen fehlenden UI-Test.
 
 Das ist eine **getroffene Entscheidung**, kein Rückstand: Audit-Finding M16
-(margenheld/Zeiterfassung#131) und dessen Verfeinerung
-margenheld/Zeiterfassung#148 sind mit genau dieser Begründung geschlossen. Was
+(im Sammel-Issue margenheld/Zeiterfassung#131 abgehakt) und dessen Verfeinerung
+margenheld/Zeiterfassung#148 (geschlossen) sind mit genau dieser Begründung erledigt. Was
 das kostet und was stattdessen greift, steht in
 [`docs/known-limitations.md`](docs/known-limitations.md). Neue Specs müssen M16
 nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
@@ -1425,6 +1429,7 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
 
 - `src/main.py` — Einstiegspunkt, **reiner Bootstrap**; baut `Tk`-Root, instanziert `Storage`/`Settings`/`App`, behandelt `--minimized`. Fachliche Sync-Flows gehören nach `sync_runtime.py` (R1, margenheld/Zeiterfassung#181 bzw. Xveyn#49)
 - `src/ui.py` — Tkinter-GUI; `App` ist schlanker Koordinator über `GridRenderer`/`BackgroundTaskRunner`/`SyncOrchestrator`/`UpdateBanner`/`UpdateCoordinator` (siehe `src/CLAUDE.md`)
+- `src/grid_renderer.py` — `GridRenderer`: Monats-/Wochenansicht, Zellen, Tooltips der Zellen, Fenstergeometrie (`repin_geometry`); `src/background_tasks.py` — `BackgroundTaskRunner`, der eine Thread-Helfer (`run`) samt Start-Tasks; `src/sync_orchestrator.py` — `SyncOrchestrator`, Bedienung des Drive-Syncs (Status, Fehler, Quit-Push); `src/update_banner.py` — `UpdateBanner` über dem Kalender. Verträge der vier: `src/CLAUDE.md`, „Die fünf App-Komponenten“
 - `src/dialogs/` — Modal-Dialoge; Beschreibung, Verträge und Reihenfolge der Settings-Tabs in `src/CLAUDE.md`, Abschnitt „Dialoge“. Module: `entry_dialog` (Tages-Dialog), `slot_rows` (Slot-Zeilenliste; jede Ist-Zeile trägt ein Notizfeld mit Vorschlägen, die Reservierung keines), `category_dialog` (Kategorien samt Standardzeiten; die Reihenfolge der Liste ordnen ▲/▼, gespeichert wird in Zeilenreihenfolge, sie gilt in der Auswahl der Dialoge und am Handy; „Speichern“ ist erst aktiv, wenn sich etwas ändern würde, `rows_changed`), `conflicts_dialog` (Sync-Konflikte; die gewählte Karte reicht ihre Notizen über `conflict_view.entry_choice` an `sync.resolve_conflict`), `date_row` (Tag/Monat/Jahr-Widget), `period_picker` (Zeitraum-Auswahl mit Vorschau; der Schalter „Nach Notiz aufschlüsseln“ erscheint nur, wenn der Bestand eine Notiz hat), `send_dialog` + `send_task` (Versand, Worker-Kern Tk-frei), `export_dialog` + `export_task` (PDF-Export), `share_dialog` + `share_task` (Teilen), `import_dialog` (Import), `mail_task` (gemeinsamer Fehler-Klassifikator der Mail-Kerne), `smtp_dialog`, `webhook_dialog`, `vacation_dialog` (Urlaub verwalten), `scopes_dialog` (gewährte OAuth-Scopes), `mobile_pair_dialog` (Koppel-Dialog Handy), `removal_dialog` (Rückfrage „Zeiterfassung entfernen“), `privacy_dialog` (Datenschutzhinweise, Einstellungen → App), `settings_dialog/` (Paket, ein Modul je Tab)
 - `src/json_store.py` — gemeinsame Mechanik der lokalen JSON-Stores und einziger Ort der beiden Regeln N1 (`atomic_write_json`: fsync vor `os.replace`) und N4 (`load_json_or_quarantine`: korrupte Datei nach `.corrupt-<stamp>` statt stillem Verwerfen). Neue Stores nutzen die beiden Funktionen, statt die Mechanik zu kopieren
 - `src/storage.py` — JSON-Persistenz der Zeiteinträge (Schlüssel: ISO-Datum). Gelesen wird nur bereinigt (`sanitize_slot`), eine beschädigte Datei wird beim Laden mit Sicherung repariert (s. `src/CLAUDE.md`). Die Slot-Notiz (Xveyn#519) liegt auf der Platte am Eintrag (`notes`), `get`/`get_all` liefern sie als `notiz` am Slot (App-Form, s. `src/slot_notes.py`)
@@ -1445,6 +1450,7 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
   `oauth_utils`, hier re-exportiert); `load_credentials` nimmt ihn bewusst
   nicht, liest aber nach einem `ValueError` einmal neu, falls der Umzug die
   Datei gerade umgeschrieben hat
+- `src/oauth_utils.py` — gemeinsame OAuth-Helfer der Google-Wrapper, ohne Fremdbibliothek: `TOKEN_LOCK`, der Schreibpfad `write_token_json` (gehärtet über `secure_file`), `forget_token` (Datei und Schlüsselbund-Eintrag), Scope-Upgrade-Erkennung und die Fehlertexte `REAUTH_REQUIRED_MSG` (Anmeldung erforderlich) bzw. `KEYRING_UNAVAILABLE_MSG` (Schlüsselbund nicht erreichbar)
 - `src/sync.py` — Sync-Engine (pure Logik: LWW-Merge der Entries/Settings, Konflikterkennung); importiert `SYNCED_SETTING_KEYS` aus `settings.py` (Single Source of Truth, nicht hier neu definieren); `validate_remote_doc` prüft ein Remote-Doc auf die Merge-Invarianten vor dem Merge (Audit M5)
 - `src/sync_runtime.py` — Sync-/Kompaktierungs-/Reconcile-**Runtime**: `run_pull_in_background`, `run_push_blocking`, `run_compaction_blocking`, `run_calendar_reconcile`, `run_vacation_purge`. Die Flows über der Engine `sync.py`; Google-Wrapper lazy in den Funktionen (CI). Aufrufer: `main.py`, `sync_orchestrator.py`, `background_tasks.py`, `tab_google.py`
 - `src/sync_journal.py` — Crash-Recovery für `sync.apply_merged_doc` via Write-Ahead-Journal (`sync-apply.journal`); beim Start holt `recover_pending_apply` einen unvollständigen Apply idempotent nach (Audit M6)
@@ -1516,10 +1522,10 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
 - `src/mobile_box_store.py` — Box-Geheimnisse der Handy-Erfassung über den Relay (`mobile_box.json`, #358): ein offenes Geheimnis beim Koppeln (`open_pending`/`bind`) und je Gerät eines, gehärtet über `secure_file.write_secret_json`, nur bei einer Änderung geschrieben, eigener Lock, reist nicht per Drive-Sync, getrennt vom Push-Speicher `mobile_relay.json`; Datei in `removal.CREDENTIAL_FILES`, `installer.iss` und `.gitignore`
 - `src/pwa_constants.py` — `PWA_ORIGIN`/`PWA_URL` der gehosteten Handy-PWA an einer Stelle, ohne Importe aus `src` (Routenebene und Relay-Codec teilen sie)
 - `src/box_relay.py` — `delete_box(secret)`: löscht die Box eines Handys am Relay (`DELETE /v1/box`), best effort, wirft nie, Tk-frei und stdlib-only; Aufrufer: `relay_service`, `removal`, `secret_migration.forget_all`
-- `src/relay_adapter.py` — `RelayAdapter.handle`: beantwortet die Nutzlast einer Relay-Anfrage über `mobile_routes.dispatch` (jede Antwort trägt `n`, `seq <= last_seq` und `409 replay` bleiben ohne Antwort, die Kopplungsantwort wird kurz zwischengespeichert); Tk-frei, ohne I/O, seit PR 3b von `relay_service` verdrahtet (Details in `src/CLAUDE.md`)
+- `src/relay_adapter.py` — `RelayAdapter.handle`: beantwortet die Nutzlast einer Relay-Anfrage über `mobile_routes.dispatch` (jede Antwort trägt `n`, `seq <= last_seq` und `409 replay` bleiben ohne Antwort, die Kopplungsantwort wird kurz zwischengespeichert); Tk-frei, ohne I/O, von `relay_service` verdrahtet (Details in `src/CLAUDE.md`)
 - `src/ws_client.py` — WebSocket-Adapter zum Relay (#358): die einzige Stelle der Bibliothek `websockets` (gepinnt, sync-Client), `connect(secret, have)` → `Socket`; übersetzt jede Bibliotheksausnahme mit festem Text (das Box-Geheimnis steht nie in Log oder Meldung), eigener Logger auf WARNING, harter Abbruch hängender Verbindungen
-- `src/relay_link.py` — Verbindungsschicht zum Relay (#358, PR 3b): je Box ein Leser-Thread, ein gemeinsamer Arbeits-Thread (nacheinander, „neuester gewinnt“), Heartbeat, Backoff, Schließcodes `replaced`/`wiped`/1008; Tk-frei, kennt keine App. Thread-Regeln in `src/CLAUDE.md`, „Threading-Modell“
-- `src/relay_service.py` — Regeln und Lebenszyklus über dem Link (`apply`/`shutdown`/`reopen` wie `MobileService`): welche Boxen verbunden sind, Binden des offenen Geheimnisses, Abräumen, Löschen ersetzter Boxen; von `ui.App` an denselben drei Stellen wie die Handy-Instanz beendet. Die Oberfläche folgt mit PR 3c
+- `src/relay_link.py` — Verbindungsschicht zum Relay (#358): je Box ein Leser-Thread, ein gemeinsamer Arbeits-Thread (nacheinander, „neuester gewinnt“), Heartbeat, Backoff, Schließcodes `replaced`/`wiped`/1008; Tk-frei, kennt keine App. Thread-Regeln in `src/CLAUDE.md`, „Threading-Modell“
+- `src/relay_service.py` — Regeln und Lebenszyklus über dem Link (`apply`/`shutdown`/`reopen` wie `MobileService`): welche Boxen verbunden sind, Binden des offenen Geheimnisses, Abräumen, Löschen ersetzter Boxen; von `ui.App` an denselben drei Stellen wie die Handy-Instanz beendet. Oberfläche: „Über Relay koppeln“ im Reiter „Mobil“ (`tab_mobile`) und der Koppel-Dialog im Modus „relay“ (`mobile_pair_dialog`)
 - `src/mobile_box_cursor.py` — `have` je Box, dauerhaft in `mobile_box_cursor.json` (nur Hashes, kein Geheimnis; Datei in `removal.py`, `installer.iss` und `.gitignore`)
 - `src/push_relay.py` — spricht den Push-Relay an: räumt beim Widerruf eines Geräts dessen Objekt ab (`delete_device`, `DELETE /v1/device`) und schickt die Testbenachrichtigung aus Einstellungen → Mobil (`send_test`, `POST /v1/test`, liefert genau eine Art wie `ok`/`gone`/`too_soon`/`unknown_route`; die Texte dazu stehen in `tab_rules.test_push_text`). Beides best effort, wirft nie, loggt das Geheimnis nie; `RELAY_URL` muss zu `pwa/relay-client.js` passen (ein Test hält beide zusammen)
 - `src/keyring_store.py` — Passwörter im OS-Schlüsselbund, mit Datei-Fallback
@@ -1611,10 +1617,11 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
   leeren, wenn `vacation_gcal_enabled` abgeschaltet wird
 - `src/dialogs/vacation_dialog.py` — Verwaltung der Perioden (Einstieg:
   Einstellungen → Arbeitszeit → „Urlaub verwalten"). Die Entscheidungen des
-  Bearbeiten-Dialogs liegen Tk-frei auf Modulebene und sind getestet:
-  `plan_vacation_save` (Tagesminuten aus der Eingabe), `prune_overrides`
-  (welche Tageswerte eine Zeitraum-Änderung überleben), `blocking_days`
-  (Sperre durch Ist-Zeit/Reservierung) und `parse_hours` (R13)
+  Bearbeiten-Dialogs sind Tk-frei und getestet: `prune_overrides` (welche
+  Tageswerte eine Zeitraum-Änderung überleben) und `parse_hours` (R13) auf
+  Modulebene des Dialogs, `plan_vacation_save` (Tagesminuten aus der Eingabe)
+  und `blocking_days` (Sperre durch Ist-Zeit/Reservierung) in
+  `src/vacation_plan.py`, vom Dialog unter denselben Namen importiert
 - `src/reminders.py` — pure Fälligkeits-Logik für Reservierungs-Erinnerungen (Tk-frei); `src/reminder_scheduler.py` — periodischer Reminder-Poll (root.after) → Toast über Tray
 - `src/send_reminder.py` — pure Logik des Sende-Reminders (Tk-frei): monatlicher
   Termin (Tag im Monat auf die Monatslänge geclamped, optional von Wochenenden/
@@ -1628,6 +1635,7 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
   (ein persistierter Marker würde `modified_at` der Reservierung anfassen und
   einen gcal-Push auslösen).
 - `src/weekly_limit.py` — Wochenstunden-Limit für einen konfigurierbaren Zeitraum (Werkstudenten-Privileg, margenheld/Zeiterfassung#98); pure Logik, zählt nur Ist-Zeiten (nicht Reservierungen)
+- `src/workweek.py` — Nur-Werktage-Modus (`workweek_only`, synchronisiert): blendet Sa/So aus Kalender, Standardzeiten und Bericht aus, ohne Daten zu löschen; pure Logik (Details: `src/CLAUDE.md`)
 - `src/slot_order.py` — Reihenfolge der Slots eines Tages (#520), Einstellung `slot_order_mode` (synchronisiert, Default `chrono`; Einstellungen → Arbeitszeit → „Slots eines Tages“): `chrono` (Start, Ende, Kategorie, Listenposition), `category` (Kategoriename gefaltet — Groß-/Kleinschreibung egal, ä/ö/ü wie a/o/u, ß wie ss —, ohne Kategorie zuletzt, dann Zeit) und `custom` (Listenreihenfolge, im Tages-Dialog mit ▲/▼ ordnen); ohne lesbare Startzeit ans Ende. Unbrauchbare Werte (auch aus dem Sync) gelten als `chrono` (`normalize_mode`). Pure Logik, Tk-frei. **Gespeichert wird bei `chrono`/`category` sortiert, bei `custom` in der Reihenfolge der Zeilen; sortiert wird außerdem bei Anzeige und Ausgabe** (`ordered` liefert den Index der gespeicherten Liste mit — die Lösch-Schlüssel `entry:<index>` beziehen sich darauf) und beim Speichern der Ist-Zeiten im Tages-Dialog und in der PWA. **Reservierungen bleiben in Zeilenreihenfolge**: `ReservationStore.save`/`merge_phone` übernehmen `gcal_event_id` und `send_reminder_minutes` positionsweise, ein Umsortieren im Speicher ließe sie auf andere Slots wandern. Der Modus reist additiv im Handy-Abgleich (`slot_order` der Antwort, `PROTOCOL` bleibt 2); lokale API (`GET`) und Sync-Doc liefern die gespeicherte Reihenfolge. Gegenstück der PWA `pwa/slot-order.js`, den Gleichlauf hält `pwa/test/fixtures/slot-order-cases.json` (alle drei Modi)
 - `src/slot_notes.py` — Regeln der optionalen, einzeiligen Notiz an Ist-Zeit-Slots (Xveyn#519), Tk-frei, ohne Importe aus `src`: `check_note` (Eingaben, wirft `NoteError`), `clean_note` (gespeicherte Daten, bereinigt nie ablehnend; Klassen `Cc`/`Cs`/`Zl`/`Zp`, getrimmt wie JavaScripts `trim()` samt U+FEFF, höchstens `MAX_NOTE_LEN` = 200 Code Points), `group_key` (`lower`, nicht `casefold`) und die Hilfen für den Sync (`supplement`, `bump_stamp`, `resolution_notes`). Für die Anzeige: `label` „Kategorie · Notiz“ mit unveränderter Kategorie, `shorten`, `suggestions` für das Notizfeld (die Notizen der Kategorie zuerst, dann alle übrigen, je neueste zuerst und je Gruppenschlüssel einmal) und `has_notes`. **Format:** am Slot heißt das Feld `notiz` (App-intern und auf dem Draht, nur vorhanden, wenn nicht leer); auf der Platte und im Sync-Doc stehen die Notizen am Eintrag unter `notes`, Schlüssel ist die Startzeit des Slots. Slots behalten dort exakt `start`, `end`, `pause`, `kategorie`. **Warum nicht im Slot:** eine ältere App (≤ 1.28) behält unbekannte Slot-Felder (`sanitize_slot`) und baute damit aus einem per Sync erhaltenen Slot eine Teilen-Datei mit unbekanntem Feld, die jeder Empfänger ablehnte; unbekannte Felder am Eintrag verlassen eine alte App nie (`_user_shape` reicht nur `{slots}` weiter). **`notes` ist klebrig:** ein Schreiber setzt den Schlüssel, sobald der Tag Notizen hat oder der überschriebene Stand ihn trug, auch ein Tombstone (dann `{}`); ein Tombstone behält ihn als `{}`, wenn der gelöschte Stand ihn trug, und ein ohne Schlüssel neu angelegter Tag (Handy, altes Gerät) bekommt ihn im Merge von dort. Fehlt er, hat eine alte Version geschrieben oder der Tag trug ihn nie; `{}` heißt bewusst entfernt (Grenzen bei alten Geräten: `docs/known-limitations.md`). Ein Tag, der nie eine Notiz hatte, wird byte-gleich zu vorher geschrieben, keine Versionssprünge (`sync.SCHEMA_VERSION` 4, `share.SCHEMA_VERSION` 3, `mobile_sync.PROTOCOL` 2, `webhook.PAYLOAD_SCHEMA_VERSION` 2). Merge-, Auflösungs- und Handy-Regeln: `src/CLAUDE.md` (`storage.py`, `sync.py`, `mobile_sync.py`). Die gemeinsamen Fälle der Notiz-Regeln stehen in `pwa/test/fixtures/note-cases.json`; das Gegenstück der PWA, `pwa/notes.js`, liest dieselbe Datei
 - `src/pause_requirement.py` — Pausenpflicht-Warnung nach §4 ArbZG (30 Min ab >6h, 45 Min ab >9h Netto-Arbeitszeit); pure Logik, zählt nur die `pause`-Felder der Slots eines Tages (keine Lücken zwischen mehreren Slots); Default aktiv (`pause_warning_enabled`, im Gegensatz zum Werkstudenten-Limit kein Sonderfall-Opt-in, da die Pflicht für praktisch alle Angestellten in DE gilt)
@@ -1647,9 +1655,9 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
   und Linux-`Xft.dpi` samt einmaliger `ui_scale`-Umrechnung (Xveyn#167; s.
   „UI-Skalierung"). Tk-frei, die Plattform-Aufrufe kommen als Argumente
   herein; unter macOS ein No-op mit Faktor 1,0
-- `src/scale_watch.py` — `ScaleWatcher`: periodischer Check (5 s, `root.after`), ob `dpi.system_scale_changed` einen Monitorwechsel meldet; meldet nur Zustandswechsel, Tk-frei. Nur unter Linux gestartet (Xveyn#201, Windows Xveyn#493); `src/scale_banner.py` — der Banner „Skalierung passt nicfeatured zum Monitor" mit Neustart-Knopf
+- `src/scale_watch.py` — `ScaleWatcher`: periodischer Check (5 s, `root.after`), ob `dpi.system_scale_changed` einen Monitorwechsel meldet; meldet nur Zustandswechsel, Tk-frei. Nur unter Linux gestartet (Xveyn#201, Windows Xveyn#493); `src/scale_banner.py` — der Banner „Skalierung passt nicht zum Monitor" mit Neustart-Knopf
 - `src/autostart.py` — plattformabhängiger Autostart (Windows-**Registry** HKCU Run, gleicher Wertname `Zeiterfassung` wie `installer.iss` → strukturell ein Eintrag; macOS-LaunchAgent / Linux `.desktop`). `is_autostart_enabled()` liest den echten Zustand, `migrate_legacy_autostart()` überführt Alt-Startup-Shortcuts frozen-gated in die Registry
-- `src/secure_file.py` — Zugriffsschutz für die lokal abgelegten Secrets (`token.json`, `instance-secret`, `webhooks.json`, `smtp.json`, `api-token`): unter Windows `icacls`-ACL statt des dort wirkungslosen `chmod 0600` (Audit M8); best-effort, scheitert nie den Schreibvorgang. Mit verfügbarem Schlüsselbund (#101) tragen diese Dateien den Refresh-Token bzw. die Webhook-Secrets ohnehin nicht mehr im Klartext — die Härtung bleibt für den Datei-Fallback und die übrigen Felder (Konfiguration, `instance-secret`) unverändert nötig
+- `src/secure_file.py` — Zugriffsschutz für die lokal abgelegten Secrets (`token.json`, `instance-secret`, `webhooks.json`, `smtp.json`, `api-token`, `mobile_keys.json`, `mobile_relay.json`, `mobile_box.json`; alle über `write_secret_bytes`): unter Windows `icacls`-ACL statt des dort wirkungslosen `chmod 0600` (Audit M8); best-effort, scheitert nie den Schreibvorgang. Mit verfügbarem Schlüsselbund (#101) tragen diese Dateien den Refresh-Token bzw. die Webhook-Secrets ohnehin nicht mehr im Klartext — die Härtung bleibt für den Datei-Fallback und die übrigen Felder (Konfiguration, `instance-secret`) unverändert nötig
 - `src/api_auth.py` — Token und Zugangsprüfung der lokalen HTTP-API (#92): Datei
   `api-token` (ACL-gehärtet wie `instance-secret`, fail-closed: ohne lesbares
   Token bleibt die API aus) und `authorize` als Stelle der Auth-Tore
@@ -1694,12 +1702,12 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
 - `src/logging_setup.py` — File-Logging + globaler Excepthook (Setup-Fehler sind **nicht-fatal**, siehe `main.py`); aus dem Quellcode (`python -m src.main`, nicht frozen) loggt es zusätzlich nach stderr; `ZEITERFASSUNG_LOG_LEVEL=DEBUG` hebt das Level an (Konsole und Logfile)
 - `src/privacy_doc.py` — die Datenschutzhinweise der App, Tk-frei: parst die gebündelte `docs/datenschutz.md` in anzeigefertige Blöcke (Titel, Überschriften, Absätze, Listen, Zitat, fett, Code, Links; Unbekanntes bleibt lesbarer Text), Links nur für `http(s)` (`is_web_url`), `load_privacy_doc` (wirft nie, `None` bei fehlender Datei) und `fallback_blocks` (Ersatztext mit Link auf das Dokument im Projekt). Die Datei geht per `--add-data` in jeden Build; Anzeige: `src/dialogs/privacy_dialog.py`
 - `src/theme/` — Dark-Theme als Paket (R3): `palette` (Konstanten), `fonts` (benannte Tk-Fonts + Skalierung), `widgets` (Widget-Fabriken, ttk-Styles), `geometry` (Zentrierung + die Tk-freien Prädikate `_stray_click_suppressed`/`_should_show_delete_button`), `chrome` (Win32-Fensterchrome, `create_dialog`), `messagebox` (themed Drop-ins), `form` (Formular-Bausteine `Form`/`set_enabled`/`empty_state`, #132) mit der Tk-freien Logik in `form_logic`. `__init__.py` re-exportiert die Oberfläche — Aufrufer importieren unverändert `from src.theme import …`, nicht aus den Teilmodulen
-- `src/tooltip.py` — UI-Hilfe (`_hover`-Overlays)
+- `src/tooltip.py` — Hover-Tooltips (`attach_tooltip`, verzögert um `SHOW_DELAY_MS`; s. „Tooltips“)
 - `src/version.py` — Einzige Quelle für die App-Version (von Workflow & `installer.iss` gelesen); ordnet Release-Kennungen (`parse_release_id`, `X.Y.Z[-pre.N]`) und kennt die Build-Identität (`installed_release_id` aus dem `RELEASE_TAG`-Stempel)
 - `pwa/` — die Handy-PWA der Handy-Erfassung (#221), reines JavaScript ohne Build, wird **nicht** in die App gebündelt und von keinem Python-Modul importiert. Module (u. a. Kategorien-Verwaltung `categories.js`), Vertrag gegen Drift (Fixtures), Verschlüsselung, Veröffentlichung über Pages und Dev-Server stehen in **`pwa/CLAUDE.md`**; die Serverseite in `src/CLAUDE.md`. Den Vertrag gegen die PWA hält `tests/test_mobile_contract.py`.
 - `pwa/relay-frame.js` — Gegenstück der PWA zu `src/mobile_relay_codec.py` (Rahmen, Nutzlast, `isCurrentResponse` über die Nonce `n`); Fixture `pwa/test/fixtures/relay-frames.json`, vom Relay-Test ebenfalls gelesen.
 - `relay/` — der Push-Relay (#331): ein Cloudflare Worker mit einem Durable Object je Handy, der Erinnerungen zur Fälligkeit als Web-Push an die PWA sendet, auch wenn der Desktop aus ist. Reines JavaScript, wird **nicht** in die App gebündelt und von keinem Python-Modul importiert. Modell, Regeln (kein Logging, Abo-Ziel nur bei bekannten Push-Diensten) und Einrichtung stehen in **`relay/CLAUDE.md`** und `relay/README.md`; das Design in `docs/superpowers/specs/2026-10-21-pwa-push-erinnerungen-design.md`.
-- `installer.iss` — Inno Setup Script, Version wird per `/DAppVer=...` vom Workflow übergeben.
+- `installer.iss` — Inno Setup Script, Version wird per `/DAppVer=...` übergeben (`scripts/build.py::_inno_defines`, s. „Cross-Platform Builds“).
   `AppMutex=ZeiterfassungAppMutex` (muss exakt zu `main.py::_APP_MUTEX_NAME` passen) lässt Setup
   eine laufende Instanz erkennen und den User per Retry-Dialog zum manuellen Schließen auffordern;
   `CloseApplications=no` schaltet bewusst den Default-Weg (Restart Manager) ab, der bei aktivem
@@ -1726,10 +1734,15 @@ seinen Pfad, nicht per Import.
   Skripte mit Root-Bezug hinzufügt, braucht denselben Bootstrap.
 - `scripts/release_notes.py` — schneidet den Release-Body eines echten
   Releases aus `CHANGELOG.md` (`--check` im `pre-check`-Job, `--out` im
-  `publish`-Job; s. „Release-Body = CHANGELOG-Abschnitt"). Zwei Modi wie
-  `resolve_readme_version.py`, derselbe Root-Bootstrap. Reine stdlib —
+  `publish`-Job; s. „Release-Body = CHANGELOG-Abschnitt"). Zwei Modi
+  (`--check`, `--out`), derselbe Root-Bootstrap wie `resolve_readme_version.py`. Reine stdlib —
   der `publish`-Job richtet bewusst kein `setup-python` ein und ruft
   `python3`.
+- `scripts/resolve_readme_version.py` — pflegt die Versionsmarker der README
+  (s. „README-Zeilen für Unveröffentlichtes markieren"): ohne Flag löst es
+  `--VERSION--` zur Version aus `src/version.py` auf (auch in Screenshot-Namen),
+  `--check` prüft nur (Workflow `readme-version.yml`), `--prune` räumt Marker,
+  die `KEEP_RELEASES` echte Releases alt sind (Job `readme-marker-cleanup`).
 - `scripts/archive_changelog.py` — verschiebt alles bis auf die neuesten
   `KEEP_RELEASES` Versionen aus `CHANGELOG.md` nach `CHANGELOG-archive.md`
   (Job `changelog-archive` in `release.yml`; s. „CHANGELOG-Archiv"). Ohne
@@ -1749,6 +1762,10 @@ seinen Pfad, nicht per Import.
   für den QR-Decoder der Handy-PWA (#326), mit `segno` (Versionen 1–10, alle EC-Stufen und
   Masken, der Koppel-Link, nicht unterstützte Modi). Deterministisch; `tests/test_qr_fixtures.py`
   hält die Datei gegen `src.qr.qr_matrix` und gegen das Skript.
+- `scripts/privacy_fixtures.py` — erzeugt `pwa/test/fixtures/privacy-blocks.json`, die Blöcke des
+  echten `docs/datenschutz.md` und einige Grenzfälle, den Gleichlauf der beiden Markdown-Parser
+  (`src/privacy_doc.py`, `pwa/privacy-doc.js`). Nach jeder Änderung an `docs/datenschutz.md` neu
+  erzeugen; `tests/test_privacy_doc.py` und `pwa/test/privacy-doc.test.js` lesen die Datei.
 - `scripts/pwa_devserver.py` — Dev-Server für die Handy-PWA: startet die echte Handy-Instanz (`MobileService`) auf einer temporären Datenablage und serviert `pwa/` unter `http://localhost:8099/` (Option `--address`); druckt Adresse, einen Koppel-Link mit frischem Code und den Ordner der Desktop-Daten. Auch für Browser-Tests; Details in `pwa/CLAUDE.md`, „Entwickeln und prüfen“. Reine stdlib plus App-Module.
 - `scripts/pwa_icons.py` — erzeugt `pwa/icons/` (`icon-192.png`, `icon-512.png`, `icon-maskable-512.png`) aus dem Markenbild `assets/margenheld-icon.png` (Pillow). Das Quellbild ist klein (300 × 297), die 512er sind hochskaliert.
 - `scripts/webhook_testserver.py` — lokaler Test-Empfänger für den

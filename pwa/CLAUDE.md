@@ -74,7 +74,7 @@ ES-Module flach im Ordner:
   oder Flick ≥ 30 px in ≤ 150 ms, Start im 24-px-Randstreifen zählt nie — der gehört der System-Zurück-Geste).
   `app.js` (`watchSwipe`) bindet Pointer-Events einmal am `main`, `touch-action: pan-y` lässt das senkrechte
   Scrollen beim Browser; nur auf dem Wochen-Screen ohne offenen Dialog, ein Klick direkt nach dem Wisch wird
-  verworfen. Wechsel beim Loslassen, die Woche folgt dem Finger nicht. Auf iOS ungeprüft (#358).
+  verworfen. Wechsel beim Loslassen, die Woche folgt dem Finger nicht. Auf iOS noch nicht geprüft.
 - `shift-policy.js` — ein waagerechter Zug auf den Zeitfeldern eines Slots verschiebt Start und Ende gemeinsam (#500),
   s. „Zeiten verschieben“: `mayStartShift`, `stepsForDistance`, `shiftWindow`, `shiftLabel`, dazu die Schrittweite
   (`SHIFT_STEPS`, `normalizeShiftStep`, `shiftOptions`).
@@ -109,6 +109,11 @@ ES-Module flach im Ordner:
 - `dom.js`, `views.js`, `scanner.js`, `app.js` — die DOM-Schicht. Sie baut
   Elemente **nur** über `createElement` und Textknoten (ein Test verbietet
   `innerHTML` & Co.; Namen, Kategorien und Fehlertexte sind Fremddaten).
+- `dialog-history.js` — hängt jeden Dialog an den Browser-Verlauf, die Zurück-Geste schließt den obersten
+  (s. „Zurück-Geste und Vollbild-Einstellungen“).
+- `datenschutz.html`, `privacy-view.js`, `privacy-doc.js` — die Datenschutzseite der Web-App: `privacy-doc.js`
+  zerlegt `docs/datenschutz.md` (Gegenstück zu `src/privacy_doc.py`), `privacy-view.js` baut die Seite
+  (s. „Datenschutzseite“).
 - `index.html`, `app.css`, `manifest.webmanifest`, `icons/` (erzeugt von
   `scripts/pwa_icons.py` aus dem Markenbild).
 - `sw.js` — Service Worker (ES-Modul) mit dem getesteten Kern `sw-core.js`:
@@ -132,6 +137,10 @@ cd pwa && node --test
 ```
 
 Der CI-Job `pwa` (`.github/workflows/test.yml`) läuft mit Node 22.
+
+**Typprüfung (#513):** `npm run typecheck` (`tsc --noEmit` über JSDoc, CI-Job `typecheck-js`, Required Check). Geprüft
+wird nur, was `// @ts-check` am Dateianfang trägt: heute `store.js`, `sync.js`, `view-model.js` und `slot-order.js`. Die
+Liste wächst pro PR; TypeScript ist die einzige devDependency, zur Laufzeit bleibt die PWA ohne Abhängigkeiten.
 
 ## Vertrag gegen Drift
 
@@ -174,7 +183,7 @@ Desktop) ist seltener, kommt aber vor. Sieben Regeln:
    Anfrage) ändert `PROTOCOL` nicht: beide Seiten ignorieren Unbekanntes und
    tolerieren Fehlendes. *Brechend* (Feld entfällt, Bedeutung ändert sich,
    Verschlüsselung) hebt `PROTOCOL`. Aktuell steht es auf `PROTOCOL` 2 —
-   `pwa/pairing.js`, `src/mobile_sync.py` und `src/mobile_crypto.py` müssen
+   `pwa/pairing.js`, `pwa/crypto.js`, `src/mobile_sync.py` und `src/mobile_crypto.py` müssen
    übereinstimmen.
 2. **Feature-Erkennung statt Versionsvergleich.** Die PWA fragt „ist `defaults`
    da?“, nicht „ist der Desktop ≥ 1.25?“. `desktop.version` ist nur Anzeige.
@@ -439,6 +448,12 @@ Kopplung gültig bis), dann folgen der Speicher-Hinweis, die Benachrichtigungen,
   „erlauben/ausschalten“ mehr; gesperrt oder nicht unterstützt ist er ausgegraut, die Statuszeile sagt warum. Die Erlaubnis
   verlangt weiter eine Klick-Geste: der Schalter ruft `setPush` im `change`-Ereignis.
 - **Native `replaceChildren` macht aus `null` den Text „null“** (anders als `h()`): nur echte Knoten übergeben.
+- **Zeitpunkte in Ortszeit (#541):** UTC-Zeitpunkte des Desktops (`server_time`, `token_expires_at`, `modified_at` der
+  Konfliktversionen) zeigt die PWA in der Zone des Geräts (`localTime`, `localDateDe` in `view-model.js`); ein Zeitpunkt
+  ohne Zone gilt wie am Desktop als UTC (`time_utils._local_stamp`). Kalendertage und Slot-Uhrzeiten werden nie umgerechnet.
+  „zuletzt abgeglichen um HH:MM“ steht nur, wenn es heute war, sonst „zuletzt am TT.MM., HH:MM“ (kurz, weil die
+  Statusleiste bei 280 px sonst umbricht). Beim Zurückkehren in die App wird neu gezeichnet, damit „heute“ und „zuletzt“
+  auch ohne Abgleich über Mitternacht stimmen.
 
 ## Zurück-Geste und Vollbild-Einstellungen (#461)
 
@@ -453,14 +468,14 @@ Kopplung gültig bis), dann folgen der Speicher-Hinweis, die Benachrichtigungen,
   und ein ausbleibendes nie die nächste echte verschluckt.
 - **Schmale Bildschirme (≤ 600 px):** der Einstellungen-Dialog füllt den Schirm (`100dvh`), oben eine feste Kopfzeile mit ‹ und
   Titel, der Inhalt (`.settings-body`) scrollt, „Schließen“ unten entfällt. Breit bleibt es ein Dialog (‹ verborgen).
-- **Grenzen:** auf iOS ungeprüft (kein Gerät; die Wischgeste vom Rand löst dort `history.back()` aus, wie in Safari üblich).
+- **Grenzen:** auf iOS noch nicht geprüft (die Wischgeste vom Rand löst dort `history.back()` aus, wie in Safari üblich).
   Nach einem Neuladen mit offenem Dialog bleibt dessen Verlaufseintrag stehen, die erste Zurück-Geste bewirkt dann nichts.
 - **Testen im Browser:** `element.click()` aus `evaluate` ist keine Nutzeraktion (Chrome behandelt die Verlaufseinträge dann
   anders); für Zurück-Szenarien echte Klicks (`locator.click()`) und `page.goBack()` benutzen.
 
 ## Übergänge (#461)
 
-Reines CSS am Ende von `app.css`, ohne JavaScript. Regeln, die `test/layout.test.js` festhält:
+Reines CSS im Block „Übergänge (#461)“ von `app.css`, ohne JavaScript. Regeln, die `test/layout.test.js` festhält:
 
 - **`app.css` muss alle Blöcke schließen** (`layout.test.js` zählt die Klammern ohne Kommentare und Strings): eine fehlende Klammer
   macht alles dahinter zum Inhalt des letzten `@media`.
@@ -526,7 +541,7 @@ Hauptknopf („QR-Code scannen“) und, grau hinter `<details>` „Andere Mögli
   Spätere Schritte werden nicht mit `opacity` gedimmt (der Text bliebe sonst unter dem Kontrast), nur ihre Nummer wird grau;
   `test/layout.test.js` hält beides fest.
 - **Geprüft** in Node (`test/view-model.test.js`: Varianten, Phasen) und im Browser mit überschriebenem User-Agent (Chrome,
-  Firefox, iPhone) bei 280, 320 und 1024 px. **iOS und Safari sind ungeprüft** (kein Gerät).
+  Firefox, iPhone) bei 280, 320 und 1024 px. **Auf iOS und in Safari noch nicht geprüft.**
 
 ## Einstellungen und Kategorien
 
@@ -659,8 +674,9 @@ der alte Plan am Relay stehen. Vertrag: `test/fixtures/reminders-contract.json` 
 `tests/test_mobile_contract.py`) und das Beispiel `reminders` in `sync-response.json`; eingefroren sind
 `compat/*-pre-reminders.json`.
 
-**Berechtigung ist pro Gerät** und braucht eine Nutzergeste (Knopf „Benachrichtigungen erlauben“ im
-Reiter „Verbindung“). Ausschalten meldet das Abo ab und löscht das Objekt am Relay.
+**Berechtigung ist pro Gerät** und braucht eine Nutzergeste (Schalter „Erinnerungen auf diesem Handy“ im
+Reiter „Verbindung“, die Erlaubnis wird im `change`-Ereignis angefragt). Ausschalten meldet das Abo ab und löscht
+das Objekt am Relay.
 
 ## Debug-Protokoll (#477)
 
@@ -707,7 +723,8 @@ Eine **Komfort-Sperre** für die Oberfläche, kein Schutz der gespeicherten Date
 noch aus). `lock.js` hält die Regeln **und den Ablauf** (`createLockController`: Start, Verlassen/Zurückkehren, Entsperren, vorgemerkter Tag),
 `views.js::lockSection`/`lockDialog` und `app.js` nur die Oberfläche. Sie verlässt sich auf WebAuthn mit
 einem Plattform-Authenticator und `userVerification: required`; Verifizierung kann auch die Geräte-PIN sein, die Texte sagen darum
-„Geräte-Entsperrung“, nie „Biometrie“.
+„Geräte-Entsperrung“ statt „Biometrie“ (nur der Fehltext `no_authenticator` nennt „Bildschirmsperre oder Biometrie“ als
+das, was fehlt).
 
 - **Meta** (gerätelokal): `lock_enabled`, `lock_credential` (Credential-ID, base64url), `lock_delay_ms` (0, 60 000 oder 300 000, sonst
   die Standardfrist). Die Sperre gilt nur mit Schalter **und** ID (`lockActive`). `rpId` ist `location.hostname`: ein Wechsel des Hosts
@@ -746,7 +763,7 @@ einem Plattform-Authenticator und `userVerification: required`; Verifizierung ka
   gehen verloren). Es gibt bewusst kein „Sperre zurücksetzen, Daten bleiben“: Browser liefern für „abgebrochen“ und „Passkey nicht
   gefunden“ denselben Fehler, die App kann beides nicht trennen, und wer das Handy in der Hand hat, käme so an die Einträge.
 - **Grenzen.** Kein Schutz der gespeicherten Daten und nicht vor Skript im selben Ursprung. Die Vorschau im App-Wechsler wird nicht
-  verdeckt. **iOS ist ungeprüft** (kein Gerät): ob der Passkey-Dialog in einer installierten Web-App zuverlässig erscheint, und ob ein
+  verdeckt. **Auf iOS noch nicht geprüft:** ob der Passkey-Dialog in einer installierten Web-App zuverlässig erscheint, und ob ein
   Fehlschlag im Standalone-Modus zum Notausgang führt, bleibt offen. Ebenso der Back-Forward-Cache und Firefox.
 - **Fehler im Debug-Protokoll:** `onError` von `createLockCredential`/`unlockWithCredential` reicht jede unerwartete Ausnahme (nicht
   „abgebrochen“) an `logFailure` (`Sperre: Passkey anlegen`, `Sperre: Entsperren`): auf iOS, das ungeprüft ist, bliebe sonst keine Spur.
@@ -779,7 +796,7 @@ Rückfrage (`unpairDialog`), nichts wird sofort gelöscht. Spec: `docs/superpowe
   Fehler (auch `404` eines älteren Desktops, `401`, Zeitüberschreitung) ist `failed`, gelöscht wird trotzdem.
 - **Fähigkeit.** Die Sync-Antwort trägt `unpair: true`, `parseSyncResponse` liest sie, `Store.applyResponse` legt sie als
   `meta.desktop_unpair` ab; ohne sie warnt die Rückfrage vorab (älterer Desktop).
-- **Nach dem Löschen schreibt nichts mehr.** `Store.freeze()` (nach `wipe()`) macht jeden späteren Schreibweg zum No-op: `setMeta` schreibt die ganze Meta, ein spät fertiger Zeitplan-Versand legte sonst Schlüssel und Token zurück in die Datenbank; `updatePushSchedule` prüft zusätzlich `App.unpairing`. „Erreicht“ für die Rückfrage entscheidet `reachedAfterSyncError` (`view-model.js`): jede Antwort mit Status und `desktop_silent` ja, keine Antwort und `token_expired`/`token_revoked` nein.
+- **Nach dem Löschen schreibt nichts mehr.** `Store.freeze()` (nach `wipe()`) macht jeden späteren Schreibweg zum No-op: `setMeta` schreibt die ganze Meta, ein spät fertiger Zeitplan-Versand legte sonst Schlüssel und Token zurück in die Datenbank; `sendPushPlan` prüft zusätzlich `App.unpairing`. „Erreicht“ für die Rückfrage entscheidet `reachedAfterSyncError` (`view-model.js`): jede Antwort mit Status und `desktop_silent` ja, keine Antwort und `token_expired`/`token_revoked` nein.
 - **Vertrag.** Klartext und Antwort der Abmeldung stehen in `test/fixtures/unpair-request.json` (`{}`) und `unpair-response.json` (`{ok: true}`); `sync.test.js` und `tests/test_mobile_contract.py` lesen beide.
 - **Relay-Pfade.** `relay-frame.js` (`PATHS`) und `src/mobile_relay_codec.py` (`_PATHS`) erlauben `/v1/unpair`; Fixture
   `test/fixtures/relay-frames.json` hält beide zusammen.
@@ -983,7 +1000,7 @@ höchstens 400 Tage je Anfrage). Die Antwort nennt das tatsächliche Fenster;
 liegt es unter dem Wunsch und unter der Obergrenze, sagt die Wochenansicht „wegen
 der Datenmenge“. `tests/test_mobile_volume.py` hält das mit denselben Fällen fest.
 Fenster über 365 Tage brauchen Delta-Antworten (die PWA deutet „Tag fehlt in der
-Antwort“ heute als Löschen) und stehen weiter in #250.
+Antwort“ heute als Löschen); dafür gibt es kein offenes Issue (#250 ist abgeschlossen).
 
 ## Updates der PWA
 
@@ -1061,7 +1078,7 @@ Issue #490.
   `navigator.credentials` und muss im Hintergrund entschlüsseln können.
 - **Geprüft.** Die Logik in Node (`test/vault.test.js`: Memory-Adapter, IndexedDB-Attrappe). Im echten Chromium von Hand: Schlüssel
   überlebt das Neuladen, ohne ihn kommt `key_unavailable`, das Rennen zweier Tabs, `wipe`, und die App mit eingeschaltetem
-  Schreiben (Koppeln, Abgleich, Neuladen, Fehlerbildschirm, „Neu koppeln“). **iOS ist ungeprüft** (kein Gerät).
+  Schreiben (Koppeln, Abgleich, Neuladen, Fehlerbildschirm, „Neu koppeln“). **Auf iOS noch nicht geprüft.**
 
 ## Verschlüsselung (#249)
 
@@ -1082,9 +1099,10 @@ Offen: andere Schreibwege eines veralteten Tabs (Tag speichern, Einstellungen) l
 
 ## Veröffentlichung
 
-`.github/workflows/pages.yml` (Push auf `master` mit Änderungen unter `pwa/**`,
-oder von Hand) kopiert die Laufzeitdateien nach `_site/` (ohne `test/`,
-`package.json` und Markdown; ebenso `package-lock.json` und `tsconfig.json`), ersetzt in `sw-core.js`, `sw.js` und im Manifest den Platzhalter
+`.github/workflows/pages.yml` (Push auf `master` mit Änderungen unter `pwa/**`, an `docs/datenschutz.md` oder an
+der Workflow-Datei selbst, oder von Hand) kopiert die Laufzeitdateien nach `_site/` (ohne `test/`,
+`package.json` und Markdown; ebenso `package-lock.json`, `tsconfig.json`, `memory-adapter.js` und `node_modules/`), kopiert
+`docs/datenschutz.md` dazu, ersetzt in `sw-core.js`, `sw.js` und im Manifest den Platzhalter
 `__BUILD__` durch die Build-Kennung (`scripts/pwa_stamp.py`; sonst liefe jeder
 Deploy mit demselben Cache, und Updates kämen nie an) und veröffentlicht per
 `deploy-pages`.
@@ -1115,8 +1133,9 @@ Workflow ist erst nach dem Merge nach `master` über „Run workflow“ erreichb
 hält Badge, Adresse und Feld zusammen. Ein fester Wert in der README wäre nach dem nächsten Merge unter `pwa/` falsch (der Workflow pusht nichts nach `master`).
 
 Die Adresse `https://xveyn.github.io/Zeiterfassung/` steht als `PWA_ORIGIN`/
-`PWA_URL` in `src/mobile_routes.py` (einzig erlaubte Origin des Handy-Servers,
-Basis des Koppel-Links); zieht das Repo um, müssen beide mit. Die Adresse ist **case-sensitiv**
+`PWA_URL` in `src/pwa_constants.py` (`src/mobile_routes.py` re-exportiert sie; einzig erlaubte Origin des
+Handy-Servers, Basis des Koppel-Links); zieht das Repo um, müssen beide mit, dazu `PAGES_ORIGIN` in
+`relay/src/worker.js` (einzige erlaubte Origin des Relays). Die Adresse ist **case-sensitiv**
 (großes „Z“): `…/zeiterfassung/` oder die Domain ohne Pfad liefert GitHubs 404-Seite „There isn't a
 GitHub Pages site here“.
 
