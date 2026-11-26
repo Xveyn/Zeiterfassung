@@ -114,7 +114,7 @@ Relay ersetzt den Slot der Absender-Rolle, zählt `ver` hoch, stellt dem Gegenü
     begrenzt, wie lange solcher Müll **nach dem Ende eines Angriffs** liegen bleibt (die Erholungszeit). Während
     eines Angriffs hilft sie nicht: jeder `put` verschiebt sie, wer alle 13 Tage ein Byte sendet, hält seine Boxen.
     Die Push-Geräte teilen denselben Speicher mit 90 Tagen Frist (rund 235 KB je Gerät, zwei Anfragen; rund
-    neunmal langsamer zu füllen als über die Box).
+    neunmal langsamer zu füllen als über die Box; #540).
   - *Keine Frist nur für halb gebundene Boxen* (nur eine Rolle gesehen): wer das Geheimnis erfindet, spielt beide
     Rollen; zwei Verbindungen ergeben zwei Slots, ob als eine Box mit zwei Rollen oder als zwei halbe. Der Relay
     sieht nur opake Bytes und kann eine echte Kopplung nicht erkennen.

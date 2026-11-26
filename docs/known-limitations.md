@@ -731,7 +731,7 @@ für Fragen: `docs/datenschutz.md` (die Web-App verlinkt es im Koppel-Bildschirm
   nicht, nur begrenzen: eine Box räumt sich spätestens **14 Tage** nach ihrer letzten Nachricht selbst auf.
   Das begrenzt, wie lange Müll **nach dem Ende eines Angriffs** liegen bleibt; wer weiter sendet, hält seine
   Boxen beliebig lange. Push-Geräte teilen denselben Speicher und räumen sich erst nach 90 Tagen auf; über
-  sie füllt er sich rund neunmal langsamer, dafür bleibt der Müll länger. Eine kürzere Frist nur für Boxen, an
+  sie füllt er sich rund neunmal langsamer, dafür bleibt der Müll länger (#540). Eine kürzere Frist nur für Boxen, an
   denen erst eine Seite angemeldet war, hülfe nicht: wer das Geheimnis erfindet, kann beide Seiten spielen.
   Eine kleinere Höchstgröße je Nachricht ist #538.
 - **iOS-Eigenheit:** Safari-Tab und installierte Web-App haben getrennten Speicher, und iOS löscht den Speicher
