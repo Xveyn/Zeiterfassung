@@ -15,7 +15,7 @@ import datetime
 import html
 from dataclasses import dataclass
 
-from src.time_utils import format_date
+from src.time_utils import format_date, local_date_of_iso
 
 
 @dataclass(frozen=True)
@@ -31,6 +31,13 @@ class ShareMessage:
     what: str
 
 
+def _file_date(exported_at: str) -> str:
+    """`YYYYMMDD` des lokalen Tags von `exported_at`; ist der Stempel unlesbar, seine ersten zehn
+    Zeichen ohne Bindestriche."""
+    day = local_date_of_iso(exported_at)
+    return day.strftime("%Y%m%d") if day is not None else exported_at[:10].replace("-", "")
+
+
 def build_share_message(*, include_entries: bool, include_reservations: bool,
                         name: str | None, sender_email: str | None,
                         date_from: datetime.date, date_to: datetime.date,
@@ -42,8 +49,8 @@ def build_share_message(*, include_entries: bool, include_reservations: bool,
     „<" im Namen ergäbe sonst kaputtes Markup (`report.py` hält es genauso);
     der Betreff ist kein HTML und bleibt roh.
 
-    `exported_at` ist der UTC-Zeitstempel des Share-Docs; sein Datum steht
-    im Dateinamen des Anhangs.
+    `exported_at` ist der UTC-Zeitstempel des Share-Docs; sein lokales Datum
+    (der Tag, an dem geteilt wurde) steht im Dateinamen des Anhangs.
     """
     parts = []
     if include_entries:
@@ -68,6 +75,6 @@ def build_share_message(*, include_entries: bool, include_reservations: bool,
     return ShareMessage(
         subject=f"{what} geteilt von {display_name}",
         html=body,
-        filename=f"zeiterfassung-share-{exported_at[:10].replace('-', '')}.json",
+        filename=f"zeiterfassung-share-{_file_date(exported_at)}.json",
         what=what,
     )

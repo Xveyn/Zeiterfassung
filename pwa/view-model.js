@@ -80,15 +80,57 @@ export function categoryDisplay(row, defaults, weekday, withPause) {
   return overridden ? `${name}*` : name;
 }
 
+/** Millisekunden eines Zeitpunkts, gelesen wie am Desktop (`time_utils._local_stamp`): `T` oder Leerzeichen,
+ *  Zone `Z`/`z`, `±HH:MM`, `±HHMM` oder `±HH`, ohne Zone UTC (nicht wie bei `Date.parse` Ortszeit). `NaN`, wenn
+ *  unlesbar. */
+function stampMs(iso) {
+  if (typeof iso !== 'string') return NaN;
+  const match = /^(\d{4}-\d\d-\d\d)[T ](\d\d:\d\d(?::\d\d(?:\.\d+)?)?)(Z|[+-]\d\d(?::?\d\d)?)?$/i.exec(iso);
+  if (!match) return NaN;
+  const [, day, time, zone = 'Z'] = match;
+  const offset = zone.toUpperCase() === 'Z' ? 'Z' : `${zone.slice(0, 3)}:${zone.length === 3 ? '00' : zone.slice(-2)}`;
+  return Date.parse(`${day}T${time}${offset}`);
+}
+
 export function localTime(iso, timeZone) {
-  const time = Date.parse(iso);
+  const time = stampMs(iso);
   if (Number.isNaN(time)) return '';
   return new Intl.DateTimeFormat('de-DE', { hour: '2-digit', minute: '2-digit', timeZone }).format(new Date(time));
 }
 
+/** Kalendertag (ISO) eines Zeitpunkts in der Zone (Standard: die des Geräts, #534); ein reines Datum bleibt,
+ *  wie es ist (es trägt keine Uhrzeit). `''`, wenn unlesbar. */
+function localDateIso(iso, timeZone) {
+  if (typeof iso === 'string' && /^\d{4}-\d\d-\d\d$/.test(iso)) return iso;
+  const time = stampMs(iso);
+  if (Number.isNaN(time)) return '';
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone })
+    .formatToParts(new Date(time)).map((part) => [part.type, part.value]));
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+/** Datum `TT.MM.JJJJ` eines Zeitpunkts in Ortszeit (etwa „Kopplung gültig bis“); `''`, wenn unlesbar. */
+export function localDateDe(iso, timeZone) {
+  const day = localDateIso(iso, timeZone);
+  return day ? formatDateDe(day) : '';
+}
+
 function stampLabel(iso, timeZone) {
   const time = localTime(iso, timeZone);
-  return time ? `${formatDateDe(iso.slice(0, 10))} ${time}` : '';
+  return time ? `${localDateDe(iso, timeZone)} ${time}` : '';
+}
+
+/** „zuletzt abgeglichen um …“, wenn es heute war (in der Zone), sonst „zuletzt am TT.MM., HH:MM“ (im anderen Jahr
+ *  mit Jahr). Kurz, weil die Statusleiste bei 280 px sonst umbricht und Inhalt verdeckt. */
+function lastSyncText(lastSyncAt, timeZone, now) {
+  const time = lastSyncAt ? localTime(lastSyncAt, timeZone) : '';
+  if (!time) return 'noch nicht abgeglichen';
+  const day = localDateIso(lastSyncAt, timeZone);
+  const today = localDateIso(new Date(Number.isFinite(now) ? now : Date.now()).toISOString(), timeZone);
+  if (day === today) return `zuletzt abgeglichen um ${time}`;
+  const shown = formatDateDe(day);
+  const label = isIsoDate(day) && day.slice(0, 4) === today.slice(0, 4) ? shown.slice(0, 6) : shown;
+  return `zuletzt am ${label}, ${time}`;
 }
 
 // --- Woche ---------------------------------------------------------------------------------------
@@ -153,13 +195,12 @@ export function weekModel({ getDay, anchor, today, conflictDates = [], windowDay
 
 // --- Status und Hinweise -------------------------------------------------------------------------
 
-export function statusModel({ paired, online, syncing, pending, lastSyncAt, timeZone }) {
+export function statusModel({ paired, online, syncing, pending, lastSyncAt, timeZone, now = Date.now() }) {
   const pendingText = pending === 0 ? '' : pending === 1 ? '1 Änderung nicht übertragen'
     : `${pending} Änderungen nicht übertragen`;
-  const last = lastSyncAt ? localTime(lastSyncAt, timeZone) : '';
   return {
     paired, online, syncing, pendingText,
-    lastText: last ? `zuletzt abgeglichen um ${last}` : 'noch nicht abgeglichen',
+    lastText: lastSyncText(lastSyncAt, timeZone, now),
     connection: !paired ? 'Nicht gekoppelt' : syncing ? 'Gleiche ab …' : online ? 'Online' : 'Offline',
     canSync: paired && !syncing,
   };
@@ -695,9 +736,8 @@ export function pushModel({ state, lastError, desktopReady, canTest = false }) {
 }
 
 /** Kopf des Reiters „Verbindung“: erst der Zustand, dann der Desktop und wann zuletzt abgeglichen wurde. */
-export function connectionSummary({ online, desktopName, lastSyncAt, tokenUntil, timeZone }) {
-  const last = lastSyncAt ? localTime(lastSyncAt, timeZone) : '';
-  const parts = [last ? `zuletzt abgeglichen um ${last}` : 'noch nicht abgeglichen'];
+export function connectionSummary({ online, desktopName, lastSyncAt, tokenUntil, timeZone, now = Date.now() }) {
+  const parts = [lastSyncText(lastSyncAt, timeZone, now)];
   if (tokenUntil) parts.push(`Kopplung gültig bis ${tokenUntil}`);
   return { pill: online ? 'Verbunden' : 'Offline', kind: online ? 'ok' : 'warn', name: desktopName || 'Desktop', detail: parts.join(' · ') };
 }

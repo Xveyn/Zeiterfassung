@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import {
   SETTINGS_TABS, categoriesModel, categoryRemovalText, categoryRenameHint, settingsTabLabel, retentionLabel,
   WEEKDAYS, dayTitle, normalizeNoteDisplay, categoryDisplay, categoryLabel, categoryOptions, conflictsModel, dayChanged, editLock, editorRows, focusKeyToRestore, hintKey, hintsModel, desktopHint, localTime, nextRow, olderModel, pickCategory, rowsToSlots, slotText,
-  reachedAfterSyncError, unpairDialogModel, statusModel, validateRows, weekModel, windowRow, reservationRows, reservationRowsToSlots, validateReservationRows,
+  reachedAfterSyncError, unpairDialogModel, statusModel, localDateDe, validateRows, weekModel, windowRow, reservationRows, reservationRowsToSlots, validateReservationRows,
 } from '../view-model.js';
 import { SyncError } from '../sync.js';
 import { formatMinutes } from '../minutes.js';
@@ -118,7 +118,7 @@ test('the local time is shown in the given zone', () => {
 
 test('the status line says online, pending changes and the last sync', () => {
   const status = statusModel({ paired: true, online: true, syncing: false, pending: 3,
-    lastSyncAt: '2026-10-08T12:34:00Z', timeZone: 'UTC' });
+    lastSyncAt: '2026-10-08T12:34:00Z', timeZone: 'UTC', now: Date.parse('2026-10-08T15:00:00Z') });
   assert.equal(status.connection, 'Online');
   assert.equal(status.pendingText, '3 Änderungen nicht übertragen');
   assert.equal(status.lastText, 'zuletzt abgeglichen um 12:34');
@@ -135,6 +135,48 @@ test('status line variants', () => {
   assert.equal(statusModel({ ...base, syncing: true }).canSync, false);
   assert.equal(statusModel({ ...base, paired: false }).connection, 'Nicht gekoppelt');
   assert.equal(statusModel({ ...base, paired: false }).canSync, false);
+});
+
+// --- Zeitpunkte in Ortszeit (#534) ----------------------------------------------------------------
+
+test('timestamps read like on the desktop: no zone is UTC, space or T, offsets with or without colon', () => {
+  assert.equal(localTime('2026-10-08T12:34:56', 'Europe/Berlin'), '14:34');
+  assert.equal(localTime('2026-10-08 12:34:56', 'Europe/Berlin'), '14:34');
+  assert.equal(localTime('2026-10-08T12:34:56z', 'Europe/Berlin'), '14:34');
+  assert.equal(localTime('2026-10-08T13:34:56+0100', 'UTC'), '12:34');
+  assert.equal(localTime('2026-10-08T13:34:56+01', 'UTC'), '12:34');
+  assert.equal(localTime('2026-10-08T13:34:56.250+01:00', 'UTC'), '12:34');
+  assert.equal(localTime('2026-10-08T18:04:56+05:30', 'UTC'), '12:34');
+  assert.equal(localTime('2026-10-08T13:35:56+0101', 'UTC'), '12:34');
+  assert.equal(localTime('Thu, 08 Oct 2026 12:34:56 GMT', 'UTC'), '');
+});
+
+test('the local date of a timestamp follows the zone; a calendar day is never shifted', () => {
+  assert.equal(localDateDe('2026-12-25T23:30:00Z', 'Europe/Berlin'), '26.12.2026');
+  assert.equal(localDateDe('2026-12-25T23:30:00Z', 'UTC'), '25.12.2026');
+  assert.equal(localDateDe('2026-12-26T05:00:00Z', 'America/Los_Angeles'), '25.12.2026');
+  assert.equal(localDateDe('2026-12-25', 'America/Los_Angeles'), '25.12.2026');
+  assert.equal(localDateDe('1999-12-31', 'America/Los_Angeles'), '1999-12-31');   // Kalendertag, auch außerhalb 2000–2100
+  assert.equal(localDateDe('kaputt', 'UTC'), '');
+  assert.equal(localDateDe('', 'UTC'), '');
+});
+
+test('the last sync names the day when it was not today, in the local zone', () => {
+  const base = { paired: true, online: true, syncing: false, pending: 0, timeZone: 'Europe/Berlin' };
+  const now = Date.parse('2026-10-08T10:00:00Z');                          // 12:00 in Berlin
+  assert.equal(statusModel({ ...base, now, lastSyncAt: '2026-10-07T22:30:00Z' }).lastText,
+    'zuletzt abgeglichen um 00:30');                                        // nach Mitternacht: heute
+  // Kurz: die Statusleiste bricht bei 280 px sonst um und verdeckt Inhalt.
+  assert.equal(statusModel({ ...base, now, lastSyncAt: '2026-10-07T21:30:00Z' }).lastText, 'zuletzt am 07.10., 23:30');
+  assert.equal(statusModel({ ...base, now, lastSyncAt: '2025-12-31T10:00:00Z' }).lastText, 'zuletzt am 31.12.2025, 11:00');
+  assert.equal(connectionSummary({ online: true, desktopName: 'D', lastSyncAt: '2026-10-07T21:30:00Z', tokenUntil: '',
+    timeZone: 'Europe/Berlin', now }).detail, 'zuletzt am 07.10., 23:30');
+});
+
+test('a conflict version shows date and time in the same zone', () => {
+  const [model] = conflictsModel([{ id: 'c', date: '2026-11-26', versions: [
+    { device: 'a', modified_at: '2026-11-25T23:30:00Z', slots: [] }] }], 'Europe/Berlin');
+  assert.equal(model.versions[0].when, '26.11.2026 00:30');
 });
 
 // --- Hinweise --------------------------------------------------------------------------------------
@@ -1038,7 +1080,8 @@ test('the editor title names the type only where both exist', () => {
 import { connectionSummary, storageNotice } from '../view-model.js';
 
 test('the connection summary says the state first: connected or offline, then when it last synced', () => {
-  const ok = connectionSummary({ online: true, desktopName: 'Desktop (Dev)', lastSyncAt: '2026-11-06T16:36:00Z', tokenUntil: '06.12.2026', timeZone: 'UTC' });
+  const ok = connectionSummary({ online: true, desktopName: 'Desktop (Dev)', lastSyncAt: '2026-11-06T16:36:00Z', tokenUntil: '06.12.2026', timeZone: 'UTC',
+    now: Date.parse('2026-11-06T18:00:00Z') });
   assert.equal(ok.pill, 'Verbunden');
   assert.equal(ok.kind, 'ok');
   assert.equal(ok.name, 'Desktop (Dev)');
