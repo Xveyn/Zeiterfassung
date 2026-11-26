@@ -103,11 +103,13 @@ class ApiTab:
         form.section("So sprichst du sie an")
         form.hint(API_AUTH_HINT)
         routes = tk.Frame(body, bg=BG)
-        for i, (path, what) in enumerate(API_ROUTES):
+        for i, (methods, path, what) in enumerate(API_ROUTES):
+            tk.Label(routes, text=methods, font=FONT_SMALL, bg=BG, fg=TEXT_MUTED,
+                     anchor="w").grid(row=i, column=0, sticky="w", padx=(0, 10))
             tk.Label(routes, text=path, font=FONT_SMALL, bg=BG, fg=TEXT,
-                     anchor="w").grid(row=i, column=0, sticky="w", padx=(0, 14))
+                     anchor="w").grid(row=i, column=1, sticky="w", padx=(0, 14))
             tk.Label(routes, text=what, font=FONT_SMALL, bg=BG, fg=TEXT_MUTED,
-                     anchor="w").grid(row=i, column=1, sticky="w")
+                     anchor="w").grid(row=i, column=2, sticky="w")
         form.block(routes, pady=(0, 4))
 
         def _show_port_hint():

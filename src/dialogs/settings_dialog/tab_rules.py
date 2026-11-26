@@ -442,18 +442,20 @@ def curl_example(raw_port: Any) -> str:
     return f'curl -H "Authorization: Bearer <Token>" http://127.0.0.1:{port}/v1/status'
 
 
-# Kurzfassung der Routen für den API-Tab: (Pfad, was dahinter liegt). Die
-# vollständige Tabelle samt Bodies steht in der README („Lokale HTTP-API“); ein
-# Test hält beide zusammen. Platzhalter sind deutsch: JJJJ-MM-TT, JJJJ-Www, …
-API_ROUTES: tuple[tuple[str, str], ...] = (
-    ("GET /v1/status", "Version, Gerätename"),
-    ("/v1/entries[/JJJJ-MM-TT]", "Ist-Zeiten (GET, PUT, DELETE)"),
-    ("/v1/reservations[/JJJJ-MM-TT]", "Reservierungen (GET, PUT, DELETE)"),
-    ("/v1/vacations[/id]", "Urlaub (GET, POST, DELETE)"),
-    ("GET /v1/summary/week/JJJJ-Www", "Auswertung einer Woche"),
-    ("GET /v1/summary/month/JJJJ-MM", "Auswertung eines Monats"),
-    ("GET /v1/categories", "Kategorien"),
-    ("GET /v1/holidays/JJJJ", "Feiertage"),
+# Kurzfassung der Routen für den API-Tab: (Methoden, Pfad, was dahinter liegt), je
+# in einer eigenen Spalte, damit die Pfade untereinander stehen (#542). Die
+# vollständige Tabelle samt Bodies steht in der README („Lokale HTTP-API“); Tests
+# halten Pfade und Methoden gegen README und `api_routes.ROUTES`. Platzhalter sind
+# deutsch: JJJJ-MM-TT, JJJJ-Www, …
+API_ROUTES: tuple[tuple[str, str, str], ...] = (
+    ("GET", "/v1/status", "Version, Gerätename"),
+    ("GET PUT DELETE", "/v1/entries[/JJJJ-MM-TT]", "Ist-Zeiten"),
+    ("GET PUT DELETE", "/v1/reservations[/JJJJ-MM-TT]", "Reservierungen"),
+    ("GET POST DELETE", "/v1/vacations[/id]", "Urlaub"),
+    ("GET", "/v1/summary/week/JJJJ-Www", "Auswertung einer Woche"),
+    ("GET", "/v1/summary/month/JJJJ-MM", "Auswertung eines Monats"),
+    ("GET", "/v1/categories", "Kategorien"),
+    ("GET", "/v1/holidays/JJJJ", "Feiertage"),
 )
 API_AUTH_HINT = (
     "Jede Anfrage braucht den Kopf Authorization: Bearer <Token> "
