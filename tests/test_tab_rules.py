@@ -1076,9 +1076,26 @@ def test_api_route_summary_matches_the_readme():
 
     readme = (Path(__file__).resolve().parent.parent / "README.md").read_text(
         encoding="utf-8")
-    for path, _what in tr.API_ROUTES:
+    for _methods, path, _what in tr.API_ROUTES:
         base = re.search(r"/v1/[a-z]+(?:/[a-z]+)?", path).group(0)
         assert base in readme, path
+
+
+def test_api_route_summary_names_exactly_the_methods_of_each_route():
+    # Die Methoden stehen in einer eigenen Spalte, damit alle Pfade untereinander stehen. Sie müssen
+    # die echten sein: eine neue Methode (etwa PUT für Urlaub) fiele sonst nie auf.
+    import re
+
+    from src.api_routes import ROUTES
+
+    for methods, path, what in tr.API_ROUTES:
+        base = re.search(r"/v1/[a-z]+(?:/[a-z]+)?", path).group(0)
+        actual = {r.method for r in ROUTES
+                  if r.pattern.pattern == base or r.pattern.pattern.startswith(base + "/")}
+        assert actual, path
+        assert methods.split() == [m for m in ("GET", "POST", "PUT", "DELETE") if m in actual], path
+        assert not path.startswith(("GET", "POST", "PUT", "DELETE")), path
+        assert not re.search(r"\b(GET|POST|PUT|DELETE)\b", what), what
 
 
 # --- Updates-Tab: letzte Prüfung und Changelog-Sichtbarkeit -----------------
