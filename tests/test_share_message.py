@@ -88,3 +88,14 @@ def test_name_is_escaped_in_html_but_raw_in_the_subject():
 def test_filename_carries_the_export_date():
     assert _message(exported_at="2026-09-18T23:59:59Z").filename == \
         "zeiterfassung-share-20260918.json"
+
+
+def test_filename_carries_the_local_export_date(monkeypatch):
+    # #534: `exported_at` steht in UTC; der Dateiname trägt den Tag, an dem geteilt wurde.
+    monkeypatch.setattr("src.time_utils.local_zone", lambda: datetime.timezone(datetime.timedelta(hours=2)))
+    assert _message(exported_at="2026-09-18T23:59:59Z").filename == \
+        "zeiterfassung-share-20260919.json"
+
+
+def test_filename_with_an_unreadable_export_stamp_keeps_its_first_ten_characters():
+    assert _message(exported_at="kaputt-und-lang").filename == "zeiterfassung-share-kaputtund.json"

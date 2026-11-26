@@ -620,6 +620,17 @@ def test_a_device_row_shows_name_last_seen_and_expiry_in_german_format():
     assert "widerrufen" not in text and "abgelaufen" not in text
 
 
+def test_a_device_row_shows_its_times_in_local_time(monkeypatch):
+    # #534: `last_seen`/`expires_at`/`revoked_at` stehen in UTC, die Zeile zeigt Ortszeit und lokales Datum.
+    import datetime
+    monkeypatch.setattr("src.time_utils.local_zone", lambda: datetime.timezone(datetime.timedelta(hours=1)))
+    text = tr.device_row_text(device(last_seen="2026-11-25T17:45:00Z", expires_at="2026-12-25T23:30:00Z"),
+                              "2026-11-25T18:00:00Z")
+    assert "zuletzt 25.11.2026 18:45" in text and "gültig bis 26.12.2026" in text
+    unpaired = tr.device_row_text(device(**{**UNPAIRED, "revoked_at": "2026-11-25T23:10:00Z"}), NOW_ISO)
+    assert "vom Handy getrennt am 26.11.2026 00:10" in unpaired
+
+
 def test_revoked_devices_are_not_listed():
     # Der Datensatz bleibt im Speicher (die Antwort an das Handy lautet `token_revoked`), die Liste
     # im Tab zeigt aber nur Geräte, die noch koppelbar sind.

@@ -247,6 +247,23 @@ def real_channel():
     """Schaltet `_release_channel` ab: der Test sieht `build_channel` echt."""
 
 
+@pytest.fixture(autouse=True)
+def _utc_display_zone(monkeypatch, request):
+    """Standard für JEDEN Test: Zeitpunkte werden in UTC angezeigt (#534). Sonst hinge jede
+    angezeigte Uhrzeit an der Zeitzone des Rechners (die CI läuft in UTC, ein Entwickler in MEZ),
+    und unter Windows lässt sich die Zone nicht per `TZ` umstellen. Wer die Umrechnung prüft,
+    setzt `src.time_utils.local_zone` selbst oder übergibt `tz`."""
+    if "system_zone" in request.fixturenames:
+        return
+    import datetime
+    monkeypatch.setattr("src.time_utils.local_zone", lambda: datetime.timezone.utc)
+
+
+@pytest.fixture
+def system_zone():
+    """Schaltet `_utc_display_zone` ab: der Test sieht `local_zone` echt."""
+
+
 @pytest.fixture
 def fake_keyring(monkeypatch):
     def _install(working=True, block=None, lie=False):

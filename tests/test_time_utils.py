@@ -1,5 +1,7 @@
 import datetime
 
+import pytest
+
 from src.time_utils import (
     format_date, format_hours_colon, format_hours_hm, format_iso_date,
     format_iso_datetime, format_iso_weekday_date, local_date_of_iso,
@@ -149,3 +151,106 @@ def test_local_date_of_iso_empty_is_none():
 
 def test_local_date_of_iso_unparsable_is_none():
     assert local_date_of_iso("kein-datum") is None
+
+
+# --- Zeitpunkte in Ortszeit (#534) -------------------------------------------
+#
+# Zeitpunkte (`…Z`, `±HH:MM`) werden zur Anzeige in die Ortszeit umgerechnet, Kalendertage nie.
+# Feste Offsets statt der Systemzone: die Tests müssen überall gelten.
+
+CET = datetime.timezone(datetime.timedelta(hours=1))
+CEST = datetime.timezone(datetime.timedelta(hours=2))
+PST = datetime.timezone(datetime.timedelta(hours=-8))
+
+
+def _berlin():
+    zoneinfo = pytest.importorskip("zoneinfo")
+    try:
+        return zoneinfo.ZoneInfo("Europe/Berlin")
+    except zoneinfo.ZoneInfoNotFoundError:
+        pytest.skip("keine Zeitzonendaten")
+
+
+def test_format_iso_datetime_shows_local_time():
+    # Das Beispiel aus #534: um 18:45 MEZ gespeichert, als 17:45 UTC abgelegt.
+    assert format_iso_datetime("2026-11-25T17:45:00Z", tz=CET) == "25.11.2026 18:45"
+
+
+def test_format_iso_datetime_follows_summer_and_winter_time():
+    berlin = _berlin()
+    assert format_iso_datetime("2026-06-02T14:30:00Z", tz=berlin) == "02.06.2026 16:30"
+    assert format_iso_datetime("2026-11-25T17:45:00Z", tz=berlin) == "25.11.2026 18:45"
+
+
+def test_format_iso_datetime_moves_the_date_across_midnight():
+    assert format_iso_datetime("2026-11-25T23:30:00Z", tz=CET) == "26.11.2026 00:30"
+    assert format_iso_datetime("2026-11-26T05:00:00Z", tz=PST) == "25.11.2026 21:00"
+
+
+def test_format_iso_datetime_accepts_an_offset_instead_of_z():
+    assert format_iso_datetime("2026-11-25T23:30:00+00:00", tz=CET) == "26.11.2026 00:30"
+    assert format_iso_datetime("2026-11-26T00:30:00+01:00", tz=datetime.timezone.utc) == "25.11.2026 23:30"
+
+
+def test_a_timestamp_without_zone_counts_as_utc():
+    # Wie `local_date_of_iso`: alle eigenen Schreiber setzen `Z`, ein Wert ohne Zone kommt nur aus
+    # Fremddaten, und das Modul hat für Zeitpunkte genau eine Regel.
+    assert format_iso_datetime("2026-11-25T23:30:00", tz=CET) == "26.11.2026 00:30"
+    assert format_iso_datetime("2026-11-25 23:30:00", tz=CET) == "26.11.2026 00:30"
+
+
+def test_format_iso_date_of_a_timestamp_is_the_local_date():
+    assert format_iso_date("2026-11-25T23:30:00Z", tz=CET) == "26.11.2026"
+    assert format_iso_weekday_date("2026-07-12T23:30:00Z", tz=CEST) == "Montag - 13.07.2026"
+
+
+def test_a_calendar_day_is_never_shifted():
+    # Ein Kalendertag trägt keine Uhrzeit: der Tag, an dem gearbeitet wurde, bleibt dieser Tag.
+    assert format_iso_date("2026-06-02", tz=PST) == "02.06.2026"
+    assert format_iso_datetime("2026-06-02", tz=PST) == "02.06.2026"
+    assert format_iso_weekday_date("2026-07-13", tz=PST) == "Montag - 13.07.2026"
+    assert local_date_of_iso("2026-06-02", tz=PST) == datetime.date(2026, 6, 2)
+
+
+def test_without_tz_the_display_zone_is_used(monkeypatch):
+    monkeypatch.setattr("src.time_utils.local_zone", lambda: CET)
+    assert format_iso_datetime("2026-11-25T17:45:00Z") == "25.11.2026 18:45"
+    assert format_iso_date("2026-11-25T23:30:00Z") == "26.11.2026"
+    assert local_date_of_iso("2026-11-25T23:30:00Z") == datetime.date(2026, 11, 26)
+
+
+def test_the_display_zone_is_the_system_zone(system_zone):
+    from src import time_utils
+    assert time_utils.local_zone() is None          # `astimezone(None)` nimmt die Zone des Systems
+
+
+def test_unconvertible_timestamps_fall_back_to_the_raw_text():
+    # Fremddaten: am Rand des Datumsbereichs scheitert die Umrechnung; angezeigt wird dann roh,
+    # geworfen wird nie.
+    # (Das Jahr 1 schreibt `strftime` plattformabhängig ohne führende Nullen, deshalb nur das Ende.)
+    assert format_iso_datetime("0001-01-01T00:30:00Z", tz=PST).endswith(" 00:30")
+    assert format_iso_date("9999-12-31T23:30:00Z", tz=CEST) == "31.12.9999"
+    assert format_iso_datetime("2026-13-99T25:99:00Z", tz=CET) == "2026-13-99 25:99"
+    assert local_date_of_iso("0001-01-01T00:30:00Z", tz=PST) is None
+
+
+def test_the_system_zone_never_raises_on_extreme_timestamps(system_zone):
+    # `astimezone(None)` fragt die Zone des Systems (`time.localtime`); unter Windows wirft das vor
+    # 1970 und nach 3000 `OSError`. Fremddaten (Sync-Doc, Teilen-Datei) dürfen die Anzeige nicht sprengen.
+    for stamp in ("1969-07-20T20:17:00Z", "3001-01-01T00:00:00Z", "2026-11-25T17:45:00Z"):
+        assert isinstance(format_iso_datetime(stamp), str)
+        assert isinstance(format_iso_date(stamp), str)
+        assert isinstance(format_iso_weekday_date(stamp), str)
+        local_date_of_iso(stamp)
+
+
+def test_non_strings_give_the_fallback_instead_of_raising():
+    for value in (12345678901, 3.5, {"a": 1}, ["2026-06-02"], b"2026-06-02T14:30:00Z"):
+        assert format_iso_datetime(value, fallback="?") == "?"        # type: ignore[arg-type]
+        assert format_iso_date(value, fallback="?") == "?"            # type: ignore[arg-type]
+        assert format_iso_weekday_date(value, fallback="?") == "?"    # type: ignore[arg-type]
+        assert local_date_of_iso(value) is None                       # type: ignore[arg-type]
+
+
+def test_a_lowercase_z_is_utc_as_well():
+    assert format_iso_datetime("2026-11-25T23:30:00z", tz=CET) == "26.11.2026 00:30"

@@ -795,8 +795,9 @@ Wert.
   `_detach_window`, ein `_TipWindow` am Toplevel) — es wird verschoben und
   neu beschriftet, nicht abgebaut.
   Konvention, wo Tooltips hingehören: Root-`CLAUDE.md`, Abschnitt „Tooltips".
-- `time_utils.py` — Stunden, KW-Labels, `format_iso_date`/`format_iso_datetime` (Anzeige,
-  Zeitanteil roh) und `local_date_of_iso` (UTC-Stempel → lokales Datum, zum **Vergleichen**;
+- `time_utils.py` — Stunden, KW-Labels, `format_iso_date`/`format_iso_datetime` (Anzeige;
+  Zeitpunkte in Ortszeit, Kalendertage unverändert, s. Wurzel-`CLAUDE.md`, „Datumsformat“) und
+  `local_date_of_iso` (UTC-Stempel → lokales Datum, zum **Vergleichen**;
   s. Sync-Status-Label).
 - `auto_update.py` — die Auto-Update-Policy samt **dem einen** Guard für jeden
   Update-Download (R9, Xveyn#123). Der `UpdateCoordinator` baut das einzige `AutoUpdater`-Exemplar

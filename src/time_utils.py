@@ -180,14 +180,48 @@ def week_spans_months(iso_year: int, iso_week: int) -> bool:
     return dates[0].month != dates[6].month
 
 
-def format_iso_date(iso: str | None, fallback: str = "—") -> str:
+def local_zone() -> datetime.tzinfo | None:
+    """Zone, in der Zeitpunkte angezeigt und mit „heute" verglichen werden: `None` heißt die des
+    Systems (Vorgabe von `astimezone`). Eine Funktion statt `None` an jeder Stelle, damit die Tests
+    eine feste Zone einsetzen können."""
+    return None
+
+
+def _local_stamp(iso: str, tz: datetime.tzinfo | None) -> datetime.datetime | None:
+    """Ein Zeitpunkt (`YYYY-MM-DDTHH:MM…` mit `Z`, `±HH:MM` oder ohne Zone, auch mit Leerzeichen
+    statt `T`) in Ortszeit, sonst `None`: reines Datum, unlesbar oder nicht umrechenbar.
+
+    Ohne Zone gilt er als UTC: `utc_now_iso` schreibt immer `Z`, ein Wert ohne Zone kommt nur aus
+    Fremddaten, und für Zeitpunkte gilt im Modul genau eine Regel. Ein Kalendertag wird nie
+    umgerechnet: er trägt keine Uhrzeit, eine Verschiebung wäre geraten."""
+    if len(iso) < 16 or iso[10] not in ("T", " "):
+        return None
+    text = iso[:-1] + "+00:00" if iso[-1] in ("Z", "z") else iso
+    try:
+        stamp = datetime.datetime.fromisoformat(text)
+        if stamp.tzinfo is None:
+            stamp = stamp.replace(tzinfo=datetime.timezone.utc)
+        return stamp.astimezone(tz if tz is not None else local_zone())
+    except (ValueError, OverflowError, OSError):
+        # Unlesbar oder am Rand des Datumsbereichs (unter Windows wirft die Systemzone vor 1970 und
+        # nach 3000 `OSError`): der Aufrufer zeigt den Text roh.
+        return None
+
+
+def format_iso_date(iso: str | None, fallback: str = "—",
+                    tz: datetime.tzinfo | None = None) -> str:
     """ISO-Datum oder -Zeitstempel → 'TT.MM.JJJJ' für die Anzeige.
 
-    Akzeptiert sowohl reine Daten ('2026-06-02') als auch Zeitstempel
-    ('2026-06-02T14:30:00Z'). Leere oder unparsbare Werte liefern `fallback`.
+    Ein reines Datum ('2026-06-02') bleibt, wie es ist; ein Zeitstempel
+    ('2026-06-02T14:30:00Z') zeigt sein Datum in Ortszeit (`_local_stamp`, #534).
+    Leere Werte und Nicht-Texte liefern `fallback`, unlesbare die ersten zehn Zeichen.
+    `tz=None` heißt `local_zone()`.
     """
-    if not iso or len(iso) < 10:
+    if not isinstance(iso, str) or len(iso) < 10:
         return fallback
+    local = _local_stamp(iso, tz)
+    if local is not None:
+        return format_date(local)
     try:
         return format_date(datetime.date.fromisoformat(iso[:10]))
     except ValueError:
@@ -196,62 +230,56 @@ def format_iso_date(iso: str | None, fallback: str = "—") -> str:
 
 def local_date_of_iso(iso: str | None,
                       tz: datetime.tzinfo | None = None) -> datetime.date | None:
-    """ISO-Zeitstempel → lokales Kalenderdatum, oder None wenn unbrauchbar.
+    """ISO-Datum oder -Zeitstempel → lokales Kalenderdatum, oder None wenn unbrauchbar.
 
-    Gegenstück zu `format_iso_date`, das den Zeitanteil bewusst roh übernimmt
-    (Anzeige-Konvention). Hier wird umgerechnet, weil das Ergebnis *verglichen*
-    wird: `last_pull_at` steht in UTC, „heute" ist die lokale Wanduhr des
-    Nutzers. Ein Sync um 01:30 MESZ liegt als 23:30 UTC am Vortag — ohne
-    Umrechnung gälte er als „gestern gesynct", obwohl er gerade lief.
-
-    Ein reines Datum ('2026-09-12') wird unverändert übernommen: es trägt
-    keine Uhrzeit, eine Zonenverschiebung wäre geraten. Ein Zeitstempel ohne
-    Zonenangabe gilt als UTC — `utc_now_iso` hat nie etwas anderes geschrieben.
-    `tz=None` heißt Systemzone (Default von `astimezone`); der Parameter
-    existiert für die Tests, die nicht von der Zone des Rechners abhängen
-    dürfen.
+    Zum *Vergleichen* mit „heute": `last_pull_at` steht in UTC, „heute" ist die
+    lokale Wanduhr des Nutzers. Ein Sync um 01:30 MESZ liegt als 23:30 UTC am
+    Vortag — ohne Umrechnung gälte er als „gestern gesynct". Ein reines Datum
+    wird unverändert übernommen. `tz=None` heißt `local_zone()`.
     """
-    if not iso or len(iso) < 10:
+    if not isinstance(iso, str) or len(iso) < 10:
         return None
     if len(iso) == 10:
         try:
             return datetime.date.fromisoformat(iso)
         except ValueError:
             return None
-    text = iso[:-1] + "+00:00" if iso.endswith("Z") else iso
-    try:
-        stamp = datetime.datetime.fromisoformat(text)
-    except ValueError:
-        return None
-    if stamp.tzinfo is None:
-        stamp = stamp.replace(tzinfo=datetime.timezone.utc)
-    return stamp.astimezone(tz).date()
+    local = _local_stamp(iso, tz)
+    return local.date() if local is not None else None
 
 
-def format_iso_weekday_date(iso: str | None, fallback: str = "—") -> str:
+def format_iso_weekday_date(iso: str | None, fallback: str = "—",
+                            tz: datetime.tzinfo | None = None) -> str:
     """ISO-Datum oder -Zeitstempel → 'Wochentag - TT.MM.JJJJ' für die Anzeige
-    (z.B. 'Montag - 13.07.2026'). Leere oder unparsbare Werte liefern denselben
-    Fallback-Weg wie format_iso_date (fallback bzw. roher 10-Zeichen-Prefix).
+    (z.B. 'Montag - 13.07.2026'). Datum und Fallback wie `format_iso_date`.
     """
-    if not iso or len(iso) < 10:
+    if not isinstance(iso, str) or len(iso) < 10:
         return fallback
-    try:
-        day = datetime.date.fromisoformat(iso[:10])
-    except ValueError:
-        return iso[:10]
+    local = _local_stamp(iso, tz)
+    if local is not None:
+        day = local.date()
+    else:
+        try:
+            day = datetime.date.fromisoformat(iso[:10])
+        except ValueError:
+            return iso[:10]
     return f"{WEEKDAYS_DE_FULL[day.weekday()]} - {format_date(day)}"
 
 
-def format_iso_datetime(iso: str | None, fallback: str = "—") -> str:
-    """ISO-Zeitstempel → 'TT.MM.JJJJ HH:MM' für die Anzeige.
+def format_iso_datetime(iso: str | None, fallback: str = "—",
+                        tz: datetime.tzinfo | None = None) -> str:
+    """ISO-Zeitstempel → 'TT.MM.JJJJ HH:MM' für die Anzeige, in Ortszeit (#534).
 
-    Die Uhrzeit wird unverändert aus dem String übernommen (keine
-    Zeitzonen-Umrechnung). Fehlt der Zeitanteil, wird nur das Datum gezeigt.
-    Leere oder unparsbare Werte liefern `fallback`.
+    Fehlt der Zeitanteil, wird nur das Datum gezeigt (unverändert, s.
+    `format_iso_date`). Leere Werte und Nicht-Texte liefern `fallback`; ein Zeitstempel, der sich
+    nicht lesen oder umrechnen lässt, erscheint roh. `tz=None` heißt `local_zone()`.
     """
-    if not iso or len(iso) < 10:
+    if not isinstance(iso, str) or len(iso) < 10:
         return fallback
-    date_part = format_iso_date(iso, fallback)
+    local = _local_stamp(iso, tz)
+    if local is not None:
+        return f"{format_date(local)} {local.hour:02d}:{local.minute:02d}"
+    date_part = format_iso_date(iso, fallback, tz)
     if len(iso) >= 16 and iso[10] in ("T", " "):
         return f"{date_part} {iso[11:16]}"
     return date_part

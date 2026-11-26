@@ -779,6 +779,24 @@ Anzeige-Formatierung, ISO bleibt die Quelle). Neue datumsanzeigende
 UI-Stellen über diese Helfer formatieren, nicht roh `isoformat()`/`str()`
 ausgeben.
 
+**Drei Arten von Werten, und nur eine wird umgerechnet** (#534):
+
+- **Kalendertag** (`YYYY-MM-DD`, ohne Zone): der Tag, an dem gearbeitet wurde
+  (Storage-Keys, Urlaub, Reservierungen, Werkstudenten-Zeitraum). Wird **nie**
+  umgerechnet.
+- **Uhrzeit** (`HH:MM`): Wanduhr der Slots, ebenfalls nie umgerechnet.
+- **Zeitpunkt** (UTC, `YYYY-MM-DDTHH:MM:SSZ` aus `utc_now_iso`): `modified_at`,
+  `last_pull_at`, `last_seen`, `expires_at`, `exported_at` … Die Helfer zeigen ihn
+  in **Ortszeit** (Datum und Uhrzeit), `local_date_of_iso` liefert sein lokales
+  Datum zum Vergleichen mit „heute“. Ein Zeitpunkt ohne Zone gilt als UTC (nur
+  Fremddaten tragen keine). Gespeichert und verglichen (LWW) wird weiter der
+  UTC-String; umgerechnet wird nur zur Anzeige.
+
+Die Zone liefert `time_utils.local_zone()` (`None` = System); `tests/conftest.py`
+setzt sie für jeden Test auf UTC (Muster `_release_channel`), wer umrechnet,
+setzt sie im Test selbst. Die PWA hält dieselbe Regel (`view-model.js`:
+`localTime`, `localDateDe`, Zeitpunkt ohne Zone = UTC).
+
 ## Stunden: intern dezimal, angezeigt in Minuten — Summen NUR über Minuten
 
 `calculate_hours` liefert **Dezimalstunden** und rundet dabei **pro Slot** auf

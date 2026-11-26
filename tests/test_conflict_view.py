@@ -140,6 +140,22 @@ def test_modified_text_and_newer_marker():
     assert other.newer is False
 
 
+def test_modified_text_is_in_local_time(monkeypatch):
+    # #534: `modified_at` steht in UTC, die Karte zeigt die Ortszeit (Datum eingeschlossen).
+    import datetime
+    monkeypatch.setattr("src.time_utils.local_zone", lambda: datetime.timezone(datetime.timedelta(hours=2)))
+    c = _entry(_cand(OWN, "2026-06-26T22:30:00Z", [_slot()]),
+               _cand(OTHER, "2026-06-23T15:53:00Z", [_slot()]))
+    own, other = cv.build_cards(c, REGISTRY, OWN, "")
+    assert own.modified == "geändert 27.06.2026 00:30"
+    assert other.modified == "geändert 23.06.2026 17:53"
+
+
+def test_a_timestamp_that_is_not_a_string_gives_no_modified_text():
+    c = _entry(_cand(OWN, 12345678901, [_slot()]), _cand(OTHER, {"x": 1}, [_slot()]))
+    assert [x.modified for x in cv.build_cards(c, REGISTRY, OWN, "")] == ["", ""]
+
+
 def test_equal_or_missing_timestamps_mark_nobody_newer():
     same = _entry(_cand(OWN, "t", [_slot()]), _cand(OTHER, "t", [_slot()]))
     assert [x.newer for x in cv.build_cards(same, REGISTRY, OWN, "")] == [False, False]

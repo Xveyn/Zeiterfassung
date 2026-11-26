@@ -29,7 +29,7 @@ import { shouldApplyUpdate, shouldCheckForUpdate } from './update-policy.js';
 import { blockSignature, rowsToBlock } from './categories.js';
 import {
   categoriesModel, conflictsModel, connectionLabel, dayChanged, dayTitle, desktopHint, NOTE_DISPLAY_OPTIONS, normalizeNoteDisplay, editLock, editorRows, focusKeyToRestore, hintsModel, olderModel, pushModel, reservationRows,
-  iosInstallHint, isSetupPhase, pairingAfterBack, reservationRowsToSlots, daySave, noteChoices, setupModel, statusModel, reachedAfterSyncError, unpairDialogModel, validateReservationRows, validateRows, weekModel,
+  iosInstallHint, isSetupPhase, localDateDe, pairingAfterBack, reservationRowsToSlots, daySave, noteChoices, setupModel, statusModel, reachedAfterSyncError, unpairDialogModel, validateReservationRows, validateRows, weekModel,
 } from './view-model.js';
 import { BUILD, CACHE_PREFIX } from './sw-core.js';
 import { describeRepair, repairServiceWorker } from './sw-repair.js';
@@ -155,7 +155,10 @@ class App {
         return;
       }
       this.lockCtl.visible();
-      if (!this.locked) this.trigger('visible');       // gesperrt: kein Abgleich; das Entsperren holt ihn nach
+      if (!this.locked) {
+        this.trigger('visible');                       // gesperrt: kein Abgleich; das Entsperren holt ihn nach
+        this.render();                                 // „heute“ und „zuletzt abgeglichen“ auch ohne Abgleich nachziehen
+      }
       this.updatePushSchedule();
       void this.checkForUpdate('visible');
       this.maybeApplyUpdate();
@@ -829,7 +832,7 @@ class App {
         address: connectionLabel(meta),
         transport: meta.transport,
         persistent: this.persistent,
-        tokenUntil: meta.token_expires_at ? formatDateDe(meta.token_expires_at.slice(0, 10)) : '',
+        tokenUntil: localDateDe(meta.token_expires_at),
         online: this.online, lastSyncAt: meta.server_time,
         push,
         lock: this.lockModelNow(),
