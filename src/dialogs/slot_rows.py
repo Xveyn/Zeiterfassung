@@ -24,7 +24,7 @@ import tkinter as tk
 
 from src.category_defaults import resolve_slot_defaults
 from src.theme import (
-    BG, FONT, PAUSE_VALUES, TEXT_MUTED, TIME_VALUES, dark_combo, secondary_button,
+    BG, FONT, PAUSE_VALUES, SEPARATOR, TEXT_MUTED, TIME_VALUES, dark_combo, secondary_button,
     set_secondary_button_enabled,
 )
 
@@ -43,6 +43,12 @@ OVERRIDE_MARKER = "*"
 # Anlegen anbietet): kein Wert, sondern eine Aktion — die Auswahl öffnet den
 # Kategorien-Dialog und springt auf den vorherigen Wert zurück.
 NEW_CATEGORY_LABEL = "＋ Neue Kategorie"
+
+# Jeder Slot steht in einem Rahmen (Karte): mit Notizzeile ist sonst nicht zu
+# sehen, welche Notiz zu welchem Slot gehört. Innenabstand der Karte und
+# Abstand zwischen zwei Karten in Pixeln.
+CARD_PAD = 6
+ROW_GAP = 4
 
 # Mindestbreite des Notizfelds der Ist-Zeilen in Zeichen (skaliert mit der
 # Schrift). In seiner eigenen Zeile dehnt es sich auf die Breite des Slots; die
@@ -196,7 +202,7 @@ class SlotRowList:
             return
         for r in self.rows:
             r["frame"].pack_forget()
-            r["frame"].pack(fill="x", pady=3)
+            r["frame"].pack(fill="x", pady=ROW_GAP)
         self._refresh_arrows()
         self._on_rows_changed()
 
@@ -217,8 +223,7 @@ class SlotRowList:
         Kategorie machte das Feld den Dialog rund 280 px breiter, auch ohne Slot."""
         nv = tk.StringVar(value=notiz)
         note_line = tk.Frame(row, bg=BG)
-        # Luft darunter trennt den Slot vom nächsten; die Notiz gehört sichtbar nach oben.
-        note_line.pack(fill="x", pady=(6, 8))
+        note_line.pack(fill="x", pady=(6, 0))
         tk.Label(note_line, text="Notiz:", font=FONT, bg=BG, fg=TEXT_MUTED).pack(
             side=tk.LEFT, padx=(4, 0))
         note_combo = dark_combo(note_line, nv, [], width=NOTE_WIDTH, editable=True)
@@ -247,8 +252,10 @@ class SlotRowList:
         führen dort `send_reminder_minutes` mit). `notiz` belegt das Notizfeld
         vor, sofern die Liste eines hat.
         """
-        row = tk.Frame(parent if parent is not None else self._frame, bg=BG)
-        row.pack(fill="x", pady=3)
+        row = tk.Frame(parent if parent is not None else self._frame, bg=BG,
+                       highlightbackground=SEPARATOR, highlightcolor=SEPARATOR,
+                       highlightthickness=1, padx=CARD_PAD, pady=CARD_PAD)
+        row.pack(fill="x", pady=ROW_GAP)
         # Zeiten, Kategorie, × und ▲/▼ stehen in der oberen Zeile; die Notiz
         # bekommt eine eigene darunter (`_add_note_field`). `row` bleibt der
         # Rahmen der ganzen Zeile, den `move` und `remove` umhängen.
