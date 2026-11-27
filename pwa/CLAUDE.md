@@ -115,7 +115,7 @@ ES-Module flach im Ordner:
   zerlegt `docs/datenschutz.md` (Gegenstück zu `src/privacy_doc.py`), `privacy-view.js` baut die Seite
   (s. „Datenschutzseite“).
 - `index.html`, `app.css`, `manifest.webmanifest`, `icons/` (erzeugt von
-  `scripts/pwa_icons.py` aus dem Markenbild).
+  `scripts/app_icons.py` aus `assets/app-icon.svg`).
 - `sw.js` — Service Worker (ES-Modul) mit dem getesteten Kern `sw-core.js`:
   Cache-Name, Vorab-Cache-Liste `PRECACHE`, `shouldHandle` (nur eigene, vorab
   gecachte GET-Anfragen). **API-Antworten und Anfragen an den Desktop gehen nie
