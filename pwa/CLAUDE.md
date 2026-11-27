@@ -324,6 +324,29 @@ bietet sie nur an, wenn „Reservierungen verwenden“ an ist.
   Empfangszeitpunkt (`ReservationStore.merge_phone`); die Antwort kann daher
   einen neueren `modified_at` tragen als gesendet.
 
+## Krankheitstage: Abgleich
+
+- **Fähigkeit `sick_days`.** Nur wenn die Antwort sie nennt, sendet die PWA den Bereich `sick`, zeigt Krankheit an und
+  bietet sie an; ohne sie löscht sie auch nie einen lokalen Datensatz (ein älterer Desktop kennt den Bereich nicht
+  und ließe ihn fallen).
+- **Speicher in der Meta** (`sick`, `sick_capable`): kein IndexedDB-Upgrade.
+- **Kein `minutes` auf dem Draht.** Die PWA sendet nur Tage. Die Minuten rechnet der Desktop: bei einem schon bekannten
+  Tag behält er seine, sonst nimmt er die Reservierung (in dem Stand, den sie vor derselben Anfrage hatte), die Regel
+  für Wochenende und Feiertag oder die synchronisierte Grundlage (`sick_hours_basis`).
+- **Reservierungen gehen im selben ersten Paket hinaus.** Das Häkchen bietet nur Tage an, die vorher kein Krankheitstag
+  waren; die Tombstones der gelöschten Reservierungen reisen mit der Krankheit in einer Anfrage, damit der Desktop nie
+  Krankheit ohne die Löschung sieht.
+- **Die Antwort gilt für gesendete Tage.** Der Desktop darf seinen unveränderten Datensatz behalten, der Stempel in der
+  Antwort kann deshalb älter sein als der gesendete.
+- **Fehler** mit Präfix „Krankheit YYYY-MM-DD:“ ordnet die PWA dem Tag mit `dayKind 'sick'` zu.
+- **Version ab 1.** Vom Desktop stammende Reservierungen und Krankheitstage tragen `version` ≥ 1, ein nie
+  abgeglichener lokaler Datensatz 0. Deshalb sendet das Entfernen eines abgeglichenen Datensatzes einen Tombstone,
+  ein nie abgeglichener wird nur lokal verworfen.
+- **Bekannte Grenze.** Geht die Antwort verloren, kann ein entfernter Tag einmal zurückkommen: `synced_version 0` beweist
+  nicht, dass der Desktop ihn nie kannte. Erneutes Entfernen hält (`docs/known-limitations.md`).
+- **Außerhalb des Lesefensters gesperrt** wie die Arbeitszeit (#273), siehe „Krank melden“ unten.
+- **Kein Krankheitsdatum im Debug-Protokoll** (s. „Datenschutz“ unten).
+
 ## Krankheitstage: Oberfläche
 
 Logik und Abgleich: `sick.js` und `store.js` (Meta `sick`, `sick_capable`). Die Anzeige- und Entscheidungslogik

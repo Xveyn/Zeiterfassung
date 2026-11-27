@@ -206,7 +206,7 @@ def test_reservation_minutes_prefill_only_when_reservations_active(env):
 
 
 
-# --- Review PR 5 -----------------------------------------------------------------
+# --- Meldungen, Grundlage und Wiring ----------------------------------------
 
 HUGE = 10 ** 400
 

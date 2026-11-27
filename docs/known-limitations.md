@@ -880,6 +880,9 @@ Die Slots eines Tages stehen chronologisch, nach Kategorie oder in einer eigenen
   kommt nur ihr Tombstone an: der Tag wird aus der Standardzeit bzw. dem Durchschnitt vorbelegt, nicht aus der
   Reservierung. Eine Reservierung, die das Handy lebend mitschickt, zählt dagegen schon, ebenso die Ist-Zeiten derselben
   Anfrage.
+- **Nach einer verlorenen Antwort kann ein am Handy entfernter Krankheitstag einmal zurückkommen.** Die Web-App verwirft
+  einen nie abgeglichenen Tag nur lokal; `synced_version 0` beweist aber nicht, dass der Desktop ihn nie kannte, wenn
+  die Antwort auf den Abgleich verloren ging. Erneutes Entfernen hält.
 - **Das Bis-Datum von „Krank melden“ in der Web-App ist auf iOS ungeprüft.** Der Dialog nutzt ein natives
   `<input type="date">`; Safari zeichnet solche Felder mit eigener Breite (bei der Zeitauswahl führte das zu #511). Das
   Feld steht allein in voller Breite, Überlappen ist daher unwahrscheinlich. Zu prüfen im Pre-Release auf einem
