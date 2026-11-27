@@ -18,7 +18,7 @@ Desktop-App zur Erfassung von Arbeitszeiten: im Kern Kalenderansicht und PDF-Ber
 
 [![Release](https://img.shields.io/github/v/release/Xveyn/Zeiterfassung?label=Release&color=success&logo=github)](https://github.com/Xveyn/Zeiterfassung/releases/latest) ![Python](https://img.shields.io/badge/Python-3.12+-blue) ![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
 
-![Monatsansicht der Zeiterfassung mit erfassten Arbeitszeiten, Krankheitstagen, Urlaub und den Punkten für Reservierung und Sende-Erinnerung](docs/screenshots/kalender-v--VERSION--.png)
+![Monatsansicht der Zeiterfassung mit erfassten Arbeitszeiten, Krankheitstagen, Urlaub und den Punkten für Reservierung und Sende-Erinnerung](docs/screenshots/kalender-v1.30.1.png)
 
 <sub>Aus welcher Version ein Screenshot stammt, steht in seinem Dateinamen (`…-v<version>.png`), siehe [`docs/screenshots/`](docs/screenshots/).</sub>
 
@@ -50,7 +50,7 @@ Desktop-App zur Erfassung von Arbeitszeiten: im Kern Kalenderansicht und PDF-Ber
 - **Wochenstunden-Limit** — Optionales Werkstudenten-Limit über einen konfigurierbaren Zeitraum mit Warnung beim Überschreiten
 - **Pausenpflicht-Warnung** — Hinweis beim Speichern, wenn die eingetragene Pause die gesetzliche Mindestpause nach § 4 ArbZG unterschreitet (30 Min ab >6 h, 45 Min ab >9 h); standardmäßig aktiv, abschaltbar. Grobe Näherung, keine rechtliche Bewertung
 
-![Tages-Dialog mit Arbeitszeit samt Notiz, Reservierung und Erinnerung](docs/screenshots/tagesdialog-v--VERSION--.png)
+![Tages-Dialog mit Arbeitszeit samt Notiz, Reservierung und Erinnerung](docs/screenshots/tagesdialog-v1.30.1.png)
 
 *Ein Tag im Detail: erfasste Ist-Zeit, geplante Reservierung und die Erinnerung ans Verschicken. Linksklick auf einen Kalendertag öffnet den Dialog; gelöscht wird im Kalender selbst (Rechtsklick, unter macOS über das ✕ in der Tageszelle).*
 
