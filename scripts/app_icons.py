@@ -32,7 +32,7 @@ OUTPUTS = ("assets/app-icon.png", "assets/app-icon.ico", "assets/app-icon.icns",
 _TEXT_SUFFIXES = (".svg", ".py")
 
 ICO_SIZES = (16, 20, 24, 32, 40, 48, 64, 128, 256)
-ICNS_SIZES = (16, 32, 64, 128, 256, 512, 1024)
+ICNS_SIZES = (32, 64, 128, 256, 512, 1024)   # Pillow schreibt nur Retina-Typen, kleinster 16@2x
 APP_PNG_SIZE = 512
 PWA_SIZES = (192, 512)
 MASKABLE_SIZE = 512

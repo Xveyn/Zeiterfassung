@@ -167,7 +167,7 @@ def test_pyinstaller_uses_the_generated_icon(monkeypatch, build_fn, icon):
     assert (_BUILD_PY.parent.parent / icon).is_file()
 
 
-def test_appimage_carries_a_neutral_icon_name(monkeypatch, tmp_path):
+def test_appimage_icon_is_named_after_the_app(monkeypatch, tmp_path):
     """Desktop-Integrationen (z. B. appimaged) installieren das AppImage-Icon unter seinem
     Namen ins Icon-Theme: der Name muss die App benennen, nicht generisch sein."""
     (tmp_path / "dist").mkdir()
@@ -186,4 +186,3 @@ def test_appimage_carries_a_neutral_icon_name(monkeypatch, tmp_path):
     assert (appdir / "zeiterfassung.png").read_bytes() == b"PNGDATA"
     desktop = (appdir / "Zeiterfassung.desktop").read_text(encoding="utf-8")
     assert "Icon=zeiterfassung\n" in desktop
-    assert not list(appdir.glob("margenheld*"))

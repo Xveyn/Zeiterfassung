@@ -34,7 +34,7 @@ _app_icon_ref: tk.PhotoImage | None = None
 
 
 def apply_app_icon(window):
-    """Setzt das App-Icon (app-icon) auf einen Toplevel.
+    """Setzt das App-Icon auf einen Toplevel.
 
     iconphoto(default=True) auf dem Root-Window vererbt das Icon auf Windows
     nicht zuverlässig auf neue Toplevels — die zeigen dann das Tk-Default-
