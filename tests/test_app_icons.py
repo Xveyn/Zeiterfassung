@@ -17,7 +17,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 ASSETS = ROOT / "assets"
 PWA = ROOT / "pwa" / "icons"
 SVG = ASSETS / "app-icon.svg"
-STAMP = ASSETS / "app-icon.svg.sha256"
+MANIFEST = ASSETS / "app-icon.sha256sums"
 
 _spec = importlib.util.spec_from_file_location("_app_icons_script", ROOT / "scripts" / "app_icons.py")
 app_icons = importlib.util.module_from_spec(_spec)
@@ -73,15 +73,38 @@ def test_svg_is_renderer_neutral():
     assert not tags & {"filter", "text", "image", "foreignObject", "style"}
 
 
-def test_source_digest_ignores_line_endings():
-    """Ein Windows-Checkout mit CRLF darf den Stempel nicht ungültig machen."""
-    assert app_icons.source_digest("a\r\nb\r\n") == app_icons.source_digest("a\nb\n")
+def _manifest():
+    """`{Pfad: SHA-256}` aus der Prüfsummenliste (Format von `sha256sum`)."""
+    rows = {}
+    for line in MANIFEST.read_text(encoding="utf-8").splitlines():
+        digest, path = line.split("  ", 1)
+        rows[path] = digest
+    return rows
 
 
-def test_generated_files_match_svg():
-    """Nach jeder Änderung an der SVG `scripts/app_icons.py` ausführen."""
-    stamp = STAMP.read_text(encoding="utf-8").strip()
-    assert stamp == app_icons.source_digest(SVG.read_text(encoding="utf-8"))
+def test_manifest_lists_source_script_and_every_output():
+    assert set(_manifest()) == {*app_icons.TEXT_INPUTS, *app_icons.OUTPUTS}
+
+
+def test_generated_files_match_the_manifest():
+    """Nach jeder Änderung an SVG oder Skript `scripts/app_icons.py` ausführen und alle
+    erzeugten Dateien mit committen, auch die unter `pwa/icons/`."""
+    stale = [path for path, digest in _manifest().items()
+             if app_icons.file_digest(ROOT / path) != digest]
+    assert stale == []
+
+
+def test_file_digest_ignores_line_endings_of_text_inputs(tmp_path):
+    """Ein Windows-Checkout mit CRLF darf die Liste nicht ungültig machen."""
+    (tmp_path / "crlf.svg").write_bytes(b"a\r\nb\r\n")
+    (tmp_path / "lf.svg").write_bytes(b"a\nb\n")
+    assert app_icons.file_digest(tmp_path / "crlf.svg") == app_icons.file_digest(tmp_path / "lf.svg")
+
+
+def test_file_digest_reads_images_as_bytes(tmp_path):
+    (tmp_path / "crlf.png").write_bytes(b"a\r\n")
+    (tmp_path / "lf.png").write_bytes(b"a\n")
+    assert app_icons.file_digest(tmp_path / "crlf.png") != app_icons.file_digest(tmp_path / "lf.png")
 
 
 def test_app_png_is_512_rgba():
@@ -106,6 +129,24 @@ def test_icns_carries_retina_sizes():
 def test_maskable_icon_is_full_bleed():
     """Android schneidet maskierbare Icons beliebig zu: keine durchsichtige Ecke."""
     assert _png_top_left_rgba(PWA / "icon-maskable-512.png")[3] == 255
+
+
+def test_maskable_variant_fills_the_canvas_without_a_tile_edge():
+    """Die Kachel ist oben heller als ihr Rand: auf einer Fläche dahinter bliebe ihre
+    Kante sichtbar. Das maskierbare Icon tauscht sie gegen eine randlose Fläche."""
+    root = ET.fromstring(app_icons.maskable_svg(SVG.read_text(encoding="utf-8")))
+    x, y, w, h = (float(v) for v in root.get("viewBox").split())
+    assert w == h == 256 / app_icons.MASKABLE_SCALE
+    assert x == y == -(w - 256) / 2          # Motif mittig
+    tile = next(el for el in root.iter() if el.get("id") == "tile")
+    geometry = tuple(float(tile.get(k)) for k in ("x", "y", "width", "height"))
+    assert geometry == (x, y, w, h)
+    assert tile.get("rx") is None
+
+
+def test_maskable_variant_needs_the_tile():
+    with pytest.raises(ValueError):
+        app_icons.maskable_svg('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"/>')
 
 
 @pytest.mark.parametrize("name", ["icon-192.png", "icon-512.png"])

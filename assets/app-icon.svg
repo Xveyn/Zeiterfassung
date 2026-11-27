@@ -1,11 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
   <defs>
-    <radialGradient id="tile" cx="50%" cy="38%" r="62%">
+    <radialGradient id="tile-gradient" cx="50%" cy="38%" r="62%">
       <stop offset="0" stop-color="#1b2a4a"/>
       <stop offset="1" stop-color="#0e172b"/>
     </radialGradient>
   </defs>
-  <rect x="6" y="6" width="244" height="244" rx="56" fill="url(#tile)"/>
+  <rect id="tile" x="6" y="6" width="244" height="244" rx="56" fill="url(#tile-gradient)"/>
   <g transform="translate(128 128) scale(1.18) translate(-138 -134)">
     <rect x="62" y="70" width="132" height="118" rx="14" fill="#e6ecef"/>
     <path d="M62 84 a14 14 0 0 1 14 -14 h104 a14 14 0 0 1 14 14 v20 h-132 z" fill="#04cd9f"/>
