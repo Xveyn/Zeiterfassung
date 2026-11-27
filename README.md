@@ -18,7 +18,7 @@ Desktop-App zur Erfassung von Arbeitszeiten: im Kern Kalenderansicht und PDF-Ber
 
 [![Release](https://img.shields.io/github/v/release/Xveyn/Zeiterfassung?label=Release&color=success&logo=github)](https://github.com/Xveyn/Zeiterfassung/releases/latest) ![Python](https://img.shields.io/badge/Python-3.12+-blue) ![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
 
-![Monatsansicht der Zeiterfassung mit erfassten Arbeitszeiten, Urlaub und den Punkten für Reservierung und Sende-Erinnerung](docs/screenshots/kalender-v1.25.0.png)
+![Monatsansicht der Zeiterfassung mit erfassten Arbeitszeiten, Urlaub und den Punkten für Reservierung und Sende-Erinnerung](docs/screenshots/kalender-v--VERSION--.png)
 
 <sub>Aus welcher Version ein Screenshot stammt, steht in seinem Dateinamen (`…-v<version>.png`), siehe [`docs/screenshots/`](docs/screenshots/).</sub>
 
@@ -49,7 +49,7 @@ Desktop-App zur Erfassung von Arbeitszeiten: im Kern Kalenderansicht und PDF-Ber
 - **Wochenstunden-Limit** — Optionales Werkstudenten-Limit über einen konfigurierbaren Zeitraum mit Warnung beim Überschreiten
 - **Pausenpflicht-Warnung** — Hinweis beim Speichern, wenn die eingetragene Pause die gesetzliche Mindestpause nach § 4 ArbZG unterschreitet (30 Min ab >6 h, 45 Min ab >9 h); standardmäßig aktiv, abschaltbar. Grobe Näherung, keine rechtliche Bewertung
 
-![Tages-Dialog mit Arbeitszeit samt Notiz, Reservierung und Erinnerung](docs/screenshots/tagesdialog-v1.29.0.png)
+![Tages-Dialog mit Arbeitszeit samt Notiz, Reservierung und Erinnerung](docs/screenshots/tagesdialog-v--VERSION--.png)
 
 *Ein Tag im Detail: erfasste Ist-Zeit, geplante Reservierung und die Erinnerung ans Verschicken. Linksklick auf einen Kalendertag öffnet den Dialog; gelöscht wird im Kalender selbst (Rechtsklick, unter macOS über das ✕ in der Tageszelle).*
 
@@ -65,13 +65,13 @@ Desktop-App zur Erfassung von Arbeitszeiten: im Kern Kalenderansicht und PDF-Ber
 - **Sende-Erinnerung** — Optionale Toast-Erinnerung, die Arbeitszeiten zu verschicken: monatlich an einem frei wählbaren Tag (auf Wunsch von Wochenenden und Feiertagen weg verschoben) und/oder tagesbezogen, wenn ein dafür markierter Reservierungs-Slot ausläuft. Der Sende-Dialog schlägt den Zeitraum seit der letzten Erinnerung vor
 - **Teilen & Importieren** — Eigene Arbeitszeiten als JSON-Anhang per Mail an eine zweite Person teilen — wahlweise über Gmail oder ein SMTP-Konto, dessen hinterlegter Empfänger dann vorbelegt und überschreibbar ist; der Empfänger importiert sie mit Zeitraum-Filter und drei Konflikt-Modi (alles importieren / alles lokal / pro Tag entscheiden)
 
-![Sende-Dialog mit Zeitraum- und Kategorieauswahl, Aufschlüsselung nach Kategorie und Notiz](docs/screenshots/senden-v1.29.0.png)
+![Sende-Dialog mit Zeitraum- und Kategorieauswahl, Aufschlüsselung nach Kategorie und Notiz](docs/screenshots/senden-v--VERSION--.png)
 
 *Der Sende-Dialog: Zeitraum, Kategorie-Filter und die Gesamtstunden vor dem Absenden.*
 
-![Erzeugter PDF-Bericht, Notizen in der Kategorie-Spalte](docs/screenshots/bericht-v1.29.0.png)
+![Erzeugter PDF-Bericht, Notizen in der Kategorie-Spalte](docs/screenshots/bericht-v--VERSION--.png)
 
-![Summe je Kategorie im PDF-Bericht, aufgeschlüsselt nach Notiz](docs/screenshots/bericht-summe-v1.29.0.png)
+![Summe je Kategorie im PDF-Bericht, aufgeschlüsselt nach Notiz](docs/screenshots/bericht-summe-v--VERSION--.png)
 
 *Der erzeugte PDF-Bericht — pro ISO-Kalenderwoche gruppiert, mit Tages- und Wochensummen.*
 
@@ -91,11 +91,11 @@ Desktop-App zur Erfassung von Arbeitszeiten: im Kern Kalenderansicht und PDF-Ber
 - **UI-Skalierung** — Stufenloser Skalierungsfaktor für die Oberfläche (gerätelokal). Unter Windows und Linux folgt die App zusätzlich der Anzeigeskalierung des Systems — unter Windows bleibt sie dabei scharf, unter Linux ist sie auf skalierten X11-Desktops nicht mehr winzig; der Faktor gilt dann obendrauf. Wechselst du unter Linux den Monitor und ändert sich dabei die Skalierung des Desktops, weist ein Banner „Skalierung passt nicht zum Monitor“ mit „Neu starten“ darauf hin; auf Wunsch startet die App selbst neu *(ab 1.28.0)*
 - **Cross-Platform-Installer** — Per PyInstaller gebaut, als Setup-Exe (Windows), DMG (macOS) und AppImage (Linux) paketierbar
 
-![Einstellungs-Dialog, Tab Arbeitszeit mit der Reihenfolge der Slots](docs/screenshots/einstellungen-v1.29.0.png)
+![Einstellungs-Dialog, Tab Arbeitszeit mit der Reihenfolge der Slots](docs/screenshots/einstellungen-v--VERSION--.png)
 
 *Die Einstellungen, hier der Tab „Arbeitszeit" mit Standardzeiten, Pausenpflicht und Werkstudenten-Limit.*
 
-![Einstellungs-Dialog, Tab Erinnerungen mit dem Abschnitt Handy](docs/screenshots/einstellungen-erinnerungen-v1.26.0.png)
+![Einstellungs-Dialog, Tab Erinnerungen mit dem Abschnitt Handy](docs/screenshots/einstellungen-erinnerungen-v--VERSION--.png)
 
 *Tab „Erinnerungen“: Toast am Rechner, Erinnerung ans Verschicken und, mit eingeschalteter Handy-Erfassung, der Abschnitt „Handy“ für Push-Erinnerungen aufs Handy. Screenshots stammen aus Demo-Daten.*
 
@@ -289,7 +289,7 @@ Wiederhole Schritte 3-4 auf jedem weiteren Gerät mit demselben Google-Konto.
 - **Manueller Sync** — der `⟳`-Button im Header triggert sofortigen Push
 - **Konflikte** — wird ein Tag offline auf zwei Geräten unterschiedlich bearbeitet, erscheint nach dem Sync ein Warn-Icon auf dem Tag und ein „⚠ N Konflikte"-Status. Klick auf **Konflikte ansehen** in den Einstellungen öffnet einen Dialog, der beide Stände als zwei Karten nebeneinander zeigt *(ab 1.26.0)* — „Dieses Gerät“ und das andere Gerät mit seinem Namen, Unterschiede gelb markiert, der jüngere Stand mit „● neuer“ —; du behältst einen der beiden Stände
 
-![Konfliktdialog mit zwei Karten: Dieses Gerät und ein anderes Gerät, die unterschiedliche Notiz gelb markiert](docs/screenshots/konflikte-v1.29.0.png)
+![Konfliktdialog mit zwei Karten: Dieses Gerät und ein anderes Gerät, die unterschiedliche Notiz gelb markiert](docs/screenshots/konflikte-v--VERSION--.png)
 
 *Der Konfliktdialog — beide Stände nebeneinander, Unterschiede gelb, der jüngere mit „● neuer“.*
 
@@ -437,16 +437,16 @@ Im WLAN scheitert der Abgleich in Safari (in Firefox aus demselben Grund erwarte
 
 <table>
 <tr>
-<td><img src="docs/screenshots/handy-woche-v1.29.0.png" alt="Wochenansicht der Web-App mit Notizen unter den Slots, heutigem Tag, einer Reservierung und der Zeile Noch ausstehend" width="200"></td>
-<td><img src="docs/screenshots/handy-editor-v1.29.0.png" alt="Tages-Editor der Web-App, Reiter Arbeitszeit mit Notizfeld und aufgeklappter Liste der bisherigen Notizen" width="200"></td>
-<td><img src="docs/screenshots/handy-verbindung-v1.29.0.png" alt="Einstellungen der Web-App, Reiter Verbindung mit Zustandskarte, Benachrichtigungen, App-Sperre, Zeiten verschieben, Notizen und Trennen" width="200"></td>
-<td><img src="docs/screenshots/handy-kategorien-v1.28.0.png" alt="Einstellungen der Web-App, Reiter Kategorien" width="200"></td>
+<td><img src="docs/screenshots/handy-woche-v--VERSION--.png" alt="Wochenansicht der Web-App mit Notizen unter den Slots, heutigem Tag, einer Reservierung und der Zeile Noch ausstehend" width="200"></td>
+<td><img src="docs/screenshots/handy-editor-v--VERSION--.png" alt="Tages-Editor der Web-App, Reiter Arbeitszeit mit Notizfeld und aufgeklappter Liste der bisherigen Notizen" width="200"></td>
+<td><img src="docs/screenshots/handy-verbindung-v--VERSION--.png" alt="Einstellungen der Web-App, Reiter Verbindung mit Zustandskarte, Benachrichtigungen, App-Sperre, Zeiten verschieben, Notizen und Trennen" width="200"></td>
+<td><img src="docs/screenshots/handy-kategorien-v--VERSION--.png" alt="Einstellungen der Web-App, Reiter Kategorien" width="200"></td>
 </tr>
 </table>
 
 *Die Web-App im Browser (von links): Woche mit Notizen unter den Slots, dem heutigen Tag, einer Reservierung und „Noch ausstehend“, Tages-Editor (Reiter „Arbeitszeit“ mit Notizfeld und aufgeklappter Liste der bisherigen Notizen), Einstellungen → Verbindung (mit Benachrichtigungen, App-Sperre, „Zeiten verschieben“, „Notizen“ und „Trennen“), Einstellungen → Kategorien. Aufgenommen in Chrome am Rechner mit Demo-Daten.*
 
-![Einstellungen am Rechner, Tab Mobil mit einem gekoppelten Demo-Handy](docs/screenshots/einstellungen-mobil-v1.26.0.png)
+![Einstellungen am Rechner, Tab Mobil mit einem gekoppelten Demo-Handy](docs/screenshots/einstellungen-mobil-v--VERSION--.png)
 
 *Der Tab „Mobil“ am Rechner: Handy-Erfassung ein- und ausschalten, Port und Adresse, gekoppelte Geräte, Koppeln und Widerrufen.*
 
@@ -456,7 +456,7 @@ Im WLAN scheitert der Abgleich in Safari (in Firefox aus demselben Grund erwarte
 
 **Einrichtung** *(ab 1.28.0)* — Solange das Handy nicht gekoppelt ist, zeigt die Web-App einen kleinen Einrichtungs-Screen mit den Schritten für das jeweilige Gerät: Chrome mit „QR-Code scannen“ und, hinter „Andere Möglichkeiten“, der Eingabe von Adresse und Code im WLAN; Firefox und Safari mit dem Relay-Weg (dort sperrt der Browser das WLAN); auf dem iPhone zuerst die Installation als Web-App.
 
-<img src="docs/screenshots/handy-einrichtung-v1.28.0.png" alt="Einrichtungs-Screen der Web-App mit Robotergesicht und drei Schritten" width="200">
+<img src="docs/screenshots/handy-einrichtung-v--VERSION--.png" alt="Einrichtungs-Screen der Web-App mit App-Icon und drei Schritten" width="200">
 
 **App-Sperre** *(ab 1.28.0)* — Optional (Einstellungen → Verbindung → „App mit Geräte-Entsperrung sperren“): Die Web-App verlangt nach einer wählbaren Frist (sofort, nach 1 oder 5 Minuten) die Entsperrung mit der Bildschirmsperre des Handys (Fingerabdruck, Gesicht oder PIN). Ein Neuladen innerhalb der Frist fragt nicht noch einmal. Das ist eine Komfort-Sperre für die Oberfläche; sie verschlüsselt die gespeicherten Daten nicht. Sie braucht eine sichere Verbindung (https) und eine eingerichtete Bildschirmsperre.
 
