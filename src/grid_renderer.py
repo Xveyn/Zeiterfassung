@@ -9,6 +9,7 @@ import calendar
 import datetime
 import platform
 import tkinter as tk
+import tkinter.font as tkfont
 
 from src.time_utils import (
     DAYS_DE, MONTHS_DE,
@@ -299,13 +300,15 @@ class GridRenderer:
         # pixel-fixierte Standardzelle (width=8 in FONT) reinpasst. Wenn der
         # Caller eine breitere Zelle nutzt (z.B. bei ausgeblendeten Wochenenden
         # mit width=11), kann eine größere Schrift übergeben werden.
-        time_text = GridRenderer._cell_time_text(
-            entry.get("slots", []), self._slot_order())
+        slots = entry.get("slots", [])
+        time_text = GridRenderer._cell_time_text(slots, self._slot_order())
         time_lbl = tk.Label(
             cell, text=time_text,
             font=time_font, bg=bg, fg=TEXT_MUTED, cursor="hand2",
         )
         time_lbl.pack()
+        self._fit_time_line(cell, time_lbl, time_text,
+                            GridRenderer._cell_time_short(slots, self._slot_order()))
         # Netto-Stunden unter der Brutto-Zeit: macht den Footer nachrechenbar.
         # Gleiche Schrift wie die Zeit-Zeile, aber kräftigeres fg — die Stunden
         # sind die Zahl, um die es geht, start-end ist der Beleg dazu.
@@ -427,6 +430,44 @@ class GridRenderer:
         if len(slots) > 1:
             text += f"  +{len(slots) - 1}"
         return text
+
+    @staticmethod
+    def _fit_time_line(cell, label, full, short):
+        """Zeigt in `label` die volle Zeitzeile, solange sie in die Zelle passt,
+        sonst die Kurzform. Die Zelle wächst mit dem Fenster (`sticky="nsew"`),
+        ihre Breite steht also erst nach dem Layout fest. Ohne Stundenlohn ist
+        das Fenster schmaler, und „08:00-09:00  +2" passt dann nicht hinein."""
+        if full == short:
+            return
+        measure = tkfont.nametofont(label.cget("font")).measure
+        # Abgeschnitten wird nur der Text selbst; der Innenabstand des Labels hat
+        # die Farbe der Zelle. Abzuziehen sind also nur der Rahmen der Zelle und
+        # ein Pixel Luft je Seite.
+        overhead = 2 * int(cell.cget("highlightthickness")) + 2
+
+        def fit(event):
+            text = GridRenderer._fit_cell_text(full, short, measure, event.width - overhead)
+            if label.cget("text") != text:
+                label.config(text=text)
+
+        cell.bind("<Configure>", fit, add="+")
+
+    @staticmethod
+    def _cell_time_short(slots, slot_order="chrono"):
+        """Kurzform der Zeitzeile für zu schmale Zellen: nur der Beginn des
+        ersten Slots, bei mehreren `+N`. Alle Slots stehen im Tooltip."""
+        if not slots:
+            return ""
+        text = sorted_slots(slots, slot_order)[0].get("start") or "?"
+        if len(slots) > 1:
+            text += f"  +{len(slots) - 1}"
+        return text
+
+    @staticmethod
+    def _fit_cell_text(full, short, measure, available):
+        """Die volle Zeitzeile, wenn sie in `available` Pixel passt, sonst die
+        Kurzform. `measure` misst einen Text in Pixeln (die Schrift der Zeile)."""
+        return full if measure(full) <= available else short
 
     @staticmethod
     def _fmt_slot_time(slot):

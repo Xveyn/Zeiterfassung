@@ -24,7 +24,7 @@ import tkinter as tk
 
 from src.category_defaults import resolve_slot_defaults
 from src.theme import (
-    BG, FONT, PAUSE_VALUES, TEXT_MUTED, TIME_VALUES, dark_combo, secondary_button,
+    BG, FONT, PAUSE_VALUES, SEPARATOR, TEXT_MUTED, TIME_VALUES, dark_combo, secondary_button,
     set_secondary_button_enabled,
 )
 
@@ -44,7 +44,15 @@ OVERRIDE_MARKER = "*"
 # Kategorien-Dialog und springt auf den vorherigen Wert zurück.
 NEW_CATEGORY_LABEL = "＋ Neue Kategorie"
 
-# Breite des Notizfelds der Ist-Zeilen in Zeichen (skaliert mit der Schrift).
+# Jeder Slot steht in einem Rahmen (Karte): mit Notizzeile ist sonst nicht zu
+# sehen, welche Notiz zu welchem Slot gehört. Innenabstand der Karte und
+# Abstand zwischen zwei Karten in Pixeln.
+CARD_PAD = 6
+ROW_GAP = 4
+
+# Mindestbreite des Notizfelds der Ist-Zeilen in Zeichen (skaliert mit der
+# Schrift). In seiner eigenen Zeile dehnt es sich auf die Breite des Slots; die
+# Mindestbreite muss darunter bleiben, auch beim schmalsten Slot (ohne ×, ohne ▲/▼).
 NOTE_WIDTH = 24
 
 
@@ -194,7 +202,7 @@ class SlotRowList:
             return
         for r in self.rows:
             r["frame"].pack_forget()
-            r["frame"].pack(fill="x", pady=3)
+            r["frame"].pack(fill="x", pady=ROW_GAP)
         self._refresh_arrows()
         self._on_rows_changed()
 
@@ -209,16 +217,21 @@ class SlotRowList:
 
     @staticmethod
     def _add_note_field(row, kv, notiz, suggest):
-        """Baut „Notiz:" und das editierbare Feld; liefert dessen Variable."""
+        """Baut „Notiz:" und das editierbare Feld in einer eigenen Zeile unter
+        dem Slot; liefert dessen Variable. Eine eigene Zeile, weil die
+        Breiten-Probe des Tages-Dialogs eine Slot-Zeile misst: neben Zeiten und
+        Kategorie machte das Feld den Dialog rund 280 px breiter, auch ohne Slot."""
         nv = tk.StringVar(value=notiz)
-        tk.Label(row, text="Notiz:", font=FONT, bg=BG, fg=TEXT_MUTED).pack(
+        note_line = tk.Frame(row, bg=BG)
+        note_line.pack(fill="x", pady=(6, 0))
+        tk.Label(note_line, text="Notiz:", font=FONT, bg=BG, fg=TEXT_MUTED).pack(
             side=tk.LEFT, padx=(4, 0))
-        note_combo = dark_combo(row, nv, [], width=NOTE_WIDTH, editable=True)
+        note_combo = dark_combo(note_line, nv, [], width=NOTE_WIDTH, editable=True)
         # Vorschläge erst beim Aufklappen: sie hängen an der gerade gewählten
         # Kategorie. Die Kategorie-Auswahl selbst schreibt nie ins Feld.
         note_combo.configure(postcommand=lambda: note_combo.configure(
             values=suggest(category_from_display(kv.get()))))
-        note_combo.pack(side=tk.LEFT, padx=4)
+        note_combo.pack(side=tk.LEFT, fill="x", expand=True, padx=4)
 
         # Das Mausrad schaltete ttk sonst durch die Vorschläge und überschriebe
         # getippten Text; Instanz-Binding mit "break" unterdrückt das.
@@ -239,8 +252,15 @@ class SlotRowList:
         führen dort `send_reminder_minutes` mit). `notiz` belegt das Notizfeld
         vor, sofern die Liste eines hat.
         """
-        row = tk.Frame(parent if parent is not None else self._frame, bg=BG)
-        row.pack(fill="x", pady=3)
+        row = tk.Frame(parent if parent is not None else self._frame, bg=BG,
+                       highlightbackground=SEPARATOR, highlightcolor=SEPARATOR,
+                       highlightthickness=1, padx=CARD_PAD, pady=CARD_PAD)
+        row.pack(fill="x", pady=ROW_GAP)
+        # Zeiten, Kategorie, × und ▲/▼ stehen in der oberen Zeile; die Notiz
+        # bekommt eine eigene darunter (`_add_note_field`). `row` bleibt der
+        # Rahmen der ganzen Zeile, den `move` und `remove` umhängen.
+        line = tk.Frame(row, bg=BG)
+        line.pack(fill="x")
 
         sv = tk.StringVar(value=start)
         ev = tk.StringVar(value=end)
@@ -255,13 +275,13 @@ class SlotRowList:
         if pv is not None:
             base["pause"] = str(pause)
 
-        dark_combo(row, sv, TIME_VALUES, width=6).pack(side=tk.LEFT, padx=4)
-        tk.Label(row, text="–", font=FONT, bg=BG, fg=TEXT_MUTED).pack(side=tk.LEFT)
-        dark_combo(row, ev, TIME_VALUES, width=6).pack(side=tk.LEFT, padx=4)
+        dark_combo(line, sv, TIME_VALUES, width=6).pack(side=tk.LEFT, padx=4)
+        tk.Label(line, text="–", font=FONT, bg=BG, fg=TEXT_MUTED).pack(side=tk.LEFT)
+        dark_combo(line, ev, TIME_VALUES, width=6).pack(side=tk.LEFT, padx=4)
         if pv is not None:
-            dark_combo(row, pv, [str(v) for v in pause_choices(
+            dark_combo(line, pv, [str(v) for v in pause_choices(
                 int(pause or 0), [int(x) for x in PAUSE_VALUES])], width=4).pack(side=tk.LEFT, padx=4)
-        cat_combo = dark_combo(row, kv, self._choices(), width=18)
+        cat_combo = dark_combo(line, kv, self._choices(), width=18)
         cat_combo.pack(side=tk.LEFT, padx=4)
 
         # Als ERSTER Handler gebunden: bei „Neue Kategorie" den alten Wert
@@ -391,13 +411,13 @@ class SlotRowList:
         # speichert nur). Das × erscheint nur an neu hinzugefügten, noch nicht
         # persistierten Zeilen.
         if removable:
-            secondary_button(row, "×", remove, padx=8, pady=0).pack(
+            secondary_button(line, "×", remove, padx=8, pady=0).pack(
                 side=tk.LEFT, padx=6)
         if self._movable:
-            up = secondary_button(row, "▲", lambda: self.move(record, -1),
+            up = secondary_button(line, "▲", lambda: self.move(record, -1),
                                   padx=6, pady=0)
             up.pack(side=tk.LEFT, padx=(6, 0))
-            down = secondary_button(row, "▼", lambda: self.move(record, 1),
+            down = secondary_button(line, "▼", lambda: self.move(record, 1),
                                     padx=6, pady=0)
             down.pack(side=tk.LEFT, padx=(2, 0))
             record["arrows"] = (up, down)
