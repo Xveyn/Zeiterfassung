@@ -397,3 +397,152 @@ def test_vacation_sick_conflicts_extension_blocks_only_new_day():
     assert vacation_sick_conflicts(
         {"2026-07-01": 480, "2026-07-02": 480},
         {"2026-07-01": 480, "2026-07-02": 480}, existing) == ["2026-07-02"]
+
+
+# --- Speichern schont Reservierungen und bestehende Tage (Review PR 3) ------
+
+def _iso(day):
+    return day.isoformat()
+
+
+def test_reservation_dates_to_offer_skips_days_the_block_already_covered():
+    days = {"2026-03-02": 480, "2026-03-03": 480, "2026-03-04": 0}
+    res = {d: {"slots": [_slot()]} for d in days}
+    res["2026-04-01"] = {"slots": [_slot()]}
+    assert sick_plan.reservation_dates_to_offer(
+        days, res, ["2026-03-02", "2026-03-03"]) == ["2026-03-04"]
+    assert sick_plan.reservation_dates_to_offer(days, res, []) == sorted(days)
+    assert sick_plan.reservation_dates_to_offer(days, None, []) == []
+    assert sick_plan.reservation_dates_to_offer(days, res, list(days)) == []
+
+
+def test_commit_edit_keeps_reservations_on_days_the_block_already_covered(
+        tmp_path):
+    store = _sick_store(tmp_path)
+    old = {"2026-03-02": 480, "2026-03-03": 480}
+    store.save_range(old)
+    fake = _FakeReservations({d: {"slots": [_slot()]} for d in old})
+    out = sick_plan.commit_sick_block(
+        store, fake, old_dates=list(old),
+        days={"2026-03-02": 240, "2026-03-03": 480}, delete_reservations=True)
+    assert out == [] and fake.deleted == []
+    assert store.day_minutes() == {"2026-03-02": 240, "2026-03-03": 480}
+
+
+def test_commit_extension_deletes_only_reservations_on_new_days(tmp_path):
+    store = _sick_store(tmp_path)
+    old = {"2026-03-02": 480, "2026-03-03": 480}
+    store.save_range(old)
+    fake = _FakeReservations({d: {"slots": [_slot()]}
+                              for d in ("2026-03-02", "2026-03-04")})
+    out = sick_plan.commit_sick_block(
+        store, fake, old_dates=list(old),
+        days={**old, "2026-03-04": 480}, delete_reservations=True)
+    assert out == ["2026-03-04"] and fake.deleted == ["2026-03-04"]
+
+
+class _BrokenReservations(_FakeReservations):
+    def delete(self, date):
+        raise RuntimeError("kaputt")
+
+
+class _UnreadableReservations(_FakeReservations):
+    def get_all(self):
+        raise RuntimeError("kaputt")
+
+
+@pytest.mark.parametrize("cls", [_BrokenReservations, _UnreadableReservations])
+def test_commit_wraps_any_failure_after_the_block_is_written(tmp_path, cls):
+    days = {"2026-03-02": 480}
+    fake = cls({"2026-03-02": {"slots": [_slot()]}})
+    store = _sick_store(tmp_path)
+    with pytest.raises(sick_plan.ReservationDeleteError) as info:
+        sick_plan.commit_sick_block(
+            store, fake, old_dates=[], days=days, delete_reservations=True)
+    assert info.value.deleted == []
+    assert isinstance(info.value.__cause__, RuntimeError)
+    assert store.day_minutes() == days
+
+
+def test_stored_overrides_are_the_live_sick_days_in_range():
+    sick = {"2026-03-02": 240, "2026-03-03": 120, "2026-03-09": 60}
+    assert sick_plan.stored_overrides(
+        "2026-03-03", "2026-03-04", sick) == {"2026-03-03": 120}
+    assert sick_plan.stored_overrides(
+        "2026-03-01", "2026-03-09", sick) == sick
+
+
+def test_stored_overrides_add_the_edited_block_with_the_store_winning():
+    block = {"2026-03-02": 480, "2026-03-03": 480}
+    sick = {"2026-03-03": 240}
+    assert sick_plan.stored_overrides(
+        "2026-03-02", "2026-03-04", sick, block) == {
+            "2026-03-02": 480, "2026-03-03": 240}
+    assert sick_plan.stored_overrides(
+        "2026-03-03", "2026-03-04", sick, block) == {"2026-03-03": 240}
+
+
+def _plan_over_existing(basis_changed):
+    """Bestand 02.03. 4 h und 03.03. 2 h, neu gemeldet 03.03.–04.03."""
+    sick = {"2026-03-02": 240, "2026-03-03": 120}
+    pf = _prefill("2026-03-03", "2026-03-04")
+    stored = sick_plan.stored_overrides("2026-03-03", "2026-03-04", sick)
+    return sick_plan.plan_sick_save(
+        "2026-03-03", "2026-03-04", pf.days,
+        sick_plan.edit_overrides(stored, {}, basis_changed=basis_changed))
+
+
+def test_new_range_over_an_existing_sick_day_keeps_its_minutes():
+    assert _plan_over_existing(False)["days"] == {
+        "2026-03-03": 120, "2026-03-04": 480}
+
+
+def test_basis_change_recomputes_existing_sick_days():
+    assert _plan_over_existing(True)["days"] == {
+        "2026-03-03": 480, "2026-03-04": 480}
+
+
+def test_basis_changed_compares_normalized_values():
+    assert not sick_plan.basis_changed("standard", "standard")
+    assert not sick_plan.basis_changed("kaputt", "standard")
+    assert not sick_plan.basis_changed(None, "kaputt")
+    assert sick_plan.basis_changed("average_3m", "standard")
+    assert sick_plan.basis_changed("standard", "average_3m")
+
+
+def test_touches_vacation_counts_every_planned_day_on_vacation():
+    vac = {"2026-03-02": 480, "2026-03-03": 0}
+    assert sick_plan.touches_vacation({"2026-03-02": 0}, vac)
+    assert sick_plan.touches_vacation(
+        {"2026-03-02": 480, "2026-03-04": 480}, vac)
+    assert not sick_plan.touches_vacation({"2026-03-03": 480}, vac)
+    assert not sick_plan.touches_vacation({}, vac)
+    assert not sick_plan.touches_vacation({"2026-03-02": 480}, {})
+
+
+def test_resulting_block_joins_adjacent_live_sick_days():
+    start = datetime.date(2026, 3, 2)
+    existing = {_iso(start + datetime.timedelta(days=i)): 480
+                for i in range(30)}
+    new = {_iso(start + datetime.timedelta(days=30 + i)): 240
+           for i in range(13)}
+    result = sick_plan.resulting_block_days(new, existing)
+    assert result == {**existing, **new}
+    assert len(result) == 43
+    assert sick_plan.block_hints(result)[0] == sick_plan.HINT_SIX_WEEKS
+    assert sick_plan.HINT_SIX_WEEKS not in sick_plan.block_hints(new)
+
+
+def test_resulting_block_ignores_sick_days_behind_a_gap():
+    sick = {"2026-03-02": 480, "2026-03-03": 480, "2026-03-10": 480}
+    new = {"2026-03-04": 60, "2026-03-05": 60}
+    assert sick_plan.resulting_block_days(new, sick) == {
+        "2026-03-02": 480, "2026-03-03": 480,
+        "2026-03-04": 60, "2026-03-05": 60}
+
+
+def test_resulting_block_planned_days_win_and_empty_plan_is_empty():
+    sick = {"2026-03-02": 480, "2026-03-03": 480}
+    assert sick_plan.resulting_block_days({"2026-03-03": 60}, sick) == {
+        "2026-03-02": 480, "2026-03-03": 60}
+    assert sick_plan.resulting_block_days({}, sick) == {}

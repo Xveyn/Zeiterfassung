@@ -54,7 +54,7 @@ from src.theme import (
     FONT_HEADER, FONT_FOOTER, FONT_SMALL, apply_dark_titlebar, themed_askyesno, themed_ask_action, themed_ask_delete_choice, themed_showerror, themed_showinfo,
     themed_showwarning,
     icon_button, secondary_button, set_toggle_active, toggle_button,
-    _stray_click_suppressed,
+    STRAY_CLICK_GUARD_S, _stray_click_suppressed,
 )
 
 
@@ -1093,7 +1093,8 @@ class App:
             elif themed_ask_action(
                     self.root, "Urlaub an diesem Tag",
                     message + "\n\nWar es ein Krankheitstag im Urlaub, "
-                    "trägst du ihn als Krankheit ein.", "Krank melden…"):
+                    "trägst du ihn als Krankheit ein.", "Krank melden…",
+                    lock_ms=int(STRAY_CLICK_GUARD_S * 1000)):
                 self._open_sick_dialog(date_str, None)
             return
         # Bei ausgeschalteten Reservierungen KEIN reservation_store an den Dialog

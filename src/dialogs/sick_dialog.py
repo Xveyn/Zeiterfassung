@@ -20,16 +20,18 @@ from src.holidays_de import get_holidays
 from src.reservations import reservations_active
 from src.sick_plan import (
     BASES, BASIS_LABELS, HINT_AU, HINT_SICK_ON_VACATION, MAX_BLOCK_DAYS,
-    ReservationDeleteError, block_hints, commit_sick_block, edit_overrides,
-    normalize_basis, plan_sick_save, prefill, reservation_dates_in,
-    sick_blocking_vacation, work_blocking_days,
+    ReservationDeleteError, basis_changed, block_hints, commit_sick_block,
+    edit_overrides, normalize_basis, plan_sick_save, prefill,
+    reservation_dates_to_offer, resulting_block_days, stored_overrides,
+    touches_vacation, work_blocking_days,
 )
 from src.sick_view import block_label, manager_rows, ordered_blocks
 from src.theme import (
-    ACCENT, BG, CELL_BG, FONT, FONT_BOLD, FONT_SMALL, TEXT, TEXT_MUTED, Form,
-    apply_combobox_style, center_dialog_on_parent, create_dialog, dark_entry,
-    primary_button, secondary_button, set_button_text, themed_askyesno,
-    themed_showerror, themed_showwarning,
+    ACCENT, BG, CELL_BG, FONT, FONT_BOLD, FONT_SMALL, STRAY_CLICK_GUARD_S,
+    TEXT, TEXT_MUTED, Form, apply_combobox_style, center_dialog_on_parent,
+    create_dialog, dark_entry, primary_button, secondary_button,
+    set_button_text, set_primary_button_enabled, themed_askyesno,
+    themed_showerror, themed_showinfo, themed_showwarning,
 )
 from src.time_utils import format_iso_weekday_date, format_minutes_hm
 from src.vacation_plan import hours_to_minutes_exact
@@ -39,11 +41,17 @@ log = logging.getLogger(__name__)
 NO_STATE_HINT = ("Kein Bundesland gewählt — Feiertage werden als "
                  "Krankheitstage mit Stunden gezählt.")
 RESERVATION_CHECK_TEXT = "Reservierungen in diesem Zeitraum löschen"
+# Beim Bearbeiten bietet das Häkchen nur die neu abgedeckten Tage an.
+RESERVATION_CHECK_TEXT_EDIT = ("Reservierungen an den neu hinzugekommenen "
+                               "Tagen löschen")
 SAVE_TITLE = "Krankheit nicht gespeichert"
 PARTIAL_TITLE = "Teilweise gespeichert"
-PARTIAL_TEXT = ("Krankheit gespeichert, Reservierungen nicht (alle) "
-                "gelöscht.\n\nDie übrigen Reservierungen lassen sich per "
-                "Rechtsklick im Kalender löschen.")
+PARTIAL_TEXT = ("Krankheit gespeichert, aber nicht alle Reservierungen "
+                "ließen sich löschen.\n\nBitte prüf die Reservierungen in "
+                "diesem Zeitraum im Kalender.")
+GONE_TITLE = "Zeitraum geändert"
+GONE_TEXT = ("Dieser Krankheitszeitraum wurde inzwischen geändert oder "
+             "gelöscht. Die Liste ist neu geladen.")
 
 
 def _active_reservations(reservation_store, settings):
@@ -64,6 +72,7 @@ def open_sick_dialog(parent, *, sick_store, storage, settings,
     diesen (Von/Bis aus dem Block, seine Tage als Überschreibungen). Wer
     bearbeiten will, übergibt den Block ausdrücklich — erkannt wird nichts."""
     old_dates = list(edit_block.days) if edit_block else []
+    old_set = set(old_dates)
     dialog = create_dialog(
         parent, "Krankheit bearbeiten" if edit_block else "Krankheit eintragen")
     apply_combobox_style(dialog)
@@ -104,9 +113,10 @@ def open_sick_dialog(parent, *, sick_store, storage, settings,
             highlightthickness=0, bd=0, anchor="w").pack(anchor="w")
     form.block(basis_frame)
 
-    # stored: die gespeicherten Tage des Blocks; edited: die in dieser Sitzung
-    # von Hand geänderten. Ein Wechsel der Grundlage verwirft stored.
-    stored = dict(edit_block.days) if edit_block else {}
+    # stored: die gespeicherten Krankheitstage im Zeitraum (`_refresh_stored`);
+    # edited: die in dieser Sitzung von Hand geänderten. Ein Wechsel der
+    # Grundlage verwirft stored.
+    stored = {}
     edited = {}
     initial_basis = normalize_basis(settings.get("sick_hours_basis"))
     day_vars = {}
@@ -129,7 +139,9 @@ def open_sick_dialog(parent, *, sick_store, storage, settings,
     # --- Reservierungen ---
     res_head = form.section("Reservierungen")
     delete_res_var = tk.BooleanVar(value=True)
-    res_check = form.check(RESERVATION_CHECK_TEXT, delete_res_var)
+    res_check = form.check(
+        RESERVATION_CHECK_TEXT_EDIT if old_dates else RESERVATION_CHECK_TEXT,
+        delete_res_var)
     res_head.grid_remove()
     res_check.grid_remove()
 
@@ -145,6 +157,12 @@ def open_sick_dialog(parent, *, sick_store, storage, settings,
             return None, None
         return df, dt
 
+    def _other_sick_days():
+        """Lebende Krankheitstage ohne die des bearbeiteten Blocks: die
+        schreibt das Speichern neu oder macht sie zu Tombstones."""
+        return {d: m for d, m in sick_store.day_minutes().items()
+                if d not in old_set}
+
     def _compute_prefill():
         """Vorbelegung, nur bei gültigem Zeitraum bis `MAX_BLOCK_DAYS`."""
         df, dt = _range()
@@ -152,20 +170,31 @@ def open_sick_dialog(parent, *, sick_store, storage, settings,
             return None
         if (dt - df).days + 1 > MAX_BLOCK_DAYS:
             return None
-        sick_days = {d: m for d, m in sick_store.day_minutes().items()
-                     if d not in old_dates}
         return prefill(
             df.isoformat(), dt.isoformat(), basis=basis_var.get(),
             entries=storage.get_all(),
             reservations=_active_reservations(reservation_store, settings),
             vacation_days=(vacation_store.day_minutes()
                            if vacation_store is not None else {}),
-            sick_days=sick_days, settings=settings)
+            sick_days=_other_sick_days(), settings=settings)
+
+    def _refresh_stored():
+        """Gespeicherte Tage für den aktuellen Zeitraum neu lesen; bei
+        ungültigem Zeitraum bleibt der Stand (wie `prune_overrides` bei einem
+        Fehler-Plan), damit ein Tippfehler im Datum nichts verwirft."""
+        df, dt = _range()
+        if df is None or dt is None or dt < df:
+            return
+        fresh = stored_overrides(
+            df.isoformat(), dt.isoformat(), sick_store.day_minutes(),
+            edit_block.days if edit_block else None)
+        stored.clear()
+        stored.update(fresh)
 
     def _overrides():
         return edit_overrides(
             stored, edited,
-            basis_changed=normalize_basis(basis_var.get()) != initial_basis)
+            basis_changed=basis_changed(basis_var.get(), initial_basis))
 
     def _current_plan():
         df, dt = _range()
@@ -213,16 +242,17 @@ def open_sick_dialog(parent, *, sick_store, storage, settings,
                 text=f"Krankheit gesamt: {format_minutes_hm(sum(days.values()))}")
         hints = list(current["prefill"].hints) if current["prefill"] else []
         if days:
-            hints += block_hints(days)
+            hints += block_hints(resulting_block_days(days, _other_sick_days()))
         hints.append(HINT_AU)
         if not state:
             hints.append(NO_STATE_HINT)
-        if vacation_store is not None and sick_blocking_vacation(
-                vacation_store.day_minutes(), days):
+        if vacation_store is not None and touches_vacation(
+                days, vacation_store.day_minutes()):
             hints.append(HINT_SICK_ON_VACATION)
         hints_label.config(text="\n\n".join(hints))
-        shown = bool(reservation_dates_in(
-            days, _active_reservations(reservation_store, settings)))
+        shown = bool(reservation_dates_to_offer(
+            days, _active_reservations(reservation_store, settings),
+            old_dates))
         current["res_shown"] = shown
         if shown:
             res_head.grid()
@@ -232,14 +262,14 @@ def open_sick_dialog(parent, *, sick_store, storage, settings,
             res_check.grid_remove()
 
     def _recalc():
-        """Neu vorbelegen; von Hand geänderte Tage bleiben, soweit sie noch im
-        Zeitraum liegen."""
+        """Neu vorbelegen; gespeicherte und von Hand geänderte Tage bleiben,
+        soweit sie im Zeitraum liegen."""
         current["prefill"] = _compute_prefill()
+        _refresh_stored()
         plan = _current_plan()
-        for store in (stored, edited):
-            kept = prune_overrides(store, plan)
-            store.clear()
-            store.update(kept)
+        kept = prune_overrides(edited, plan)
+        edited.clear()
+        edited.update(kept)
         if expanded["on"]:
             _rebuild_day_rows(plan["days"])
         _update_summary()
@@ -255,15 +285,19 @@ def open_sick_dialog(parent, *, sick_store, storage, settings,
             set_button_text(toggle, "▸ Einzelne Tage anpassen")
 
     def _finish(deleted):
-        """Nach dem geschriebenen Block: Vorbelegung merken, schließen und
-        die Aufrufer informieren — auch wenn Reservierungen hängen blieben."""
+        """Nach dem geschriebenen Block: Grundlage merken, schließen und die
+        Aufrufer informieren — auch wenn Reservierungen hängen blieben.
+        Geschrieben wird die Grundlage nur, wenn sie im Dialog gegenüber dem
+        Öffnen geändert wurde; sonst überschriebe der Dialog einen inzwischen
+        per Sync geänderten Wert mit dem, mit dem er bloß gerechnet hat."""
         basis = normalize_basis(basis_var.get())
-        if basis != normalize_basis(settings.get("sick_hours_basis")):
-            # Der Block ist schon gespeichert; scheitert nur die Vorbelegung,
-            # ist das folgenlos.
+        if basis_changed(basis, initial_basis):
             try:
                 settings.set_synced("sick_hours_basis", basis)
-            except OSError:
+            except Exception:
+                # Der Block ist schon gespeichert; scheitert nur das Merken
+                # der Grundlage, ist das folgenlos. Schließen und Neuzeichnen
+                # dürfen daran nicht hängen.
                 log.exception("Vorbelegung sick_hours_basis nicht gespeichert")
         dialog.destroy()
         if on_change is not None:
@@ -271,34 +305,48 @@ def open_sick_dialog(parent, *, sick_store, storage, settings,
         if deleted and on_reservations_deleted is not None:
             on_reservations_deleted()
 
+    def _show_blocked(blocked):
+        themed_showerror(
+            dialog, SAVE_TITLE,
+            "An diesen Tagen ist bereits Arbeitszeit erfasst:\n\n"
+            + format_day_list(blocked)
+            + "\n\nKrankheit und Arbeitszeit schließen sich am selben "
+              "Tag aus; zuerst die Einträge löschen oder einen anderen "
+              "Zeitraum wählen.")
+
     def _save():
+        if save_locked["value"]:
+            return
         plan = _current_plan()
         if plan["error"]:
             themed_showerror(dialog, SAVE_TITLE, plan["error"])
             return
         days = plan["days"]
-        blocked = work_blocking_days(days, storage.get_all())
-        if blocked:
-            themed_showerror(
-                dialog, SAVE_TITLE,
-                "An diesen Tagen ist bereits Arbeitszeit erfasst:\n\n"
-                + format_day_list(blocked)
-                + "\n\nKrankheit und Arbeitszeit schließen sich am selben "
-                  "Tag aus; zuerst die Einträge löschen oder einen anderen "
-                  "Zeitraum wählen.")
-            return
         # Nur löschen, was das Häkchen gerade zeigt und der Nutzer gesetzt hat.
         want_delete = bool(current["res_shown"] and delete_res_var.get())
         lock = data_lock if data_lock is not None else contextlib.nullcontext()
+        blocked = []
+        deleted = []
         try:
+            # Prüfen und Schreiben unter einem Lock: dazwischen trägt kein
+            # Sync und keine API Ist-Zeit auf einen der Tage ein.
             with lock:
-                deleted = commit_sick_block(
-                    sick_store, reservation_store, old_dates=old_dates,
-                    days=days, delete_reservations=want_delete)
+                blocked = work_blocking_days(days, storage.get_all())
+                if not blocked:
+                    deleted = commit_sick_block(
+                        sick_store, reservation_store, old_dates=old_dates,
+                        days=days, delete_reservations=want_delete)
         except ReservationDeleteError as e:
-            # Der Block steht, nur ein Teil der Reservierungen ging nicht weg.
+            # Der Block steht schon: erst schließen und neu zeichnen, dann
+            # melden. Das Log nennt nur den Typ des Grunds, nie Tage.
+            log.warning("Reservierungen nach Krankmeldung nicht alle "
+                        "gelöscht: %s", type(e.__cause__).__name__)
             _finish(e.deleted)
-            themed_showwarning(parent, PARTIAL_TITLE, PARTIAL_TEXT)
+            if isinstance(e.__cause__, OSError):
+                themed_showwarning(parent, PARTIAL_TITLE, PARTIAL_TEXT)
+            else:
+                messagebox.showerror(PARTIAL_TITLE, traceback.format_exc(),
+                                     parent=parent)
             return
         except (OSError, ValueError) as e:
             themed_showerror(
@@ -306,20 +354,37 @@ def open_sick_dialog(parent, *, sick_store, storage, settings,
                 f"Die Krankheitsdatei konnte nicht geschrieben werden:\n\n{e}")
             return
         except Exception as exc:
-            # Unerwartet: nativ mit Traceback, der Dialog bleibt offen. Das
-            # Log nennt nur den Fehlertyp, nie Meldung, Tage oder Minuten.
+            # Unerwartet und vor dem Schreiben des Blocks: nativ mit
+            # Traceback, der Dialog bleibt offen. Das Log nennt nur den
+            # Fehlertyp, nie Meldung, Tage oder Minuten.
             log.error("Krankheit speichern fehlgeschlagen: %s",
                       type(exc).__name__)
             messagebox.showerror(SAVE_TITLE, traceback.format_exc(),
                                  parent=dialog)
             return
+        if blocked:
+            _show_blocked(blocked)
+            return
         _finish(deleted)
 
     secondary_button(buttons, "Abbrechen", dialog.destroy).pack(side=tk.RIGHT)
-    primary_button(buttons, "Speichern", _save).pack(side=tk.RIGHT,
-                                                     padx=(0, 8))
+    save_btn = primary_button(buttons, "Speichern", _save)
+    save_btn.pack(side=tk.RIGHT, padx=(0, 8))
+    # Kurz nach dem Öffnen gesperrt: der Dialog öffnet vorbelegt aus einem
+    # Kalenderklick, und `label_button` löst schon beim Drücken aus — der
+    # zweite Klick eines Doppelklicks landete sonst auf „Speichern“. Flag
+    # statt Optik allein, `set_primary_button_enabled` blockt keinen Klick.
+    save_locked = {"value": True}
+    set_primary_button_enabled(save_btn, False)
+
+    def _unlock_save():
+        if dialog.winfo_exists():
+            save_locked["value"] = False
+            set_primary_button_enabled(save_btn, True)
+    dialog.after(int(STRAY_CLICK_GUARD_S * 1000), _unlock_save)
 
     current["prefill"] = _compute_prefill()
+    _refresh_stored()
     _update_summary()
     center_dialog_on_parent(dialog, parent)
 
@@ -378,7 +443,14 @@ def open_sick_manager(parent, *, sick_store, storage, settings,
             themed_showerror(dialog, "Kein Zeitraum gewählt",
                              "Bitte zuerst einen Krankheitszeitraum auswählen.")
             return
-        _open(block, block.date_from)
+        # Frisch lesen wie beim Löschen: bearbeitet wird der Block, wie er
+        # jetzt im Store steht, nicht das Abbild der Liste.
+        fresh = sick_store.block_for(block.date_from)
+        if fresh is None:
+            themed_showinfo(dialog, GONE_TITLE, GONE_TEXT)
+            _changed()
+            return
+        _open(fresh, fresh.date_from)
 
     def _delete():
         block = _selected()

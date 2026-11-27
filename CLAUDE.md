@@ -877,7 +877,11 @@ Der Tages-Dialog hat auf **allen** Plattformen keine Lösch-Buttons. Auf
 Windows/Linux ist Löschen ausschließlich der Rechtsklick.
 
 Neue Lösch-/Rechtsklick-Stellen müssen dieses Modell einhalten (kein zweiter
-Lösch-Pfad im Linksklick-Dialog auf Win/Linux).
+Lösch-Pfad im Linksklick-Dialog auf Win/Linux). Zwei bewusste Ausnahmen, beide nur
+mit dem ausdrücklichen „Speichern“ des Krankheits-Dialogs (Linksklick auf einen
+Krankheitstag): er löscht auf Wunsch (Häkchen, vorbelegt an) die Reservierungen der
+Tage, die der Block neu abdeckt, und macht Tage, die beim Bearbeiten aus dem Block
+fallen, zu Tombstones.
 
 ## Urlaub: Periode als Einheit, Stunden pro Tag
 
@@ -890,7 +894,11 @@ Regeln:
   Wochenende hinweg, damit der Zeitraum ein durchgehender Block bleibt. Der
   Feiertagsname geht nicht verloren, er wandert in den kombinierten Tooltip.
   **Krankheit gewinnt über Urlaub:** an einem Krankheitstag zeigt die Zelle die
-  Krankheitsfarbe, der Urlaub steht im Tooltip.
+  Krankheitsfarbe, der Urlaub steht im Tooltip. Einen neuen Urlaub über
+  Krankheitstage mit Minuten > 0 legt der Urlaubs-Dialog nicht an
+  (`vacation_dialog.sick_blocked_message`); beim Bearbeiten sperren nur die Tage, die
+  der Urlaub neu abdeckt — Krankheit im Urlaub bleibt erlaubt und zählt als Krankheit
+  (`absence.cut_absences`).
 - **Urlaub und Arbeitszeit schließen sich am selben Tag aus.** Trägt ein Tag
   Urlaubsstunden, öffnet der Tages-Dialog gar nicht erst
   (`ui.App._open_dialog`); die Meldung dort trägt den Knopf „Krank melden…“
@@ -1159,7 +1167,7 @@ Abstände physisch kleiner als früher, als Windows sie mitstreckte.
 Alle Dialoge (modal wie nicht-modal) teilen sich dasselbe Dark-Theme aus
 `src/theme/` — Drop-ins für die `tkinter.messagebox`-Familie
 (`themed_showinfo`/`themed_showwarning`/`themed_showerror`,
-`themed_askyesno`, `themed_ask_delete_choice`) sowie die Fenster-Chrome-
+`themed_askyesno`, `themed_ask_action`, `themed_ask_delete_choice`) sowie die Fenster-Chrome-
 Helfer (`apply_dark_titlebar`, `disable_min_max`, `apply_app_icon`,
 `center_dialog_on_parent`). Neue Dialoge nutzen diese Helfer statt
 `tkinter.messagebox`/eigenem Ad-hoc-Styling, und bekommen **keine**
@@ -1636,10 +1644,14 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
   Zeilen der Verwaltung. `src/dialogs/sick_dialog.py` — Krankheits-Dialog (`open_sick_dialog`,
   bearbeitet nur mit ausdrücklich übergebenem `edit_block`) und Verwaltung
   (`open_sick_manager`, Einstellungen → Arbeitszeit → „Krankheit verwalten“)
-- `src/sick_plan.py` — Planung der Krankheitstage, Tk-frei und ohne I/O:
+- `src/sick_plan.py` — Planung der Krankheitstage, Tk-frei:
   Grundlage der Stunden (`sick_hours_basis`: Standardzeit des Wochentags oder
-  Durchschnitt der letzten drei Monate), Vorbelegung, Sperre gegen Ist-Zeit und gegen
-  Urlaub über Krankheitstagen, Hinweise (Sechs-Wochen-Grenze, Vorschlag, Attest)
+  Durchschnitt der letzten drei Monate), Vorbelegung (ein bestehender lebender
+  Krankheitstag im Zeitraum behält seine Minuten, `stored_overrides`), Sperre gegen
+  Ist-Zeit und gegen Urlaub über Krankheitstagen, Hinweise (Sechs-Wochen-Grenze über den
+  Block nach dem Speichern, Vorschlag, Attest). Rein bis auf `commit_sick_block`: das
+  schreibt über die übergebenen Stores den Block und löscht danach die Reservierungen
+  der neu abgedeckten Tage (`reservation_dates_to_offer`)
 - `src/dialogs/vacation_dialog.py` — Verwaltung der Perioden (Einstieg:
   Einstellungen → Arbeitszeit → „Urlaub verwalten"). Die Entscheidungen des
   Bearbeiten-Dialogs sind Tk-frei und getestet: `prune_overrides` (welche

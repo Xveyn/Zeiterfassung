@@ -176,3 +176,68 @@ def test_apply_merge_empty_on_fresh_store_creates_no_file(tmp_path):
     path = tmp_path / "sick.json"
     SickStore(str(path)).apply_merge({})
     assert not path.exists()
+
+
+def _at(monkeypatch, stamp):
+    monkeypatch.setattr(sick_days, "utc_now_iso", lambda: stamp)
+
+
+def test_save_range_keeps_the_record_of_unchanged_days(store, monkeypatch):
+    _at(monkeypatch, "2026-03-02T08:00:00Z")
+    store.save_range({"2026-03-02": 480, "2026-03-03": 480})
+    _at(monkeypatch, "2026-03-05T09:00:00Z")
+    store.save_range({"2026-03-02": 480, "2026-03-03": 240, "2026-03-04": 60})
+    raw = store.get_all_raw()
+    assert raw["2026-03-02"]["modified_at"] == "2026-03-02T08:00:00Z"
+    assert raw["2026-03-03"] == {"minutes": 240, "deleted": False,
+                                 "device_id": "dev-a",
+                                 "modified_at": "2026-03-05T09:00:00Z"}
+    assert raw["2026-03-04"]["modified_at"] == "2026-03-05T09:00:00Z"
+
+
+def test_save_range_keeps_an_unchanged_day_of_another_device(store):
+    store.apply_merge({"2026-03-02": _rec(480)})
+    store.save_range({"2026-03-02": 480})
+    assert store.get_all_raw()["2026-03-02"] == _rec(480)
+
+
+def test_save_range_revives_a_tombstone_with_a_new_stamp(store, monkeypatch):
+    store.apply_merge({"2026-03-02": _rec(0, deleted=True)})
+    _at(monkeypatch, "2026-03-05T09:00:00Z")
+    store.save_range({"2026-03-02": 0})
+    assert store.get_all_raw()["2026-03-02"] == {
+        "minutes": 0, "deleted": False, "device_id": "dev-a",
+        "modified_at": "2026-03-05T09:00:00Z"}
+
+
+def test_save_range_without_a_change_does_not_write(store, monkeypatch):
+    store.save_range({"2026-03-02": 480})
+    calls = []
+    monkeypatch.setattr(store, "_save_to_disk", lambda: calls.append(1))
+    store.save_range({"2026-03-02": 480})
+    assert calls == []
+
+
+def test_replace_block_keeps_unchanged_days_and_tombstones_removed_ones(
+        store, monkeypatch):
+    store.apply_merge({"2026-03-02": _rec(480), "2026-03-03": _rec(480),
+                       "2026-03-04": _rec(480)})
+    _at(monkeypatch, "2026-03-05T09:00:00Z")
+    store.replace_block(["2026-03-02", "2026-03-03", "2026-03-04"],
+                        {"2026-03-03": 480, "2026-03-04": 240})
+    raw = store.get_all_raw()
+    assert raw["2026-03-02"] == {"minutes": 0, "deleted": True,
+                                 "device_id": "dev-a",
+                                 "modified_at": "2026-03-05T09:00:00Z"}
+    assert raw["2026-03-03"] == _rec(480)
+    assert raw["2026-03-04"]["modified_at"] == "2026-03-05T09:00:00Z"
+    assert raw["2026-03-04"]["minutes"] == 240
+
+
+def test_replace_block_without_a_change_does_not_write(store, monkeypatch):
+    store.save_range({"2026-03-02": 480, "2026-03-03": 480})
+    calls = []
+    monkeypatch.setattr(store, "_save_to_disk", lambda: calls.append(1))
+    store.replace_block(["2026-03-02", "2026-03-03"],
+                        {"2026-03-02": 480, "2026-03-03": 480})
+    assert calls == []

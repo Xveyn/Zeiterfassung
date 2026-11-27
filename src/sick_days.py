@@ -184,20 +184,32 @@ class SickStore:
             d.isoformat(): minutes[d.isoformat()]
             for d in date_range(date_from, date_to)})
 
+    def _put_days(self, new: dict[str, SickDay], days: dict[str, int],
+                  stamp: str) -> None:
+        """Trägt `days` in `new` ein. Ein lebender Tag mit denselben Minuten
+        behält seinen Datensatz samt Stempel und Gerät: ein neuer Stempel
+        ohne Änderung schlüge im LWW eine gleichzeitige Löschung am Handy."""
+        for date_str, minutes in days.items():
+            rec = new.get(date_str)
+            if rec is not None and not rec["deleted"] and rec["minutes"] == minutes:
+                continue
+            new[date_str] = self._live(minutes, stamp)
+
     def save_range(self, days: dict[str, int]) -> None:
+        """Schreibt die Tage; geschrieben wird nur bei einer Änderung."""
         _check_days(days)
         if not days:
             return
         with self._lock:
-            stamp = utc_now_iso()
             new = dict(self._data)
-            for date_str, minutes in days.items():
-                new[date_str] = self._live(minutes, stamp)
-            self._commit(new)
+            self._put_days(new, days, utc_now_iso())
+            if new != self._data:
+                self._commit(new)
 
     def replace_block(self, old_dates: Iterable[str], days: dict[str, int]) -> None:
         """Schreibt `days` und macht die alten Tage außerhalb davon zu
-        Tombstones, in einem Schreibvorgang."""
+        Tombstones, in einem Schreibvorgang (nur bei einer Änderung).
+        Unveränderte Tage behalten ihren Datensatz wie bei `save_range`."""
         _check_days(days)
         with self._lock:
             stamp = utc_now_iso()
@@ -205,9 +217,9 @@ class SickStore:
             for date_str in old_dates:
                 if date_str not in days and date_str in new and not new[date_str]["deleted"]:
                     new[date_str] = self._tombstone(stamp)
-            for date_str, minutes in days.items():
-                new[date_str] = self._live(minutes, stamp)
-            self._commit(new)
+            self._put_days(new, days, stamp)
+            if new != self._data:
+                self._commit(new)
 
     def delete_days(self, dates: Iterable[str]) -> None:
         with self._lock:

@@ -641,7 +641,10 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
 
   **Krankheitstage** liegen in `sick.json` (`SickStore`, am geteilten `data_lock`) und reisen als
   additiver Bereich `sick` im Sync-Doc (kein Schema-Bump; er fehlt, solange kein Gerät einen Tag oder
-  Tombstone hat). Je Tag gewinnt der neuere Datensatz, Konflikte gibt es nicht. Dieselben Wege räumen
+  Tombstone hat). Je Tag gewinnt der neuere Datensatz, Konflikte gibt es nicht. Darum behält ein
+  lebender Tag, den `save_range`/`replace_block` mit denselben Minuten erneut schreiben, seinen
+  Datensatz samt Stempel und Gerät: ein neuer Stempel ohne Änderung schlüge eine gleichzeitige
+  Löschung auf einem anderen Gerät. Dieselben Wege räumen
   ihre Tombstones ab: die Kompaktierung strippt erledigte (`compact_local`), der Startup-Sweep verwirft
   sie auf nie gesyncten Geräten (`drop_orphan_tombstones`). **Anders als bei den Einträgen gibt es
   keinen Self-Heal:** ein fehlender Tag beweist keine Löschung, weil ältere Geräte den Bereich beim

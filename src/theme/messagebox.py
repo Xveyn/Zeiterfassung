@@ -100,11 +100,16 @@ def themed_askyesno(parent, title: str, message: str, lock_ms: int = 0) -> bool:
 
 
 def themed_ask_action(parent, title: str, message: str, action_label: str,
-                      close_label: str = "Schließen") -> bool:
+                      close_label: str = "Schließen", lock_ms: int = 0) -> bool:
     """Meldung mit einem zusätzlichen Aktionsknopf. True nur, wenn der Nutzer
-    die Aktion wählt; Schließen, Escape und das Fensterkreuz geben False."""
+    die Aktion wählt; Schließen, Escape und das Fensterkreuz geben False.
+
+    lock_ms: optionaler kurzer Lock des Aktionsknopfs nach dem Öffnen, wie bei
+    `themed_askyesno` — öffnet ein Kalenderklick die Meldung, landete der
+    zweite Klick eines Doppelklicks sonst auf der Aktion."""
     dialog = create_dialog(parent, title, modal=False, escape_closes=False)
     result = {"value": False}
+    unlock = {"ready": lock_ms <= 0}
 
     tk.Label(
         dialog, text=message, font=FONT, bg=BG, fg=TEXT,
@@ -112,15 +117,25 @@ def themed_ask_action(parent, title: str, message: str, action_label: str,
     ).pack(padx=24, pady=(20, 14))
 
     def click_action():
+        if not unlock["ready"]:
+            return
         result["value"] = True
         dialog.destroy()
 
     btn_frame = tk.Frame(dialog, bg=BG)
     btn_frame.pack(pady=(0, 18))
-    primary_button(btn_frame, action_label, click_action).pack(
-        side=tk.LEFT, padx=6)
+    action_btn = primary_button(btn_frame, action_label, click_action)
+    action_btn.pack(side=tk.LEFT, padx=6)
     secondary_button(btn_frame, close_label, dialog.destroy).pack(
         side=tk.LEFT, padx=6)
+
+    if lock_ms > 0:
+        set_primary_button_enabled(action_btn, False)
+
+        def _unlock():
+            unlock["ready"] = True
+            set_primary_button_enabled(action_btn, True)
+        dialog.after(lock_ms, _unlock)
 
     dialog.bind("<Return>", lambda e: dialog.destroy())
     dialog.bind("<Escape>", lambda e: dialog.destroy())

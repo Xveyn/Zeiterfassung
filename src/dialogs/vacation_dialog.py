@@ -8,6 +8,7 @@ und `entry_dialog.py` (M16).
 
 import datetime
 import logging
+import math
 import tkinter as tk
 from tkinter import ttk
 
@@ -76,11 +77,14 @@ def parse_hours(text):
     None bei Buchstabensalat — kein Sentinel wie -1: der ergäbe die Meldung
     „darf nicht negativ sein“ für eine Eingabe, die gar keine Zahl ist. Das
     Vorzeichen bewertet `plan_vacation_save`, nicht diese Funktion.
+    Ebenso None für „nan“ und „inf“: die Umrechnung in Minuten würfe sonst
+    im trace-Callback eines Tagesfelds.
     """
     try:
-        return float((text or "0").replace(",", "."))
+        value = float((text or "0").replace(",", "."))
     except ValueError:
         return None
+    return value if math.isfinite(value) else None
 
 
 def prune_overrides(overrides, plan):

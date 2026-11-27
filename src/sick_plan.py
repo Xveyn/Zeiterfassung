@@ -1,5 +1,8 @@
 # pyright: reportOptionalMemberAccess=true
-"""Planung der Krankheitstage — rein, ohne Tk und ohne I/O.
+"""Planung der Krankheitstage, ohne Tk.
+
+Rein bis auf `commit_sick_block`: das schreibt über die übergebenen Stores
+den Krankheitsblock und löscht danach Reservierungen.
 
 Grundlage der vorbelegten Stunden (`sick_hours_basis`, synchronisiert):
 die Standardzeit des Wochentags oder der Durchschnitt der letzten 3 Monate.
@@ -15,7 +18,7 @@ from typing import TYPE_CHECKING, Any
 
 from src.absence import date_range, format_day_list, holiday_dates
 from src.settings import WEEKDAY_KEYS
-from src.sick_days import MAX_MINUTES
+from src.sick_days import MAX_MINUTES, runs
 from src.time_utils import calculate_hours, hours_to_minutes
 
 if TYPE_CHECKING:
@@ -57,6 +60,13 @@ def normalize_basis(value: object) -> str:
     if isinstance(value, str) and value in BASES:
         return value
     return DEFAULT_BASIS
+
+
+def basis_changed(chosen: object, initial: object) -> bool:
+    """Ob der Dialog eine andere Grundlage gewählt hat als die beim Öffnen.
+    Nur dann rechnen gespeicherte Tage neu und wird `sick_hours_basis`
+    geschrieben; ein inzwischen per Sync geänderter Wert bleibt sonst."""
+    return normalize_basis(chosen) != normalize_basis(initial)
 
 
 def _slot_minutes(slot: Mapping[str, Any]) -> int:
@@ -254,6 +264,14 @@ def sick_blocking_vacation(vacation_days: Mapping[str, int],
                   if m > 0 and vacation_days.get(d, 0) > 0)
 
 
+def touches_vacation(days: Mapping[str, int],
+                     vacation_days: Mapping[str, int]) -> bool:
+    """Ob der geplante Block einen Urlaubstag mit Minuten > 0 überdeckt, mit
+    wie vielen Krankheitsminuten auch immer: jeder lebende Krankheitstag setzt
+    den Urlaub dort auf 0 (`absence.cut_absences`)."""
+    return any(vacation_days.get(d, 0) > 0 for d in days)
+
+
 def vacation_sick_conflicts(plan_days: Mapping[str, int],
                             sick_days: Mapping[str, int],
                             existing_days: Mapping[str, int] | None = None,
@@ -268,10 +286,30 @@ def vacation_sick_conflicts(plan_days: Mapping[str, int],
 
 
 def block_hints(days: Mapping[str, int]) -> list[str]:
+    """Hinweise zum Block; `days` ist der Block nach dem Speichern
+    (`resulting_block_days`), nicht nur die gerade geplanten Tage."""
     hints = [HINT_SUGGESTION]
     if len(days) > SIX_WEEKS_DAYS:
         hints.insert(0, HINT_SIX_WEEKS)
     return hints
+
+
+def resulting_block_days(days: Mapping[str, int],
+                         sick_days: Mapping[str, int]) -> dict[str, int]:
+    """Der Block nach dem Speichern: die geplanten Tage plus die lebenden
+    Krankheitstage, die lückenlos an sie anschließen; geplante Werte gewinnen.
+    `sick_days` ist der Bestand ohne die Tage des bearbeiteten Blocks (die
+    schreibt das Speichern neu oder macht sie zu Tombstones). Eine Meldung,
+    die einen bestehenden Block verlängert, zählt so mit dessen Tagen."""
+    if not days:
+        return {}
+    merged = {**sick_days, **days}
+    out: dict[str, int] = {}
+    for first, last in runs(merged):
+        if any(first <= d <= last for d in days):
+            for day in date_range(first, last):
+                out[day.isoformat()] = merged[day.isoformat()]
+    return out
 
 
 def reservation_dates_in(days: Mapping[str, int],
@@ -282,9 +320,22 @@ def reservation_dates_in(days: Mapping[str, int],
     return sorted(d for d in days if (reservations.get(d) or {}).get("slots"))
 
 
+def reservation_dates_to_offer(days: Mapping[str, int],
+                               reservations: Mapping[str, Any] | None,
+                               old_dates: Iterable[str]) -> list[str]:
+    """Reservierungstage, deren Löschen das Speichern anbietet: nur Tage, die
+    der Block neu abdeckt. Was der Block schon vor dem Bearbeiten abdeckte,
+    hat der Nutzer beim Krankmelden bewusst stehen lassen; beim Anlegen ist
+    `old_dates` leer."""
+    old = set(old_dates)
+    return [d for d in reservation_dates_in(days, reservations)
+            if d not in old]
+
+
 class ReservationDeleteError(Exception):
     """Der Krankheitsblock ist geschrieben, aber nicht alle Reservierungen
-    ließen sich löschen; `deleted` nennt die bereits gelöschten Tage."""
+    ließen sich löschen; `deleted` nennt die bereits gelöschten Tage, der
+    Grund steht in `__cause__` (`OSError` ist erwartet, alles andere nicht)."""
 
     def __init__(self, deleted: list[str]) -> None:
         super().__init__("Reservierungen nicht vollständig gelöscht")
@@ -295,12 +346,13 @@ def commit_sick_block(sick_store: SickStore, reservation_store: Any, *,
                       old_dates: Iterable[str], days: dict[str, int],
                       delete_reservations: bool) -> list[str]:
     """Schreibt den Block und löscht danach, nur auf Wunsch, die Reservierungen
-    seiner Tage. Die Minuten wurden vorher geplant, die Reservierungen
-    dürfen erst jetzt wegfallen. Liefert die gelöschten Reservierungstage.
+    der Tage, die er neu abdeckt (`reservation_dates_to_offer`). Die Minuten
+    wurden vorher geplant, die Reservierungen dürfen erst jetzt wegfallen.
+    Liefert die gelöschten Reservierungstage.
 
-    Ein Fehler beim Schreiben des Blocks wirft `OSError` unverändert; scheitert
-    danach ein Löschen, wirft `ReservationDeleteError` (der Block steht dann
-    schon)."""
+    Ein Fehler beim Schreiben des Blocks wirft unverändert (der Block steht
+    dann nicht); jeder Fehler danach wird zu `ReservationDeleteError` (der
+    Block steht dann schon)."""
     old = list(old_dates)
     if old:
         sick_store.replace_block(old, days)
@@ -308,23 +360,42 @@ def commit_sick_block(sick_store: SickStore, reservation_store: Any, *,
         sick_store.save_range(days)
     if not delete_reservations or reservation_store is None:
         return []
-    dates = reservation_dates_in(days, reservation_store.get_all())
     deleted: list[str] = []
-    for date in dates:
-        try:
+    try:
+        for date in reservation_dates_to_offer(
+                days, reservation_store.get_all(), old):
             reservation_store.delete(date)
-        except OSError as e:
-            raise ReservationDeleteError(deleted) from e
-        deleted.append(date)
+            deleted.append(date)
+    except Exception as e:
+        # Weitergeworfen, nicht geschluckt: der Aufrufer muss wissen, dass
+        # der Block schon steht, um trotzdem zu schließen und neu zu zeichnen.
+        raise ReservationDeleteError(deleted) from e
     return deleted
+
+
+def stored_overrides(date_from: str, date_to: str,
+                     sick_days: Mapping[str, int],
+                     edit_block_days: Mapping[str, int] | None = None,
+                     ) -> dict[str, int]:
+    """Gespeicherte Überschreibungen im Zeitraum (ISO-Daten, Vergleich als
+    Text): die Tage des bearbeiteten Blocks und jeder lebende Krankheitstag
+    darin, der Store zuletzt (er ist frischer als der Block beim Öffnen). Ein
+    bestehender Krankheitstag behält so seine Minuten, auch wenn ein neuer
+    Zeitraum ihn überdeckt; neu rechnet ihn nur ein Wechsel der Grundlage
+    (`edit_overrides`)."""
+    out = {d: m for d, m in (edit_block_days or {}).items()
+           if date_from <= d <= date_to}
+    out.update({d: m for d, m in sick_days.items()
+                if date_from <= d <= date_to})
+    return out
 
 
 def edit_overrides(stored: Mapping[str, int], edited: Mapping[str, int], *,
                    basis_changed: bool) -> dict[str, int]:
-    """Überschreibungen beim Bearbeiten eines Blocks: die gespeicherten Werte,
-    solange die Grundlage unverändert ist, darüber die in diesem Dialog von
-    Hand geänderten Tage. Mit gewechselter Grundlage rechnen die gespeicherten
-    Tage neu, nur die von Hand geänderten bleiben."""
+    """Überschreibungen des Dialogs: die gespeicherten Werte
+    (`stored_overrides`), solange die Grundlage unverändert ist, darüber die
+    in diesem Dialog von Hand geänderten Tage. Mit gewechselter Grundlage
+    rechnen die gespeicherten Tage neu, nur die von Hand geänderten bleiben."""
     out = {} if basis_changed else dict(stored)
     out.update(edited)
     return out

@@ -717,7 +717,8 @@ class GridRenderer:
             attach_tooltip(cell, tip_text)
 
         # macOS-only Lösch-Button (✕) oben links, sobald der Tag löschbare
-        # Einheiten hat (Ist-Zeit, aktive Reservierung ODER Urlaub). reservation
+        # Einheiten hat (Ist-Zeit, aktive Reservierung, Urlaub ODER Krankheit,
+        # auch an einem 0-Minuten-Tag des Blocks). reservation
         # wird nur bei aktivem Kalender-Sync übergeben (vgl.
         # _add_reservation_marker), daher deckt `reservation is not None` die
         # aktive Reservierung ab.

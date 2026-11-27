@@ -178,6 +178,11 @@ def test_plan_rejects_a_non_numeric_value():
     ("", 0.0),          # leeres Feld zählt als 0, nicht als Fehler
     ("abc", None),      # keine Zahl -> None, kein Sentinel wie -1
     ("-2", -2.0),       # das Vorzeichen bewertet plan_vacation_save
+    ("nan", None),      # nicht endlich: wie keine Zahl, sonst wirft die
+    ("inf", None),      # Umrechnung in Minuten im trace-Callback
+    ("-inf", None),
+    ("Infinity", None),
+    ("1e999", None),
 ])
 def test_parse_hours(text, expected):
     assert parse_hours(text) == expected
