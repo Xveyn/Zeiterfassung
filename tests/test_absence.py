@@ -48,3 +48,68 @@ def test_cap_notice_rejects_unknown_kind():
         cap_notice([CappedDay("2026-09-01", 480, 240, 240)], kind="krank")
     with pytest.raises(ValueError):
         cap_notice([], kind="krank")
+
+
+def _entries(work_minutes):
+    if not work_minutes:
+        return {}
+    end = f"{8 + work_minutes // 60:02d}:{work_minutes % 60:02d}"
+    return {"2026-06-03": {"slots": [{"start": "08:00", "end": end}]}}
+
+
+def test_cut_without_sick_equals_cap_by_worktime():
+    e = _entries(120)
+    v = {"2026-06-03": 480, "2026-06-04": 480}
+    cut = absence.cut_absences(e, v, {})
+    capped, hits = absence.cap_by_worktime(v, e)
+    assert cut.vacation == capped
+    assert cut.vacation_capped == hits
+    assert cut.sick == {}
+    assert cut.sick_capped == []
+    assert cut.sick_on_vacation == []
+
+
+def test_sick_zeroes_vacation_and_reports_it():
+    v = {"2026-06-04": 480, "2026-06-03": 480, "2026-06-05": 0, "2026-06-06": 480}
+    s = {"2026-06-04": 480, "2026-06-03": 480, "2026-06-05": 0}
+    cut = absence.cut_absences({}, v, s)
+    assert cut.vacation == {"2026-06-04": 0, "2026-06-03": 0,
+                            "2026-06-05": 0, "2026-06-06": 480}
+    assert cut.sick == s
+    assert cut.sick_on_vacation == ["2026-06-03", "2026-06-04"]
+    assert v["2026-06-03"] == 480 and s["2026-06-04"] == 480
+
+
+def test_sick_is_capped_before_vacation():
+    e = _entries(120)
+    cut = absence.cut_absences(e, {"2026-06-03": 480}, {"2026-06-03": 450})
+    assert cut.vacation == {"2026-06-03": 0}
+    assert cut.sick == {"2026-06-03": 330}
+    assert cut.vacation_capped == []
+    assert [h.date for h in cut.sick_capped] == ["2026-06-03"]
+
+
+@pytest.mark.parametrize("work", [0, 120, 600])
+@pytest.mark.parametrize("vac", [None, 0, 480])
+@pytest.mark.parametrize("sick", [None, 0, 450])
+def test_day_never_exceeds_max_of_work_and_absence(work, vac, sick):
+    day = "2026-06-03"
+    v = {} if vac is None else {day: vac}
+    s = {} if sick is None else {day: sick}
+    cut = absence.cut_absences(_entries(work), v, s)
+    absence_in = sick if sick is not None else (vac or 0)
+    total = work + cut.vacation.get(day, 0) + cut.sick.get(day, 0)
+    assert total <= max(work, absence_in)
+
+
+def test_sick_on_vacation_notice_wording():
+    assert absence.sick_on_vacation_notice([]) == ""
+    assert absence.sick_on_vacation_notice(["2026-06-03"]) == (
+        "An 1 Tag (03.06.2026) lag Krankheit im Urlaub; "
+        "dieser Tag zählt als Krankheit.")
+    assert absence.sick_on_vacation_notice(["2026-06-03", "2026-06-04"]) == (
+        "An 2 Tagen (03.06.2026, 04.06.2026) lag Krankheit im Urlaub; "
+        "diese Tage zählen als Krankheit.")
+    days = [f"2026-06-0{i}" for i in range(1, 5)]
+    assert absence.sick_on_vacation_notice(days) == (
+        "An 4 Tagen lag Krankheit im Urlaub; diese Tage zählen als Krankheit.")

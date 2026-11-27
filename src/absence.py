@@ -151,6 +151,54 @@ def cap_notice(hits: list[CappedDay],
     return f"{wo} liegt Urlaub auf erfasster Arbeitszeit. {satz}"
 
 
+@dataclass(frozen=True)
+class AbsenceCut:
+    """Urlaub und Krankheit nach „Krankheit gewinnt“ und Kappung durch Ist-Zeit.
+
+    `vacation`/`sick` enthalten alle Eingabetage (gekappt), `*_capped` die von
+    der Kappung betroffenen Tage, `sick_on_vacation` die Tage (ISO, sortiert),
+    an denen Urlaubsminuten unter einem Krankheitstag auf 0 gesetzt wurden.
+    """
+
+    vacation: dict[str, int]
+    sick: dict[str, int]
+    vacation_capped: list[CappedDay]
+    sick_capped: list[CappedDay]
+    sick_on_vacation: list[str]
+
+
+def cut_absences(entries: dict[str, Any], vacation_days: dict[str, int],
+                 sick_days: dict[str, int]) -> AbsenceCut:
+    """Rechnet Urlaub und Krankheit auf einen Ausschnitt gegeneinander und
+    gegen die Ist-Zeit ab; die Eingaben bleiben unverändert.
+
+    `sick_days` sind nur lebende Krankheitstage. Jeder davon, auch mit 0
+    Minuten, setzt Urlaubsminuten > 0 desselben Tages auf 0: ein Kalendertag
+    zählt nie als beides. Danach kappt `cap_by_worktime` erst die Krankheit,
+    dann den bereits genullten Urlaub.
+    """
+    vacation = dict(vacation_days)
+    sick_on_vacation = sorted(
+        d for d in sick_days if vacation.get(d, 0) > 0)
+    for date_str in sick_on_vacation:
+        vacation[date_str] = 0
+    sick, sick_capped = cap_by_worktime(sick_days, entries)
+    vacation, vacation_capped = cap_by_worktime(vacation, entries)
+    return AbsenceCut(vacation, sick, vacation_capped, sick_capped,
+                      sick_on_vacation)
+
+
+def sick_on_vacation_notice(dates: list[str]) -> str:
+    """Ein Satz über Krankheitstage, die im Urlaub lagen, oder ""."""
+    if not dates:
+        return ""
+    if len(dates) == 1:
+        return (f"{_where(dates)} lag Krankheit im Urlaub; "
+                f"dieser Tag zählt als Krankheit.")
+    return (f"{_where(dates)} lag Krankheit im Urlaub; "
+            f"diese Tage zählen als Krankheit.")
+
+
 def format_day_list(days: list[str], limit: int = 8) -> str:
     """Die kollidierenden Tage als deutsche Datumsliste, ab `limit` gekürzt.
 
