@@ -34,6 +34,10 @@ ES-Module flach im Ordner:
   `reservation_block_visible` über `test/fixtures/reservation-visibility-cases.json`),
   Slot-Normalisierung und -Prüfung samt Pause (ganze Zahl ≥ 0, sonst 0; geprüft wie bei Ist-Zeiten),
   Signatur und die Netto-Rechnung für „Noch ausstehend“ (s. „Reservierungen“).
+- `sick.js` — Krankheitstage ohne DOM: der Block `sick` der Antwort als Fremddaten (`parseSickBlock`, wie
+  `clean_record` am Desktop), Zeiträume (`sickRange`; `Store.markSick` nimmt höchstens `MAX_SICK_BLOCK_DAYS` Tage), der Block um einen Tag
+  (`blockOf`) und die lokale Sperre durch Ist-Zeit (`workBlockedDates`, `reservationDatesIn`). Gespeichert wird in der
+  Meta (`sick`, `sick_capable`), die Minuten rechnet der Desktop.
 - `categories.js` — Kategorien-Verwaltung ohne DOM: Zeilen aus `categories` +
   `category_times` (`categoryRows`), zurück in den Block (`rowsToBlock`),
   Prüfung (`validateCategoryRows`), Kurzfassung der Zeiten (`timesSummary`),
@@ -139,7 +143,7 @@ cd pwa && node --test
 Der CI-Job `pwa` (`.github/workflows/test.yml`) läuft mit Node 22.
 
 **Typprüfung (#513):** `npm run typecheck` (`tsc --noEmit` über JSDoc, CI-Job `typecheck-js`, Required Check). Geprüft
-wird nur, was `// @ts-check` am Dateianfang trägt: heute `store.js`, `sync.js`, `view-model.js` und `slot-order.js`. Die
+wird nur, was `// @ts-check` am Dateianfang trägt: heute `store.js`, `sync.js`, `view-model.js`, `slot-order.js` und `sick.js`. Die
 Liste wächst pro PR; TypeScript ist die einzige devDependency, zur Laufzeit bleibt die PWA ohne Abhängigkeiten.
 
 ## Vertrag gegen Drift
@@ -213,7 +217,10 @@ Desktop) ist seltener, kommt aber vor. Sieben Regeln:
    „steht das Feld in der Antwort“. Dazu der Stand vor den Slot-Notizen (Xveyn#519): `compat/sync-response-pre-notes.json`
    (ohne `slot_notes` und ohne `notiz` an Slots; die PWA muss die Antwort verstehen) und
    `compat/sync-request-pre-notes.json` (die Anfrage ohne `notiz`, die der Desktop weiter annehmen muss); das
-   Live-Beispiel `sync-request.json` trägt `notiz` an einem Tag.
+   Live-Beispiel `sync-request.json` trägt `notiz` an einem Tag. Dazu der Stand vor den Krankheitstagen
+   (`compat/sync-request-pre-sick.json`, `compat/sync-response-pre-sick.json`, ohne `sick` und `sick_days`); das
+   Live-Beispiel trägt `sick`, die PWA sendet es nur, wenn die Antwort die Fähigkeit `sick_days` trug (ohne sie bleibt
+   die Meta-Fähigkeit aus, `test/compat.test.js`).
 5. **Neue PWA, alter Desktop.** Ein Desktop vor #311 ignoriert `settings` in der
    Anfrage und kennt `writable_settings` nicht. Die PWA bietet das Bearbeiten
    der Kategorien deshalb nur an, wenn die Antwort `writable_settings` mit
@@ -280,7 +287,8 @@ bietet sie nur an, wenn „Reservierungen verwenden“ an ist.
   Reiter im Tages-Editor erscheinen nur dann; vergangene Tage zeigen nichts,
   auch keine vorhandene Reservierung. Der Editor öffnet an Tagen **nach heute**
   bei der Reservierung (die Ist-Zeilen sind mit Standardzeiten vorbelegt, ein
-  Speichern dort legte sonst still eine Ist-Zeit an), heute bei der Arbeitszeit.
+  Speichern dort legte sonst still eine Ist-Zeit an), heute bei der Arbeitszeit; an einem Krankheitstag immer bei der
+  Arbeitszeit, dort steht „Krankheit entfernen“ (`editorStartTab`).
   Reservierungen zählen nicht in die Wochensumme; stattdessen zeigt der Wochenfuß unter
   „Woche gesamt“ eine Zeile **„Noch ausstehend“** (#329, `pendingLabel` in `view-model.js`): die
   reservierte Zeit, die noch nicht erledigt ist — an künftigen Tagen die ganze Reservierung,
@@ -306,7 +314,9 @@ bietet sie nur an, wenn „Reservierungen verwenden“ an ist.
   (`withPause` ist dort falsch). `views.js` zieht das Label bei jeder Zeiteingabe nach.
 - **Löschen** wie bei den Ist-Zeiten: „Tag leeren“ (am Reiter „Reservierung“
   mit eigener Bestätigung) schreibt einen Tombstone — außer der Desktop kennt den Tag nie
-  (`synced_version` 0): dann wird er nur lokal verworfen.
+  (`synced_version` 0): dann wird er nur lokal verworfen. Ein Tag aus einer Antwort gilt als bekannt
+  (`_applyReservations` setzt die Versionen auf mindestens 1, auch bei einem gespeicherten Desktop-Tag mit 0);
+  sonst verschwände eine Desktop-Reservierung beim Löschen nur lokal und käme mit dem nächsten Abgleich zurück.
 - **Ablehnung je Tag.** Der Desktop nennt den Tag vorn in der Meldung
   (`Reservierung <Datum>: …`); `SyncError.dayKind` unterscheidet das von einem
   Ist-Tag, und nur dieser Tag wird als abgelehnt markiert.
@@ -314,6 +324,71 @@ bietet sie nur an, wenn „Reservierungen verwenden“ an ist.
   `last_pull_at + 1 s` und stempelt einen übernommenen Tag mindestens mit dem
   Empfangszeitpunkt (`ReservationStore.merge_phone`); die Antwort kann daher
   einen neueren `modified_at` tragen als gesendet.
+
+## Krankheitstage: Abgleich
+
+- **Fähigkeit `sick_days`.** Nur wenn die Antwort sie nennt, sendet die PWA den Bereich `sick`, zeigt Krankheit an und
+  bietet sie an; ohne sie löscht sie auch nie einen lokalen Datensatz (ein älterer Desktop kennt den Bereich nicht
+  und ließe ihn fallen).
+- **Speicher in der Meta** (`sick`, `sick_capable`): kein IndexedDB-Upgrade. Dafür teilen die Krankheitstage das
+  Schreiben der Meta als ganzer Datensatz (`setMeta`): ein veralteter zweiter Tab, der die Meta schreibt, schreibt auch
+  seinen Stand von `sick` zurück (offener Punkt unter „Mehrere Tabs (#277)“).
+- **Kein `minutes` auf dem Draht.** Die PWA sendet nur Tage. Die Minuten rechnet der Desktop: bei einem schon bekannten
+  Tag behält er seine, sonst nimmt er die Reservierung (in dem Stand, den sie vor derselben Anfrage hatte), die Regel
+  für Wochenende und Feiertag oder die synchronisierte Grundlage (`sick_hours_basis`).
+- **Reservierungen gehen im selben ersten Paket hinaus.** Das Häkchen bietet nur Tage an, die vorher kein Krankheitstag
+  waren; die Tombstones der gelöschten Reservierungen reisen in der Regel mit der Krankheit in einer Anfrage. Zugesagt ist
+  die Reihenfolge: `markSick` speichert die Krankheit vor dem ersten Löschen, die Löschung einer Reservierung erreicht den
+  Desktop also nie vor der Krankheit. Läuft ein Abgleich genau dazwischen, kommt die Krankheit allein an und die Löschung
+  mit dem nächsten Abgleich; der Desktop rechnet die Minuten dann schon mit der noch lebenden Reservierung.
+- **Die Antwort gilt für gesendete Tage.** Der Desktop darf seinen unveränderten Datensatz behalten, der Stempel in der
+  Antwort kann deshalb älter sein als der gesendete.
+- **Fehler** mit Präfix „Krankheit YYYY-MM-DD:“ ordnet die PWA dem Tag mit `dayKind 'sick'` zu.
+- **Version ab 1.** Vom Desktop stammende Reservierungen und Krankheitstage tragen `synced_version` ≥ 1, ein nie
+  abgeglichener lokaler Datensatz `synced_version` 0. Deshalb sendet das Entfernen eines abgeglichenen Datensatzes einen
+  Tombstone, ein nie abgeglichener wird nur lokal verworfen.
+- **Bekannte Grenze.** Geht die Antwort verloren, kann ein entfernter Tag einmal zurückkommen: `synced_version 0` beweist
+  nicht, dass der Desktop ihn nie kannte. Erneutes Entfernen hält (`docs/known-limitations.md`).
+- **Außerhalb des Lesefensters gesperrt** wie die Arbeitszeit (#273), siehe „Krank melden“ unten.
+- **Kein Krankheitsdatum im Debug-Protokoll** (s. „Datenschutz“ unten).
+- **Ende-zu-Ende geprüft** in `tests/test_mobile_sick_e2e.py` über `tests/mobile_sick_probe.mjs`: die echte PWA-Logik gegen
+  `mobile_sync.perform_sync` (Melden mit Reservierung und Häkchen, zweiter Abgleich ohne Änderung, Entfernen des Blocks,
+  Desktop ohne Fähigkeit). `MAX_SICK_PER_REQUEST` (`store.js`) hält `tests/test_mobile_sick.py` gleich `MAX_SICK_DAYS`.
+
+## Krankheitstage: Oberfläche
+
+Logik und Abgleich: `sick.js` und `store.js` (Meta `sick`, `sick_capable`). Die Anzeige- und Entscheidungslogik
+liegt DOM-frei in `view-model.js`, `views.js` und `app.js` verdrahten nur. Ohne Fähigkeit `sick_days` zeigt die PWA
+nichts davon (Woche, Sperre, Knopf), sendet nichts und löscht nichts (`markSick` und `clearSick` werfen).
+
+- **Woche.** `weekModel(…, sickDays, sickEnabled)` gibt je Tag `sick: {minutes, label, dirty, error} | null`; nur
+  lebende Tage. Zeile in `--sick` (`#4c1d3d`, wie `SICK_BG` am Desktop) mit Streifen links, darin „krank“ in
+  `--sick-text` (`sickLabel`: mit Stunden erst, wenn der Desktop sie gerechnet hat und der Tag welche trägt). Krankheit
+  gewinnt die Farbe der Zeile und zählt nicht in „Woche gesamt“; ein Krankheitstag trägt keine Einladung „Eintragen“, und
+  seine Reservierung bleibt zu sehen, zählt aber nicht in „Noch ausstehend“.
+  `test/contrast.test.js` misst die Fläche.
+- **Sperre.** `editLock` sperrt die Arbeitszeit an einem Krankheitstag vor allen anderen Regeln (auch mit gehaltenem Tag
+  und außerhalb des Fensters): „An diesem Tag bist du krank gemeldet.“ mit dem Knopf „Krankheit entfernen“. Der fragt
+  nach (`sickRemovalText`) und ruft `clearSick` für den ganzen Block (`blockOf`), soweit das Handy ihn kennt
+  (`docs/known-limitations.md`). „Speichern“ der Arbeitszeit prüft die Sperre mit dem Stand von jetzt, nicht mit dem vom
+  Öffnen: ein Abgleich bei offenem Editor kann den Tag krank gemacht haben. Auch die Reservierung ist an einem
+  Krankheitstag gesperrt (`reservationLock`, gleicher Hinweis und Ausweg; Zeilen sichtbar, nicht bedienbar, Speichern
+  prüft erneut): der Desktop lässt dort keine zu, sie löste Erinnerungen und ein „verpasst“ aus. Bestehende löscht das
+  Häkchen beim Krankmelden.
+- **Krank melden.** Der Knopf steht unter beiden Reitern des Tages-Editors, nur wenn `canReportSick` es erlaubt: mit
+  Fähigkeit, nicht an einem Krankheitstag und nur im Fenster. Außerhalb ist Krankheit gesperrt wie die Arbeitszeit
+  (#273), auch wenn das Handy den Ist-Tag hält. Der Dialog (`sickDialogModel`) fragt nur das Bis-Datum ab, höchstens
+  bis zum Fensterende und höchstens 366 Tage. Ein Tag mit Ist-Zeit sperrt das Melden (`workBlockedDates`), die Meldung
+  nennt die Tage.
+- **Reservierungen löschen.** Das Häkchen erscheint (Vorgabe an) nur mit `reservations_enabled` und nur, wenn im
+  Zeitraum an heute oder später Tage Reservierungen tragen, die vorher kein Krankheitstag waren (wie
+  `sick_plan.reservation_dates_to_offer`). War ein Tag im Zeitraum schon krank, heißt es „Reservierungen an den neu krank
+  gemeldeten Tagen löschen“, sonst „Reservierungen in diesem Zeitraum löschen“. Gemeldet wird erst die Krankheit
+  (`markSick`), dann `clearReservation` je Tag; beides geht im nächsten Abgleich hinaus. Welche Tage gelöscht werden,
+  steht vor `markSick` fest (danach sind sie krank und würden nicht mehr angeboten). Scheitert erst das Löschen, steht
+  die Krankheit schon: der Dialog zeigt die Meldung und kann nur noch schließen (`sickSaveResult`, `final`).
+- **Datenschutz.** Kein Datum und keine Minuten eines Krankheitstags gehen ins Debug-Protokoll; die Wege in `app.js`
+  rufen weder `logFailure` noch das Protokoll (`test/layout.test.js` hält das am Quelltext fest).
 
 ## Wochenansicht: Hinweise und leere Tage (#461)
 
@@ -1095,7 +1170,8 @@ sonst könnte ein Dritter im WLAN einen Tag als abgelehnt markieren lassen).
 deshalb unter einer Web-Locks-Sperre (`navigator.locks`, Name `zeiterfassung-sync`) und lädt den Stand
 darunter frisch aus IndexedDB (`Store.load` tauscht die Maps atomar). Ohne Web Locks bleibt der alte
 Ablauf; Tests übergeben `locks` (`null` oder eine Attrappe), damit sie nicht von der Node-Version abhängen.
-Offen: andere Schreibwege eines veralteten Tabs (Tag speichern, Einstellungen) lesen den Stand weiter nur einmal.
+Offen: andere Schreibwege eines veralteten Tabs (Tag speichern, Einstellungen, Krankheit melden und entfernen) lesen den
+Stand weiter nur einmal.
 
 ## Veröffentlichung
 
@@ -1164,7 +1240,9 @@ unter `pwa/` löst damit den normalen Update-Weg aus: der neue Worker wartet,
 „Neu laden“ übernimmt ihn — ohne Worker abzumelden oder Caches zu leeren.
 
 `--reservations` schaltet den Reservierungs-Abgleich ein (wie „Reservierungen verwenden“
-am Desktop); ohne den Schalter fehlt das Feld `reservations` in der Antwort.
+am Desktop); ohne den Schalter fehlt das Feld `reservations` in der Antwort. Krankheitstage
+und Urlaub liegen in der Datenablage des Dev-Servers, die Antwort meldet `sick_days`; `--no-sick`
+startet ohne Krankheits-Store, wie ein Desktop ohne Krankheitstage (ohne `sick_days` und `sick`).
 
 Der Dev-Server legt Kategorien mit Standardzeiten an (Projekt mit festen
 Zeiten, Intern ohne Eintrag, Support als `per_day`) und nennt die Einstellungen

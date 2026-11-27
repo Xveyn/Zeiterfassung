@@ -842,7 +842,7 @@ Schwellen liegen exakt auf 360/540.
 Im Kalender gilt ein striktes Modell: **Linksklick** öffnet den Tages-Dialog
 zum Anlegen/Bearbeiten (Ist-Zeit *und* Reservierung), **Rechtsklick** löscht.
 Rechtsklick löscht nie ohne Bestätigung; liegt an einem Tag mehr als eine
-löschbare Einheit (Ist-Slots, Reservierungs-Slots, ein Urlaub), fragt ein
+löschbare Einheit (Ist-Slots, Reservierungs-Slots, ein Urlaub, ein Krankheitsblock), fragt ein
 Checkbox-Dialog (`themed_ask_delete_choice`), was gelöscht wird. Gebunden an `<Button-3>` auf allen Zelltypen
 (`src/ui.py::_delete_day`, für Eintrags-, Leer- und Feiertagszellen).
 
@@ -860,11 +860,16 @@ Zeilenklasse). Derselbe Parameter entscheidet auch, ob eine Kategorie-Auswahl
 die hinterlegten Standardzeiten in die Zeile zieht: bei gespeicherten Slots
 sind die Zeiten bewusst gesetzt und bleiben unangetastet.
 
+**Krankheit** ist eine weitere löschbare Einheit: gelöscht wird immer der ganze Block
+(Schlüssel `sick:<Anfang>`, auch von einem 0-Minuten-Tag aus). Ein Linksklick auf einen
+Krankheitstag mit Stunden öffnet den Krankheits-Dialog seines Blocks, ein 0-Minuten-Tag
+den normalen Tages-Dialog.
+
 **Plattform-Ausnahme macOS:** Tkinters Maustasten-Nummerierung macht den
 Rechtsklick (`<Button-3>`) auf macOS unzuverlässig (Sekundärklick ist je nach
 Tk-Version `<Button-2>` bzw. Control-Klick). Damit Löschen auf dem Mac
 erreichbar bleibt, zeigt die Tageszelle **dort** ein kleines ✕ oben links,
-sobald der Tag löschbare Einheiten hat (Ist-Zeit, aktive Reservierung oder Urlaub).
+sobald der Tag löschbare Einheiten hat (Ist-Zeit, aktive Reservierung, Urlaub oder Krankheit).
 Der ✕-Button löst denselben Lösch-Pfad wie der Rechtsklick aus
 (`App._delete_day` inkl. Bestätigung/Slot-Auswahl). Gesteuert über
 `_should_show_delete_button` (`theme/geometry.py`) + `GridRenderer._add_delete_button` (`grid_renderer.py`).
@@ -872,7 +877,11 @@ Der Tages-Dialog hat auf **allen** Plattformen keine Lösch-Buttons. Auf
 Windows/Linux ist Löschen ausschließlich der Rechtsklick.
 
 Neue Lösch-/Rechtsklick-Stellen müssen dieses Modell einhalten (kein zweiter
-Lösch-Pfad im Linksklick-Dialog auf Win/Linux).
+Lösch-Pfad im Linksklick-Dialog auf Win/Linux). Zwei bewusste Ausnahmen, beide nur
+mit dem ausdrücklichen „Speichern“ des Krankheits-Dialogs (Linksklick auf einen
+Krankheitstag): er löscht auf Wunsch (Häkchen, vorbelegt an) die Reservierungen der
+Tage, die er neu krank meldet (an schon kranken Tagen nie), und macht Tage, die beim
+Bearbeiten aus dem Block fallen, zu Tombstones.
 
 ## Urlaub: Periode als Einheit, Stunden pro Tag
 
@@ -884,9 +893,17 @@ Regeln:
 - **Urlaub gewinnt im Kalender** — er färbt die Zelle auch über Feiertag und
   Wochenende hinweg, damit der Zeitraum ein durchgehender Block bleibt. Der
   Feiertagsname geht nicht verloren, er wandert in den kombinierten Tooltip.
+  **Krankheit gewinnt über Urlaub:** an einem Krankheitstag zeigt die Zelle die
+  Krankheitsfarbe, der Urlaub steht im Tooltip. Einen neuen Urlaub über
+  Krankheitstage mit Minuten > 0 legt der Urlaubs-Dialog nicht an
+  (`vacation_dialog.sick_blocked_message`); beim Bearbeiten sperren nur die Tage, die
+  der Urlaub neu abdeckt — Krankheit im Urlaub bleibt erlaubt und zählt als Krankheit
+  (`absence.cut_absences`).
 - **Urlaub und Arbeitszeit schließen sich am selben Tag aus.** Trägt ein Tag
   Urlaubsstunden, öffnet der Tages-Dialog gar nicht erst
-  (`ui.App._open_dialog`), und ein Urlaub lässt sich nicht über Tage legen,
+  (`ui.App._open_dialog`); die Meldung dort trägt den Knopf „Krank melden“
+  (`themed_ask_action`), der den Krankheits-Dialog für diesen Tag öffnet — sonst
+  wäre „krank im Urlaub“ vom Kalender aus nicht erreichbar. Und ein Urlaub lässt sich nicht über Tage legen,
   an denen bereits Ist-Zeit oder eine aktive Reservierung liegt
   (`vacations.conflicting_days`, geprüft in `vacation_dialog._save` über
   `vacation_dialog.blocking_days`). „Aktiv" heißt: Reservierungen sind
@@ -911,7 +928,7 @@ Regeln:
   **Abgleich mit dem Handy** (`mobile_sync`; das Handy kennt keinen Urlaub). Das
   an diesen Stellen zu verbieten hieße, in einen LWW-Merge eine Ablehnung
   einzubauen — LWW hat dafür kein Konzept. Also wird der Zustand
-  **behandelt statt verhindert**: `vacations.cap_by_worktime` kappt die
+  **behandelt statt verhindert**: `absence.cap_by_worktime` kappt die
   Urlaubsminuten eines Tages um die dort erfasste Ist-Zeit (Untergrenze 0),
   bevor der Wert in eine Summe geht. Ein Kalendertag kommt damit nie auf mehr
   Stunden, als er hat (Xveyn#97).
@@ -920,19 +937,32 @@ Regeln:
   Urlaubswert, die Arbeitszeit wird darin aufgezehrt. Die App entscheidet
   damit bewusst *nicht*, welche der beiden Zahlen die richtige ist: der Tag
   ist falsch erfasst, und das muss sichtbar sein. Deshalb ist die Kappung an
-  **beiden** Stellen beschriftet, wortgleich aus `vacations.cap_notice`:
+  **beiden** Stellen beschriftet, wortgleich aus `absence.cap_notice`:
   als Hinweiszeile in der Live-Vorschau des Zeitraum-Pickers
-  (`period_picker.vacation_preview`, im Stil der `weekend_hint` daneben) und
+  (`period_picker.absence_preview`, im Stil der `weekend_hint` daneben) und
   als Fußnote unter dem Urlaubs-Block im Bericht (`report._cap_footnote`).
   Eine stille Kappung wäre schlimmer als der Bug: der Urlaubs-Block wiche
   ohne Erklärung von dem ab, was der Verwaltungs-Dialog für dieselbe Periode
   zeigt.
 
+  Dasselbe gilt für Krankheit: mit dem Häkchen „Krankheit ausweisen“ (Vorgabe
+  aus, nur gebaut, wenn ein Krankheitstag mit Minuten > 0 existiert) läuft die
+  Rechnung über `absence.cut_absences` — „Krankheit gewinnt“ gegen Urlaub und
+  beide gegen die Ist-Zeit; ohne Häkchen bleibt es beim Urlaubs-Weg und die
+  Ausgabe bitgleich. Welcher Weg gilt, entscheidet an jeder Ausgabe dieselbe
+  Funktion, `absence.cut_for_output` (`None` = Häkchen aus). Krankheitstage
+  laufen durch denselben Wochentags-Filter (`workweek.filter_for_report`) wie
+  Urlaub.
+
   Gerufen wird `cap_by_worktime` an den **vier** Ausgabewegen — `report.generate_report`,
-  `report.generate_pdf`, `webhook.build_json_payload` und den Auswertungen der lokalen
+  `report.generate_pdf`, `webhook.build_json_payload` (diese drei über
+  `absence.cut_for_output`) und den Auswertungen der lokalen
   API (`api_summary`, `/v1/summary/…`) — jeweils gegen den bereits zeitraum- **und**
-  kategoriegefilterten Ausschnitt (die API filtert nur nach Zeitraum); dazu die Vorschau des Zeitraum-Pickers
-  (`period_picker.vacation_preview`). Das ist kein
+  kategoriegefilterten Ausschnitt (die API filtert nur nach Zeitraum; sie wendet
+  „Krankheit gewinnt“ immer an und liefert Krankheitstage ohne Häkchen, anders als
+  Bericht und Webhook); dazu die Vorschau des Zeitraum-Pickers
+  (`period_picker.absence_preview`) und die Leer-Prüfung
+  (`send_dialog.period_has_no_content`), beide ebenfalls über `cut_for_output`. Das ist kein
   Detail: filtert jemand auf eine Kategorie, zehrt nur die dort *sichtbare*
   Arbeitszeit den Urlaub auf, sonst gingen Ist-Zeit, Urlaub und „Zu vergüten
   gesamt" auf derselben Seite nicht auf. Die 0-Minuten-Tage bleiben auch hier
@@ -1150,7 +1180,7 @@ Abstände physisch kleiner als früher, als Windows sie mitstreckte.
 Alle Dialoge (modal wie nicht-modal) teilen sich dasselbe Dark-Theme aus
 `src/theme/` — Drop-ins für die `tkinter.messagebox`-Familie
 (`themed_showinfo`/`themed_showwarning`/`themed_showerror`,
-`themed_askyesno`, `themed_ask_delete_choice`) sowie die Fenster-Chrome-
+`themed_askyesno`, `themed_ask_action`, `themed_ask_delete_choice`) sowie die Fenster-Chrome-
 Helfer (`apply_dark_titlebar`, `disable_min_max`, `apply_app_icon`,
 `center_dialog_on_parent`). Neue Dialoge nutzen diese Helfer statt
 `tkinter.messagebox`/eigenem Ad-hoc-Styling, und bekommen **keine**
@@ -1272,7 +1302,7 @@ Die Test-Deps sind **exakt gepinnt** (Audit N25) — beim Bump gegen Python 3.12
 - **test-macos** / **test-windows** — Plattform-Verifikation (je 3.12; macOS zieht zusätzlich `pyobjc-framework-Cocoa`).
 - **lint** — `ruff check .`. **typecheck** — `pyright` (gepinnt `1.1.411`).
 - **lint-js** — `biome lint --error-on-warnings` über `pwa/`, `relay/src`, `relay/test`, `relay/scripts` und `tests/*.mjs` (Xveyn#501). Biome kommt als gepinntes Release-Binary mit SHA256-Prüfung (wie gitleaks), nicht als npm-Paket: die PWA bleibt ohne Abhängigkeiten; beim Bump Version, Summe und `$schema` in `biome.json` zusammen ändern. `biome.json` im Root schaltet Formatierung und Import-Sortierung aus und die Stil-Regeln ab, die keinen Fehler finden; an sind die empfohlenen Regeln plus `noUndeclaredVariables`, `noUnusedVariables`, `noUnusedImports`, `noFloatingPromises` und `noMisusedPromises`. Ein bewusst nicht abgewartetes Versprechen trägt `void` davor. Ebenfalls **nicht** in der Liste der Required Checks (Aufnahme entscheidet der Maintainer, dann beides abgleichen). Lokal: Binary laden und `biome lint` im Repo-Root.
-- **typecheck-js** — `tsc --noEmit` per JSDoc (Xveyn#513), kein Build, die Dateien bleiben `.js`. In `pwa/` prüft nur, wer `// @ts-check` am Dateianfang trägt (`checkJs` ist aus): die Liste wächst pro PR, Muster `tests/test_type_annotations.py`; heute `pwa/store.js` (`@typedef Meta`: die `null`-Felder stehen als `X | null`, `null` heißt dort „älterer Desktop“). Dazu kommen `pwa/sync.js` und `pwa/view-model.js` (Fremddaten-Grenze und Anzeigemodell) sowie `pwa/slot-order.js`; Optionsobjekte mit Vorgabe `= {}` brauchen ein `@param`, sonst leitet `tsc` den Typ `{}` ab. In `relay/` wird `src/` vollständig geprüft (nicht `test/` und `scripts/`, `relay/tsconfig.json`); die `Env`-Typen erzeugt `wrangler types --strict-vars false` aus `wrangler.toml` (Datei gitignored, `npm run typecheck` erzeugt sie), die Secrets `VAPID_PRIVATE`/`VAPID_SUBJECT` stehen von Hand in `relay/env.d.ts`. TypeScript ist in `pwa/` die einzige devDependency, in `relay/` steht daneben `wrangler`; beide exakt gepinnt (`npm ci` im Job); zur Laufzeit bleibt die PWA ohne Abhängigkeiten, `pages.yml` veröffentlicht weder `package-lock.json` noch `tsconfig.json`. **Required Check** (seit der Aufnahme ins Ruleset). Lokal: `npm run typecheck` in `pwa/` bzw. `relay/` (Node ≥ 22).
+- **typecheck-js** — `tsc --noEmit` per JSDoc (Xveyn#513), kein Build, die Dateien bleiben `.js`. In `pwa/` prüft nur, wer `// @ts-check` am Dateianfang trägt (`checkJs` ist aus): die Liste wächst pro PR, Muster `tests/test_type_annotations.py`; heute `pwa/store.js` (`@typedef Meta`: die `null`-Felder stehen als `X | null`, `null` heißt dort „älterer Desktop“). Dazu kommen `pwa/sync.js` und `pwa/view-model.js` (Fremddaten-Grenze und Anzeigemodell) sowie `pwa/slot-order.js` und `pwa/sick.js`; Optionsobjekte mit Vorgabe `= {}` brauchen ein `@param`, sonst leitet `tsc` den Typ `{}` ab. In `relay/` wird `src/` vollständig geprüft (nicht `test/` und `scripts/`, `relay/tsconfig.json`); die `Env`-Typen erzeugt `wrangler types --strict-vars false` aus `wrangler.toml` (Datei gitignored, `npm run typecheck` erzeugt sie), die Secrets `VAPID_PRIVATE`/`VAPID_SUBJECT` stehen von Hand in `relay/env.d.ts`. TypeScript ist in `pwa/` die einzige devDependency, in `relay/` steht daneben `wrangler`; beide exakt gepinnt (`npm ci` im Job); zur Laufzeit bleibt die PWA ohne Abhängigkeiten, `pages.yml` veröffentlicht weder `package-lock.json` noch `tsconfig.json`. **Required Check** (seit der Aufnahme ins Ruleset). Lokal: `npm run typecheck` in `pwa/` bzw. `relay/` (Node ≥ 22).
 - **pwa** — `node --test` im Ordner `pwa/` (Node 22, `actions/setup-node`), hinter `changes` wie die übrigen Jobs. Bewusst **nicht** in der Liste der Required Checks oben: das Ruleset liegt außerhalb des Repos, die Aufnahme entscheidet der Maintainer (dann beides abgleichen, s. „Branch Protection"). `pwa/**` zählt als Code (nicht als Doku) und löst die ganze Matrix aus.
 - **relay** — `npm ci` und `node --test` im Ordner `relay/` (Node 22, `actions/setup-node`), hinter `changes` wie `pwa`. Ebenfalls **nicht** in der Liste der Required Checks (Aufnahme entscheidet der Maintainer, dann beides abgleichen). `relay/**` zählt als Code und löst die ganze Matrix aus. Der Job prüft zusätzlich die Konfiguration mit `wrangler deploy --dry-run` (ohne Token). Ausgerollt wird nicht hier, sondern von **`relay-deploy.yml`** nach dem Merge auf `master` (Environment `relay-production` mit den Cloudflare-Secrets, nur `master`, ohne zweite Freigabe — der Merge ist das Gate; Einrichtung in `relay/README.md`).
 
@@ -1430,7 +1460,7 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
 - `src/main.py` — Einstiegspunkt, **reiner Bootstrap**; baut `Tk`-Root, instanziert `Storage`/`Settings`/`App`, behandelt `--minimized`. Fachliche Sync-Flows gehören nach `sync_runtime.py` (R1, margenheld/Zeiterfassung#181 bzw. Xveyn#49)
 - `src/ui.py` — Tkinter-GUI; `App` ist schlanker Koordinator über `GridRenderer`/`BackgroundTaskRunner`/`SyncOrchestrator`/`UpdateBanner`/`UpdateCoordinator` (siehe `src/CLAUDE.md`)
 - `src/grid_renderer.py` — `GridRenderer`: Monats-/Wochenansicht, Zellen, Tooltips der Zellen, Fenstergeometrie (`repin_geometry`); `src/background_tasks.py` — `BackgroundTaskRunner`, der eine Thread-Helfer (`run`) samt Start-Tasks; `src/sync_orchestrator.py` — `SyncOrchestrator`, Bedienung des Drive-Syncs (Status, Fehler, Quit-Push); `src/update_banner.py` — `UpdateBanner` über dem Kalender. Verträge der vier: `src/CLAUDE.md`, „Die fünf App-Komponenten“
-- `src/dialogs/` — Modal-Dialoge; Beschreibung, Verträge und Reihenfolge der Settings-Tabs in `src/CLAUDE.md`, Abschnitt „Dialoge“. Module: `entry_dialog` (Tages-Dialog), `slot_rows` (Slot-Zeilenliste; jede Ist-Zeile trägt ein Notizfeld mit Vorschlägen, die Reservierung keines), `category_dialog` (Kategorien samt Standardzeiten; die Reihenfolge der Liste ordnen ▲/▼, gespeichert wird in Zeilenreihenfolge, sie gilt in der Auswahl der Dialoge und am Handy; „Speichern“ ist erst aktiv, wenn sich etwas ändern würde, `rows_changed`), `conflicts_dialog` (Sync-Konflikte; die gewählte Karte reicht ihre Notizen über `conflict_view.entry_choice` an `sync.resolve_conflict`), `date_row` (Tag/Monat/Jahr-Widget), `period_picker` (Zeitraum-Auswahl mit Vorschau; der Schalter „Nach Notiz aufschlüsseln“ erscheint nur, wenn der Bestand eine Notiz hat), `send_dialog` + `send_task` (Versand, Worker-Kern Tk-frei), `export_dialog` + `export_task` (PDF-Export), `share_dialog` + `share_task` (Teilen), `import_dialog` (Import), `mail_task` (gemeinsamer Fehler-Klassifikator der Mail-Kerne), `smtp_dialog`, `webhook_dialog`, `vacation_dialog` (Urlaub verwalten), `scopes_dialog` (gewährte OAuth-Scopes), `mobile_pair_dialog` (Koppel-Dialog Handy), `removal_dialog` (Rückfrage „Zeiterfassung entfernen“), `privacy_dialog` (Datenschutzhinweise, Einstellungen → App), `settings_dialog/` (Paket, ein Modul je Tab)
+- `src/dialogs/` — Modal-Dialoge; Beschreibung, Verträge und Reihenfolge der Settings-Tabs in `src/CLAUDE.md`, Abschnitt „Dialoge“. Module: `entry_dialog` (Tages-Dialog; der Knopf „Krank melden“ öffnet den Krankheits-Dialog), `sick_dialog` (Krankheit eintragen und verwalten; `src/sick_view.py` trägt die Anzeigetexte), `slot_rows` (Slot-Zeilenliste; jede Ist-Zeile trägt ein Notizfeld mit Vorschlägen, die Reservierung keines), `category_dialog` (Kategorien samt Standardzeiten; die Reihenfolge der Liste ordnen ▲/▼, gespeichert wird in Zeilenreihenfolge, sie gilt in der Auswahl der Dialoge und am Handy; „Speichern“ ist erst aktiv, wenn sich etwas ändern würde, `rows_changed`), `conflicts_dialog` (Sync-Konflikte; die gewählte Karte reicht ihre Notizen über `conflict_view.entry_choice` an `sync.resolve_conflict`), `date_row` (Tag/Monat/Jahr-Widget), `period_picker` (Zeitraum-Auswahl mit Vorschau; der Schalter „Nach Notiz aufschlüsseln“ erscheint nur, wenn der Bestand eine Notiz hat, der Schalter „Krankheit ausweisen“ nur mit einem Krankheitstag mit Minuten > 0 im Bestand; ob Krankheit mitgeht, entscheidet für Senden und Export `report_sick_days`), `send_dialog` + `send_task` (Versand, Worker-Kern Tk-frei), `export_dialog` + `export_task` (PDF-Export), `share_dialog` + `share_task` (Teilen), `import_dialog` (Import), `mail_task` (gemeinsamer Fehler-Klassifikator der Mail-Kerne), `smtp_dialog`, `webhook_dialog`, `vacation_dialog` (Urlaub verwalten), `scopes_dialog` (gewährte OAuth-Scopes), `mobile_pair_dialog` (Koppel-Dialog Handy), `removal_dialog` (Rückfrage „Zeiterfassung entfernen“), `privacy_dialog` (Datenschutzhinweise, Einstellungen → App), `settings_dialog/` (Paket, ein Modul je Tab)
 - `src/json_store.py` — gemeinsame Mechanik der lokalen JSON-Stores und einziger Ort der beiden Regeln N1 (`atomic_write_json`: fsync vor `os.replace`) und N4 (`load_json_or_quarantine`: korrupte Datei nach `.corrupt-<stamp>` statt stillem Verwerfen). Neue Stores nutzen die beiden Funktionen, statt die Mechanik zu kopieren
 - `src/storage.py` — JSON-Persistenz der Zeiteinträge (Schlüssel: ISO-Datum). Gelesen wird nur bereinigt (`sanitize_slot`), eine beschädigte Datei wird beim Laden mit Sicherung repariert (s. `src/CLAUDE.md`). Die Slot-Notiz (Xveyn#519) liegt auf der Platte am Eintrag (`notes`), `get`/`get_all` liefern sie als `notiz` am Slot (App-Form, s. `src/slot_notes.py`)
 - `src/settings.py` — Benutzereinstellungen mit Defaults
@@ -1476,10 +1506,15 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
   `null` ohne Häkchen) und `vacation_minutes` (Summe daraus, `0` ohne
   Urlaub) — ohne gesetztes Häkchen bleiben beide Felder auf ihrem Leerwert,
   ein bestehender Empfänger läuft also unverändert weiter. Beide Werte sind
-  über `vacations.cap_by_worktime` gekappt wie in Mail-HTML und PDF (s.
+  über `absence.cap_by_worktime` gekappt wie in Mail-HTML und PDF (s.
   „Urlaub"): ein Empfänger, der `total_minutes` und `vacation_minutes`
   addiert, bekommt für einen Kalendertag nie mehr Stunden, als er hat. Die
-  Shape ändert sich dadurch nicht — **kein** Schema-Bump.
+  Shape ändert sich dadurch nicht — **kein** Schema-Bump. Mit dem Häkchen
+  „Krankheit ausweisen“ kommen `sick` und `sick_minutes` dazu (gekappt, Krankheit
+  gewinnt gegen Urlaub); auf dem Draht stehen sie wie alle Schlüssel in der
+  Reihenfolge von `sort_keys=True` (`send_task`), nicht an einer festen Stelle.
+  Ohne das Häkchen fehlen beide Schlüssel und das Dokument ist bitgleich zu
+  vorher, die Version bleibt `2`.
 - `src/webhook_store.py` — gerätelokaler Store der Webhook-Konfiguration
   (`webhooks.json`). Enthält Konfiguration **und** Secrets und wird deshalb wie
   `token.json` gehärtet geschrieben; reist bewusst **nicht** per Drive-Sync.
@@ -1513,7 +1548,8 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
 - `src/mobile_store.py` — gerätelokale Datei `mobile_devices.json` der gekoppelten Handys (nur Token-**Hashes** und der Zähler `last_seq`, kein Geheimnis; reist nicht per Drive-Sync); Mechanik und eigener Lock wie `smtp_store.py`, aber ohne ACL-Härtung — sie wird bei jedem Abgleich geschrieben. Die Geräteschlüssel stehen **nicht** hier, sondern in `mobile_keys.py`
 - `src/mobile_crypto.py` — Ende-zu-Ende-Verschlüsselung der Handy-Erfassung (#249), Tk-frei, ohne I/O: AES-256-GCM und HKDF-SHA-256 (`cryptography`, gepinnt), Umschlag `{v: 2, seq, n, c}`, AAD aus Richtung, Methode, Pfad, Geräte-ID und Zähler, Anfrage- und Antwortschlüssel getrennt, je Nachricht zufällige Nonce. Gleichlauf mit `pwa/crypto.js` hält `pwa/test/fixtures/crypto-vectors.json`; **wer eine Konstante, die AAD oder die Ableitung ändert, ändert beide Seiten und erzeugt die Vektoren neu**
 - `src/mobile_keys.py` — Geräteschlüssel `k_dev` der Handy-Erfassung (#249): OS-Schlüsselbund (`mobile:<device_id>`), Datei `mobile_keys.json` nur als Fallback (gehärtet über `secure_file.write_secret_json`, 0600/ACL) und als Ablage der **Orte**. `get` liest nur den Speicher-Cache — ein Schlüsselbund-Zugriff blockiert bis zum 30-s-Watchdog und darf nie unter der Gerätesperre oder in einem Server-Thread laufen; `load`/`migrate`/`remove`/`retain` blockieren und laufen nur im Worker (`MobileService._maintain_keys`). Koppeln legt den Schlüssel zuerst in die Datei, `migrate` zieht ihn danach in den Schlüsselbund (Zurücklesen vor dem Umschreiben, Muster `secret_migration`); `secret_migration.forget_all` räumt `mobile:<id>` bei der Deinstallation ab
-- `src/mobile_sync.py` — fachlicher Kern von `POST /v1/sync` der Handy-Erfassung (#221): `parse_request` prüft den Body (Fremddaten, Regeln der lokalen API), `perform_sync` merged das Handy als `local` über `sync.merge` und wendet über `sync_journal` an, `build_response` baut Lesefenster und Konflikte und trägt additiv (`PROTOCOL` bleibt 2, #288) `defaults` (`build_defaults`: Wochentag-Standards, Pause und `category_times` der bekannten Kategorien, bereinigt) und `desktop` (`desktop_info`: Name, Version, Plattform; nur im verschlüsselten Abgleich, nicht im Klartext-Ping); dazu der Einstellungs-Teil (`settings`: `categories`/`category_times` vom Handy, Merge über `sync.merge`, Antwort nach dem Anwenden). Tk-frei; Token und Gerätedatensatz gehören der Route (s. `src/CLAUDE.md`)
+- `src/mobile_sync.py` — fachlicher Kern von `POST /v1/sync` der Handy-Erfassung (#221): `parse_request` prüft den Body (Fremddaten, Regeln der lokalen API), `perform_sync` merged das Handy als `local` über `sync.merge` und wendet über `sync_journal` an, `build_response` baut Lesefenster und Konflikte und trägt additiv (`PROTOCOL` bleibt 2, #288) `defaults` (`build_defaults`: Wochentag-Standards, Pause und `category_times` der bekannten Kategorien, bereinigt) und `desktop` (`desktop_info`: Name, Version, Plattform; nur im verschlüsselten Abgleich, nicht im Klartext-Ping); dazu der Einstellungs-Teil (`settings`: `categories`/`category_times` vom Handy, Merge über `sync.merge`, Antwort nach dem Anwenden). Ebenso additiv die Krankheitstage: `sick` in der Anfrage (`mobile_sick`, die fehlenden Minuten rechnet der Desktop vor dem Merge), in der Antwort die Fähigkeit `sick_days: true` und der Block `sick`, beides nur mit Krankheits-Store (`MobileContext.sick_store`). Tk-frei; Token und Gerätedatensatz gehören der Route (s. `src/CLAUDE.md`)
+- `src/mobile_sick.py` — Krankheitstage im Handy-Abgleich, Tk-frei, ohne I/O: `parse_sick` prüft den Teil `sick` der Anfrage als Fremddaten (`{modified_at, deleted, minutes?}`, Minuten 0–1440 oder fehlend, unbekannte Felder abgelehnt; Meldung `Krankheit <Datum>: …`, daraus macht `mobile_sync` `422 invalid_entry`), `fill_minutes`/`phone_records` bauen die Datensätze des Handys (ohne Minuten: die des lebenden Desktop-Tags, sonst `sick_plan.prefill` je Folge in Datumsreihenfolge wie im Dialog; unveränderte Tage bleiben weg, damit der Desktop-Datensatz Stempel und Gerät behält; Stempel auf `last_pull_at + 1 s`; Ist-Zeiten und Reservierungen derselben Anfrage zählen in der Vorbelegung mit, `prefill_entries`/`prefill_reservations`), `keep_phone_deletions` hält eine Löschung des Handys unter dem Watermark, `build_sick` den Block der Antwort. Loggt nichts (Gesundheitsdaten)
 - `src/mobile_reservations.py` — Reservierungen im Handy-Abgleich: `parse_reservations` prüft den Teil `reservations` der Anfrage als Fremddaten (bis heute + 365, vergangene Tage entfallen, Slot-Regeln der Ist-Zeiten, nie `gcal_event_id`/`send_reminder_minutes`; `pause` optional, fehlt sie, erbt sie `reservations.inherit_pause` nur bei gleichem Index und gleichem `start`/`end`), `build_reservations` baut das Antwortfeld aus dem Store (`pause` immer, die Fähigkeit `reservation_pause` steht in der Sync-Antwort, `PROTOCOL` bleibt 2). Tk-frei; der Merge selbst ist `ReservationStore.merge_phone`, das Gegenstück in der PWA `pwa/reservations.js`
 - `src/mobile_settings.py` — Einstellungen im Handy-Abgleich: `parse_settings` prüft den Teil `settings` der Anfrage als Fremddaten (nur `categories`, `category_times` und `slot_order_mode` — eines der Modi aus `slot_order.MODES` —, Grenzen für Anzahl, Namen, Uhrzeiten und Pause, `check_times_names`), dazu die Bereinigungs-Helfer (`clock`, `pause`, `clean_category_times`) für die Standardzeiten der Antwort. Tk-frei; Gegenstück der PWA ist `pwa/categories.js`; den Merge macht `sync.merge`
 - `src/mobile_reminders.py` — Erinnerungen auf dem Handy (#331), Tk-frei: `build_block` baut den Block `reminders` der Abgleich-Antwort (immer vorhanden, ausgeschaltet leer; Reservierungs-Minuten, Sende-Zeitpunkte der nächsten 62 Tage aus `send_reminder.upcoming_send_times`), `parse_push` liest das Relay-Geheimnis der Anfrage als Fremddaten, `phone_covers` entscheidet, ob ein Desktop-Toast entfallen darf (nur mit Sicherheit). Gegenstück der PWA: `pwa/reminders-plan.js`; Vertrag `pwa/test/fixtures/reminders-contract.json`
@@ -1601,12 +1637,13 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
   kennt das Feld nicht) und wird in `share.py` bewusst aus dem Share-Doc
   projiziert, weil dessen Validator unbekannte Felder ablehnt.
 - `src/reservations_sync.py` — Abgleich der Reservierungen mit einem Google Kalender
+- `src/absence.py` — gemeinsamer Zeitraum-Kern von Urlaub und Krankheit, Tk-frei: `date_range`, `holiday_dates`, `apportion_minutes`, `CappedDay`/`cap_by_worktime`/`cap_notice(kind)` (Kappung gegen erfasste Ist-Zeit, Wortlaut je Art), `AbsenceCut`/`cut_absences` („Krankheit gewinnt“ über Urlaub), `cut_for_output` (die eine Entscheidung für Bericht, Webhook, Vorschau und Leer-Prüfung: `sick_days=None` nur die Urlaubs-Kappung, sonst `cut_absences`), `sick_on_vacation_notice` und `format_day_list`. `vacations` und `vacation_plan` re-exportieren die Namen
 - `src/vacations.py` — Urlaubsperioden (eigenes Konzept neben Ist-Zeiten und
   Reservierungen). Die **Periode** ist der Record mit Identität
   (`{id: {name, from, to, days: {ISO: minutes}, gcal_event_id, modified_at,
   deleted}}`), die Tagesminuten liegen in ihr; `days` deckt jeden Kalendertag
   von `from` bis `to` lückenlos ab, Wochenenden und Feiertage mit 0. Enthält
-  auch die reinen Regeln (`expand_days`, `apportion_minutes`,
+  auch die reinen Regeln (`expand_days`,
   `periods_overlap`, `conflicting_days`). Gerätelokal — reist **nicht** per Drive-Sync und steht
   **nicht** im Share-Doc.
 - `src/vacations_sync.py` — Einwegs-Push der Urlaubsperioden als
@@ -1615,6 +1652,25 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
   serverseitig gar nicht erst sieht. `purge_vacation_events` ist der Weg
   zurück: alle App-Urlaubs-Events löschen und die `gcal_event_id` lokal
   leeren, wenn `vacation_gcal_enabled` abgeschaltet wird
+- `src/sick_days.py` — Krankheitstage (`sick.json`, `SickStore` am geteilten
+  `data_lock`): je Kalendertag ein Datensatz `{minutes, modified_at, device_id,
+  deleted}`, ein Block ist nur die Ableitung aus lückenlosen lebenden Tagen.
+  Reist additiv als Bereich `sick` im Sync-Doc (kein Schema-Bump), steht **nie**
+  im Share-Doc oder im Google-Kalender. Gesundheitsdaten: Logs nennen höchstens
+  Anzahlen
+- `src/sick_view.py` — Anzeigetexte der Krankheitstage, Tk-frei: Blockbeschriftung,
+  Löschschlüssel `sick:<Anfang>`, Zell-Tooltip (mit Urlaub und Feiertag), Reihenfolge und
+  Zeilen der Verwaltung. `src/dialogs/sick_dialog.py` — Krankheits-Dialog (`open_sick_dialog`,
+  bearbeitet nur mit ausdrücklich übergebenem `edit_block`) und Verwaltung
+  (`open_sick_manager`, Einstellungen → Arbeitszeit → „Krankheit verwalten“)
+- `src/sick_plan.py` — Planung der Krankheitstage, Tk-frei:
+  Grundlage der Stunden (`sick_hours_basis`: Standardzeit des Wochentags oder
+  Durchschnitt der letzten drei Monate), Vorbelegung (ein bestehender lebender
+  Krankheitstag im Zeitraum behält seine Minuten, `stored_overrides`), Sperre gegen
+  Ist-Zeit und gegen Urlaub über Krankheitstagen, Hinweise (Sechs-Wochen-Grenze über den
+  Block nach dem Speichern, Vorschlag, Attest). Rein bis auf `commit_sick_block`: das
+  schreibt über die übergebenen Stores den Block und löscht danach die Reservierungen
+  der Tage, die vorher kein Krankheitstag waren (`reservation_dates_to_offer`)
 - `src/dialogs/vacation_dialog.py` — Verwaltung der Perioden (Einstieg:
   Einstellungen → Arbeitszeit → „Urlaub verwalten"). Die Entscheidungen des
   Bearbeiten-Dialogs sind Tk-frei und getestet: `prune_overrides` (welche
@@ -1676,8 +1732,9 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
   Server im Daemon-Thread (die lokale Instanz nur Loopback, `authorize` vor dem Routing,
   nie ein CORS-Header; die Handy-Instanz über eine eigene `Surface`) und Lebenszyklus über `api_enabled`/`api_port` (gerätelokal,
   Default aus) mit Statusgrund. Beschreibung und Verträge: `src/CLAUDE.md`.
-- `src/api_entry_write.py` — Schreibpfad der Ist-Zeiten-Routen der lokalen API (#92): nimmt Fremddaten und bildet die Regeln nach, die die UI an ihren Eingängen durchsetzt (Slot-Validierung über `time_utils.validate_slots`, Sperren bei ungelöstem Sync-Konflikt und Urlaubsminuten > 0, Warnungen zu Wochenlimit und Pausenpflicht); Verträge in `src/CLAUDE.md`.
+- `src/api_entry_write.py` — Schreibpfad der Ist-Zeiten-Routen der lokalen API (#92): nimmt Fremddaten und bildet die Regeln nach, die die UI an ihren Eingängen durchsetzt (Slot-Validierung über `time_utils.validate_slots`, Sperren bei ungelöstem Sync-Konflikt, Urlaubsminuten > 0 und Krankheitsminuten > 0 (`409 sick_day`, zuerst geprüft), Warnungen zu Wochenlimit und Pausenpflicht); Verträge in `src/CLAUDE.md`.
 - `src/api_reservation_write.py` — Schreibpfad der Reservierungs-Routen der lokalen API (#239): Body-Parser und Datumsregeln, optionales `pause` je Slot (fehlt es, erbt der Slot es bei gleichem Index und gleichem `start`/`end`, sonst 0); Verträge in `src/CLAUDE.md`.
+- `src/api_sick_write.py` — Krankheits-Routen der lokalen API: Body-Parser von `POST /v1/sick` (gerechnet wird in `sick_plan`); Verträge in `src/CLAUDE.md`.
 - `src/api_vacation_write.py`, `src/vacation_plan.py` — Urlaubs-Routen der lokalen API (#239): Body-Parser bzw. die aus dem Dialog gezogene Tk-freie Planung (`plan_vacation_save`, `blocking_days`); Verträge in `src/CLAUDE.md`.
 - `src/api_summary.py` — Rechnung der Auswertungen der lokalen API (rein, über Minuten je Slot; s. `src/CLAUDE.md`).
 - `src/single_instance.py` — Tk-freier Single-Instance-Guard (pro-Nutzer-Localhost-Port, `acquire`/`serve`/`release`); verhindert parallele Instanzen und holt bei manuellem Zweitstart das vorhandene Fenster nach vorn (SHOW), beim Autostart-Doppelfeuer ohne Fenster-Pop (PING)
@@ -1699,7 +1756,7 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
 - `src/self_update.py` — lädt das Release-Asset, prüft es gegen `SHA256SUMS` und wendet es an (`apply_windows` über ein Helfer-Skript, `apply_linux` durch Ersetzen der laufenden AppImage). Tk-frei, stdlib-only; die Regeln dazu — kein `DETACHED_PROCESS`, eigener Zielname je Download, was die Hash-Prüfung leistet — stehen oben unter „Update-Weg"
 - `src/platform_open.py` — `os.startfile`/`open`/`xdg-open`-Wrapper
 - `src/startup_info.py` — die zwei Startzeilen des Logs (Xveyn#401): Build/Kanal/Plattform/Python/Tk (`describe_environment`, vor den Stores) und die an/aus-Schalter (`describe_features`, nach dem Laden der Settings). Tk-frei, alles als Argument; nie Namen, Pfade oder Adressen im Log
-- `src/logging_setup.py` — File-Logging + globaler Excepthook (Setup-Fehler sind **nicht-fatal**, siehe `main.py`); aus dem Quellcode (`python -m src.main`, nicht frozen) loggt es zusätzlich nach stderr; `ZEITERFASSUNG_LOG_LEVEL=DEBUG` hebt das Level an (Konsole und Logfile)
+- `src/logging_setup.py` — File-Logging + globaler Excepthook (Setup-Fehler sind **nicht-fatal**, siehe `main.py`); aus dem Quellcode (`python -m src.main`, nicht frozen) loggt es zusätzlich nach stderr; `ZEITERFASSUNG_LOG_LEVEL=DEBUG` hebt das Level an (Konsole und Logfile); `xhtml2pdf` bleibt auch dann bei WARNING (`PRIVATE_LOGGERS`: es schriebe auf DEBUG das Quell-HTML jeder PDF ins Log, mit „Krankheit ausweisen“ also Gesundheitsdaten)
 - `src/privacy_doc.py` — die Datenschutzhinweise der App, Tk-frei: parst die gebündelte `docs/datenschutz.md` in anzeigefertige Blöcke (Titel, Überschriften, Absätze, Listen, Zitat, fett, Code, Links; Unbekanntes bleibt lesbarer Text), Links nur für `http(s)` (`is_web_url`), `load_privacy_doc` (wirft nie, `None` bei fehlender Datei) und `fallback_blocks` (Ersatztext mit Link auf das Dokument im Projekt). Die Datei geht per `--add-data` in jeden Build; Anzeige: `src/dialogs/privacy_dialog.py`
 - `src/theme/` — Dark-Theme als Paket (R3): `palette` (Konstanten), `fonts` (benannte Tk-Fonts + Skalierung), `widgets` (Widget-Fabriken, ttk-Styles), `geometry` (Zentrierung + die Tk-freien Prädikate `_stray_click_suppressed`/`_should_show_delete_button`), `chrome` (Win32-Fensterchrome, `create_dialog`), `messagebox` (themed Drop-ins), `form` (Formular-Bausteine `Form`/`set_enabled`/`empty_state`, #132) mit der Tk-freien Logik in `form_logic`. `__init__.py` re-exportiert die Oberfläche — Aufrufer importieren unverändert `from src.theme import …`, nicht aus den Teilmodulen
 - `src/tooltip.py` — Hover-Tooltips (`attach_tooltip`, verzögert um `SHOW_DELAY_MS`; s. „Tooltips“)

@@ -33,6 +33,11 @@ def _s(value, modified_at, device_id):
     return {"value": value, "modified_at": modified_at, "device_id": device_id}
 
 
+def _sick(minutes, modified_at, device_id, deleted=False):
+    return {"minutes": 0 if deleted else minutes, "modified_at": modified_at,
+            "device_id": device_id, "deleted": deleted}
+
+
 def _doc(entries=None, settings=None, conflicts=None):
     return {"schema_version": sync.SCHEMA_VERSION, "entries": entries or {},
             "settings": settings or {}, "conflicts": conflicts or []}
@@ -59,6 +64,8 @@ def _canon(doc):
         "entries": json.dumps(doc["entries"], sort_keys=True),
         "settings": json.dumps(doc["settings"], sort_keys=True),
         "devices": json.dumps(doc.get("devices", {}), sort_keys=True),
+        # `None` (Bereich fehlt) und `{}` sind verschieden: das Vorhandensein zählt mit.
+        "sick": json.dumps(doc.get("sick"), sort_keys=True),
         "conflicts": sorted(conflict_view(c) for c in doc["conflicts"]),
     }
 
@@ -114,6 +121,18 @@ def test_two_resolutions_for_one_key_apply_order_independently():
     two = merge(_doc(entries=base, conflicts=[y, x]), _doc(), T0)
     assert one["entries"] == two["entries"]
     assert one["entries"]["2026-05-14"]["device_id"] == "B"
+
+
+def test_sick_day_tie_in_the_same_second_is_symmetric():
+    """Zwei Stände eines Krankheitstags im selben Zeitstempel, verschiedene Minuten:
+    beide Reihenfolgen behalten denselben, ohne Konflikt."""
+    a = _doc()
+    a["sick"] = {"2026-05-14": _sick(480, T1, "A")}
+    b = _doc()
+    b["sick"] = {"2026-05-14": _sick(240, T1, "A")}
+    ab, ba = merge(a, b, T0), merge(b, a, T0)
+    assert ab["sick"] == ba["sick"]
+    assert ab["conflicts"] == ba["conflicts"] == []
 
 
 def test_device_registry_tie_is_symmetric():
@@ -296,7 +315,21 @@ def _random_doc(rng, new_style=False):
     doc = _doc(entries, settings, conflicts)
     doc["devices"] = {"A": {"name": rng.choice(["Laptop", "Büro"]),
                             "updated_at": rng.choice(_TIMES)}}
+    if rng.random() < 0.8:
+        doc["sick"] = _random_sick(rng)
     return doc
+
+
+def _random_sick(rng):
+    """Krankheitstage; fehlt der Bereich, hat ein altes Gerät hochgeladen. Die
+    kleine Auswahl an Stempeln, Geräten und Minuten sorgt für Gleichstände im
+    selben Zeitstempel mit verschiedenen Minuten."""
+    days = {}
+    for key in _KEYS:
+        if rng.random() < 0.7:
+            days[key] = _sick(rng.choice([0, 240, 480]), rng.choice(_TIMES),
+                              rng.choice(_DEVICES), deleted=rng.random() < 0.2)
+    return days
 
 
 _PULLS = ["", T0, T1, T2]

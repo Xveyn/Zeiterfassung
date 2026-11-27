@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 
 import {
   SETTINGS_TABS, categoriesModel, categoryRemovalText, categoryRenameHint, settingsTabLabel, retentionLabel,
-  WEEKDAYS, dayTitle, normalizeNoteDisplay, categoryDisplay, categoryLabel, categoryOptions, conflictsModel, dayChanged, editLock, editorRows, focusKeyToRestore, hintKey, hintsModel, desktopHint, localTime, nextRow, olderModel, pickCategory, rowsToSlots, slotText,
+  WEEKDAYS, dayTitle, normalizeNoteDisplay, categoryDisplay, categoryLabel, categoryOptions, conflictsModel, dayChanged, editLock, reservationLock, editorRows, focusKeyToRestore, hintKey, hintsModel, desktopHint, localTime, nextRow, olderModel, pickCategory, rowsToSlots, slotText,
   reachedAfterSyncError, unpairDialogModel, statusModel, localDateDe, validateRows, weekModel, windowRow, reservationRows, reservationRowsToSlots, validateReservationRows,
 } from '../view-model.js';
 import { SyncError } from '../sync.js';
@@ -1477,4 +1477,200 @@ test('reservations stay plain text, a conflict version shows the note as its own
   assert.deepEqual(week.days[3].reservation.slots, ['08:00–12:00 · 30 min Pause · Montage']);
   const [model] = conflictsModel([{ id: 'c', date: '2026-10-08', versions: [{ slots: [NOTED] }] }], 'UTC');
   assert.deepEqual(model.versions[0].slots, [{ text: '08:00–12:00 · 30 min Pause · Montage', note: 'Kunde Mustermann' }]);
+});
+
+// --- Krankheitstage ------------------------------------------------------------------------------
+
+import { SICK_RESERVATION_TEXT, SICK_RESERVATION_TEXT_NEW_DAYS, canReportSick, editorStartTab, sickDialogModel, sickLabel, sickRemovalText, sickSaveResult } from '../view-model.js';
+
+const SICK_TODAY = '2026-10-08';
+const sickRecord = (minutes, over = {}) => ({ minutes, modified_at: '2026-10-07T20:00:00Z', deleted: false,
+  dirty_version: 1, synced_version: 1, error: null, ...over });
+const sickMeta = (sick = {}, over = {}) => ({ window_days: 90, window_ahead: 14, window_max: 365, window_max_known: true,
+  window_wish_acked: 90, sick_capable: true, sick, reservations_enabled: true, ...over });
+
+test('the sick label names the hours once the desktop has computed them', () => {
+  assert.equal(sickLabel(null), 'krank');
+  assert.equal(sickLabel(0), 'krank');                               // Wochenende, Feiertag: keine Stunden
+  assert.equal(sickLabel(450), 'krank · 7:30 h');
+});
+
+test('the week marks sick days with hours, flags and no invitation; tombstones and other days stay as they were', () => {
+  const sickDays = {
+    '2026-10-05': sickRecord(450),
+    '2026-10-06': sickRecord(null, { dirty_version: 2, synced_version: 1 }),
+    '2026-10-07': sickRecord(0, { deleted: true, dirty_version: 3, synced_version: 3 }),
+    '2026-10-09': sickRecord(null, { dirty_version: 1, synced_version: 0, error: 'Krankheit 2026-10-09: abgelehnt' }),
+  };
+  const week = weekModel({ getDay: days({}), anchor: SICK_TODAY, today: SICK_TODAY, aheadDays: 14, sickDays, sickEnabled: true,
+    reservationsEnabled: true });
+  assert.deepEqual(week.days[0].sick, { minutes: 450, label: 'krank · 7:30 h', dirty: false, error: null });
+  assert.deepEqual(week.days[1].sick, { minutes: null, label: 'krank', dirty: true, error: null });
+  assert.equal(week.days[2].sick, null);                               // Tombstone: kein Krankheitstag
+  assert.equal(week.days[3].sick, null);
+  assert.deepEqual(week.days[4].sick, { minutes: null, label: 'krank', dirty: true, error: 'Krankheit 2026-10-09: abgelehnt' });
+  assert.equal(week.days[0].addHint, '');                              // kein „Eintragen“ an einem Krankheitstag
+  assert.equal(week.days[4].addHint, '');
+  assert.equal(week.days[3].addHint, 'Eintragen oder planen');
+  assert.equal(week.totalMinutes, 0);                                  // Krankheit zählt nicht in die Ist-Zeit
+});
+
+test('a reservation on a sick day is not pending: „Noch ausstehend“ leaves it out', () => {
+  const getReservation = reservations({ '2026-10-09': reserved([RES_SLOT]), '2026-10-10': reserved([RES_SLOT]) });
+  const sickDays = { '2026-10-09': sickRecord(180), '2026-10-10': sickRecord(0, { deleted: true }) };
+  const at = (sickEnabled) => weekModel({ getDay: days({}), anchor: SICK_TODAY, today: SICK_TODAY, aheadDays: 14,
+    reservationsEnabled: true, getReservation, sickDays, sickEnabled });
+  const week = at(true);
+  assert.equal(week.days[4].pendingMinutes, 0);                        // krank: nichts mehr ausstehend
+  assert.equal(week.days[5].pendingMinutes, 180);                      // Tombstone: kein Krankheitstag
+  assert.equal(week.pendingMinutes, 180);
+  assert.equal(week.pendingLabel, '3:00');
+  assert.deepEqual(week.days[4].reservation.slots, ['09:00–12:00 · Projekt']);   // die Reservierung bleibt sichtbar
+  assert.equal(at(false).pendingMinutes, 360);                         // ohne Fähigkeit zählt sie wie bisher
+});
+
+test('saving a sick report: a refused report can be retried, a partial failure is final and keeps its message', () => {
+  assert.equal(sickSaveResult({}), null);
+  assert.deepEqual(sickSaveResult({ markError: new Error('Ungültiger Zeitraum.') }), { message: 'Ungültiger Zeitraum.', final: false });
+  const partial = sickSaveResult({ reservationError: new DOMException('Speicher voll', 'QuotaExceededError') });
+  assert.equal(partial.final, true);
+  assert.match(partial.message, /^Krankheit gespeichert, aber nicht alle Reservierungen ließen sich löschen\. Bitte die Reservierungen prüfen/);
+  assert.match(partial.message, /QuotaExceededError/);
+  assert.equal(sickSaveResult({ reservationError: 'kaputt' }).final, true);
+});
+
+test('without the capability the week shows no sick day', () => {
+  const sickDays = { '2026-10-05': sickRecord(450) };
+  const week = weekModel({ getDay: days({}), anchor: SICK_TODAY, today: SICK_TODAY, sickDays, sickEnabled: false });
+  assert.equal(week.days[0].sick, null);
+  assert.equal(week.days[0].addHint, 'Eintragen');
+  assert.equal(weekModel({ getDay: days({}), anchor: SICK_TODAY, today: SICK_TODAY }).days[0].sick, null);
+});
+
+test('a sick day locks the actual time with a way to remove the sickness', () => {
+  const model = editLock({ date: '2026-10-05', today: SICK_TODAY, meta: sickMeta({ '2026-10-05': sickRecord(450) }) });
+  assert.deepEqual(model, { kind: 'sick', action: 'remove-sick', buttonText: 'Krankheit entfernen',
+    text: 'An diesem Tag bist du krank gemeldet.' });
+  // auch mit gehaltenem Tag (Ist-Zeit am Krankheitstag) und vor dem Fenster, wenn das Handy den Krankheitstag hält
+  assert.equal(editLock({ date: '2026-10-05', today: SICK_TODAY, meta: sickMeta({ '2026-10-05': sickRecord(450) }), hasRecord: true }).kind, 'sick');
+  assert.equal(editLock({ date: '2026-05-04', today: SICK_TODAY, meta: sickMeta({ '2026-05-04': sickRecord(null) }) }).kind, 'sick');
+});
+
+test('a future sick day opens the editor on the actual time, where „Krankheit entfernen“ stands', () => {
+  const lockOn = (date) => editLock({ date, today: SICK_TODAY, meta: sickMeta({ '2026-10-09': sickRecord(450) }) });
+  assert.equal(editorStartTab({ date: '2026-10-09', today: SICK_TODAY, reservationOn: true, lock: lockOn('2026-10-09') }), 'work');
+  // sonst wie bisher: nach heute bei der Reservierung, heute und ohne Reservierungen bei der Arbeitszeit
+  assert.equal(editorStartTab({ date: '2026-10-10', today: SICK_TODAY, reservationOn: true, lock: lockOn('2026-10-10') }), 'reservation');
+  assert.equal(editorStartTab({ date: SICK_TODAY, today: SICK_TODAY, reservationOn: true, lock: null }), 'work');
+  assert.equal(editorStartTab({ date: '2026-10-09', today: SICK_TODAY, reservationOn: false, lock: lockOn('2026-10-09') }), 'work');
+  // Eine andere Sperre der Arbeitszeit (zu weit voraus) lässt die Reservierung vorn: nur dort lässt sich etwas tun.
+  const future = editLock({ date: '2026-10-30', today: SICK_TODAY, meta: sickMeta() });
+  assert.equal(future.kind, 'future');
+  assert.equal(editorStartTab({ date: '2026-10-30', today: SICK_TODAY, reservationOn: true, lock: future }), 'reservation');
+});
+
+test('a tombstone, another day or a desktop without the capability does not lock as sick', () => {
+  const sick = { '2026-10-05': sickRecord(0, { deleted: true }), '2026-10-06': sickRecord(450) };
+  assert.equal(editLock({ date: '2026-10-05', today: SICK_TODAY, meta: sickMeta(sick) }), null);
+  assert.equal(editLock({ date: '2026-10-07', today: SICK_TODAY, meta: sickMeta(sick) }), null);
+  assert.equal(editLock({ date: '2026-10-06', today: SICK_TODAY, meta: sickMeta(sick, { sick_capable: false }) }), null);
+  assert.equal(editLock({ date: '2026-10-06', today: SICK_TODAY, meta: sickMeta(null) }), null);
+});
+
+test('reporting sick is offered inside the window only, never on a sick day or without the capability (#273)', () => {
+  const meta = sickMeta({ '2026-10-06': sickRecord(450) });
+  assert.equal(canReportSick({ date: SICK_TODAY, today: SICK_TODAY, meta }), true);
+  assert.equal(canReportSick({ date: '2026-07-10', today: SICK_TODAY, meta }), true);     // heute − 90
+  assert.equal(canReportSick({ date: '2026-10-22', today: SICK_TODAY, meta }), true);     // heute + 14
+  assert.equal(canReportSick({ date: '2026-07-09', today: SICK_TODAY, meta }), false);    // vor dem Fenster
+  assert.equal(canReportSick({ date: '2026-10-23', today: SICK_TODAY, meta }), false);    // nach dem Fenster
+  assert.equal(canReportSick({ date: '2026-10-06', today: SICK_TODAY, meta }), false);    // schon krank
+  assert.equal(canReportSick({ date: SICK_TODAY, today: SICK_TODAY, meta: { ...meta, sick_capable: false } }), false);
+  assert.equal(canReportSick({ date: 'kaputt', today: SICK_TODAY, meta }), false);
+  // vor der ersten Antwort ist nichts vor dem Fenster bekannt: gesperrt wie die Arbeitszeit
+  assert.equal(canReportSick({ date: '2026-07-09', today: SICK_TODAY, meta: { ...meta, window_max_known: false } }), false);
+});
+
+test('the sick dialog allows a to-date up to the end of the window, never before the start', () => {
+  const at = (to, date = '2026-10-06') => sickDialogModel({ date, to, today: SICK_TODAY, meta: sickMeta(), getDay: days({}) });
+  const model = at(undefined);
+  assert.equal(model.from, '2026-10-06');
+  assert.equal(model.to, '2026-10-06');
+  assert.equal(model.maxTo, '2026-10-22');                             // heute + 14
+  assert.equal(model.maxLabel, '22.10.2026');
+  assert.equal(model.canSave, true);
+  assert.equal(model.error, '');
+  assert.deepEqual(at('2026-10-08').dates, ['2026-10-06', '2026-10-07', '2026-10-08']);
+  assert.equal(at('2026-10-22').canSave, true);
+  for (const to of ['2026-10-23', '2026-10-05', '', 'kaputt']) {
+    const bad = at(to);
+    assert.equal(bad.canSave, false, to);
+    assert.equal(bad.error, 'Das Bis-Datum muss zwischen 06.10.2026 und 22.10.2026 liegen.', to);
+    assert.deepEqual(bad.dates, [], to);
+  }
+  const older = sickDialogModel({ date: '2026-10-06', today: SICK_TODAY, meta: sickMeta({}, { window_ahead: null }), getDay: days({}) });
+  assert.equal(older.maxTo, '2026-10-09');                             // älterer Desktop: heute + 1
+});
+
+test('a long range stops at 366 days, even when the window would reach further', () => {
+  const model = sickDialogModel({ date: '2025-10-08', today: SICK_TODAY, meta: sickMeta({}, { window_days: 365 }), getDay: days({}) });
+  assert.equal(model.maxTo, '2026-10-08');                             // 366 Tage ab dem 08.10.2025
+});
+
+test('the sick dialog refuses days with actual time and lists them', () => {
+  const getDay = days({ '2026-10-07': live([SLOT]), '2026-10-08': live([], { deleted: true }), '2026-10-09': live([SLOT]) });
+  const model = sickDialogModel({ date: '2026-10-06', to: '2026-10-10', today: SICK_TODAY, meta: sickMeta(), getDay });
+  assert.equal(model.canSave, false);
+  assert.deepEqual(model.blocked, ['2026-10-07', '2026-10-09']);
+  assert.equal(model.error, 'An diesen Tagen ist bereits Arbeitszeit erfasst: 07.10.2026, 09.10.2026. '
+    + 'Krankheit und Arbeitszeit schließen sich am selben Tag aus; zuerst die Einträge löschen oder einen anderen Zeitraum wählen.');
+  const many = {};
+  for (let day = 10; day <= 20; day += 1) many[`2026-10-${day}`] = live([SLOT]);
+  const long = sickDialogModel({ date: '2026-10-10', to: '2026-10-20', today: SICK_TODAY, meta: sickMeta(), getDay: days(many) });
+  assert.match(long.error, /: 10\.10\.2026, .*, 17\.10\.2026 … und 3 weitere\. /);
+});
+
+test('the reservation checkbox shows only with reservations at the desktop and in the range, today or later', () => {
+  const plans = reservations({ '2026-10-07': reserved([RES_SLOT]), '2026-10-09': reserved([RES_SLOT]),
+    '2026-10-10': reserved([], { deleted: true }) });
+  const at = (from, to, meta = sickMeta()) => sickDialogModel({ date: from, to, today: SICK_TODAY, meta, getDay: days({}), getReservation: plans })
+    .reservations;
+  assert.deepEqual(at('2026-10-08', '2026-10-10'), { visible: true, dates: ['2026-10-09'], label: SICK_RESERVATION_TEXT });
+  assert.equal(SICK_RESERVATION_TEXT, 'Reservierungen in diesem Zeitraum löschen');
+  assert.equal(at('2026-10-10', '2026-10-12').visible, false);         // im Zeitraum keine (nur ein Tombstone)
+  assert.equal(at('2026-10-06', '2026-10-07').visible, false);         // vergangen: das Handy zeigt sie nicht
+  assert.equal(at('2026-10-08', '2026-10-10', sickMeta({}, { reservations_enabled: false })).visible, false);
+});
+
+test('reservations on days that were sick before are not offered, and the label says so', () => {
+  const plans = reservations({ '2026-10-09': reserved([RES_SLOT]), '2026-10-10': reserved([RES_SLOT]) });
+  const meta = sickMeta({ '2026-10-10': sickRecord(450), '2026-10-12': sickRecord(0, { deleted: true }) });
+  const model = sickDialogModel({ date: '2026-10-08', to: '2026-10-12', today: SICK_TODAY, meta, getDay: days({}), getReservation: plans });
+  assert.deepEqual(model.reservations, { visible: true, dates: ['2026-10-09'], label: SICK_RESERVATION_TEXT_NEW_DAYS });
+  assert.equal(SICK_RESERVATION_TEXT_NEW_DAYS, 'Reservierungen an den neu krank gemeldeten Tagen löschen');
+  const onlySick = sickDialogModel({ date: '2026-10-08', to: '2026-10-10', today: SICK_TODAY,
+    meta: sickMeta({ '2026-10-09': sickRecord(450), '2026-10-10': sickRecord(450) }), getDay: days({}), getReservation: plans });
+  assert.equal(onlySick.reservations.visible, false);
+  // ein Tombstone war kein Krankheitstag: „in diesem Zeitraum“ bleibt richtig
+  const tomb = sickDialogModel({ date: '2026-10-11', to: '2026-10-12', today: SICK_TODAY, meta, getDay: days({}),
+    getReservation: reservations({ '2026-10-12': reserved([RES_SLOT]) }) });
+  assert.deepEqual(tomb.reservations, { visible: true, dates: ['2026-10-12'], label: SICK_RESERVATION_TEXT });
+});
+
+test('the removal text names the whole block', () => {
+  assert.equal(sickRemovalText({ from: '2026-10-05', to: '2026-10-09', dates: [] }),
+    'Die Krankheit vom 05.10.2026 bis 09.10.2026 wird gelöscht (beim nächsten Abgleich auch am Desktop).');
+  assert.equal(sickRemovalText({ from: '2026-10-05', to: '2026-10-05', dates: [] }),
+    'Die Krankheit vom 05.10.2026 wird gelöscht (beim nächsten Abgleich auch am Desktop).');
+});
+
+test('a sick day locks the reservation too, with the same way out; other days stay free', () => {
+  const meta = sickMeta({ '2026-10-05': sickRecord(450), '2026-05-04': sickRecord(null) });
+  const model = reservationLock({ date: '2026-10-05', meta });
+  assert.deepEqual(model, { kind: 'sick', action: 'remove-sick', buttonText: 'Krankheit entfernen',
+    text: 'An diesem Tag bist du krank gemeldet.' });
+  assert.equal(reservationLock({ date: '2026-05-04', meta }).kind, 'sick');          // 0 Minuten: ebenfalls gesperrt
+  assert.equal(reservationLock({ date: '2026-10-06', meta }), null);
+  assert.equal(reservationLock({ date: '2026-10-05', meta: sickMeta({ '2026-10-05': sickRecord(450) }, { sick_capable: false }) }), null);
+  assert.equal(reservationLock({ date: '2026-10-05', meta: sickMeta({ '2026-10-05': { ...sickRecord(450), deleted: true } }) }), null);
 });

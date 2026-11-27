@@ -24,6 +24,18 @@ import {
 import { aheadDays } from './window-policy.js';
 import { blockSignature, categoryRows, validateCategoryRows } from './categories.js';
 import { checkNote } from './notes.js';
+import { MAX_SICK_BLOCK_DAYS, sickRange } from './sick.js';
+
+/** Ein Krankheitstag des Handys (Meta `sick`, Schlüssel = Datum). `minutes` ist `null`, solange der Desktop sie
+ *  nicht gerechnet hat; ein Tombstone trägt 0. Versionen wie bei den Tagen.
+ * @typedef {object} SickRecord
+ * @property {number | null} minutes
+ * @property {string} modified_at
+ * @property {boolean} deleted
+ * @property {number} dirty_version
+ * @property {number} synced_version
+ * @property {string | null} error
+ */
 
 /** Die Meta des Stores. `null` heißt bei den markierten Feldern „älterer Desktop“ (Feature-Erkennung), nie „leer“.
  * @typedef {object} Meta
@@ -66,6 +78,8 @@ import { checkNote } from './notes.js';
  * @property {string} box_secret
  * @property {number} box_have
  * @property {{ modified_at: string, dirty_version: number, synced_version: number, error: string | null } | null} categories_edit
+ * @property {boolean} sick_capable          Desktop kennt Krankheitstage (Feld `sick_days` der Antwort)
+ * @property {Record<string, SickRecord>} sick  Krankheitstage je Datum, in der Meta statt in einem eigenen Object Store
  * @property {boolean} excluded
  * @property {any[]} conflicts
  * @property {string} server_time
@@ -112,16 +126,35 @@ const DEFAULT_META = Object.freeze({
   box_secret: '',             // Geheimnis der Box bei transport 'relay' (Subprotocol der WebSocket); sonst leer, nie angezeigt
   box_have: 0,                // `ver` des zuletzt empfangenen `slot` der Box; wächst nur, bei `wiped` wieder 0
   categories_edit: null,      // Kategorien-Block des Handys: { modified_at, dirty_version, synced_version, error } oder null
+  sick_capable: false,        // Desktop kennt Krankheitstage (Feld `sick_days`); sonst verborgen, nichts gesendet, nichts gelöscht
+  sick: {},                   // Krankheitstage je Datum (SickRecord); in der Meta, damit die IndexedDB-`VERSION` 2 bleibt
   excluded: false,
   conflicts: [],
   server_time: '',
 });
 
 const MAX_RESERVATIONS_PER_REQUEST = 400;      // Gegenstück zu `MAX_RESERVATIONS` in src/mobile_reservations.py
+const MAX_SICK_PER_REQUEST = 400;              // Gegenstück zu `MAX_SICK_DAYS` in src/mobile_sick.py
 const FUTURE_LIMIT_MS = 14 * 60 * 1000;
 const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 const isDirty = (record) => record.dirty_version > record.synced_version;
 const editDirty = (edit) => Boolean(edit) && edit.dirty_version > edit.synced_version;
+
+/** Die lesbaren Krankheitstage einer gespeicherten Meta; Unbrauchbares entfällt (wie bei den Tagen). */
+function cleanSickRecords(raw) {
+  /** @type {Record<string, SickRecord>} */
+  const out = {};
+  if (!isObject(raw)) return out;
+  for (const [date, record] of Object.entries(raw)) {
+    if (!isIsoDate(date) || !isObject(record)) continue;
+    const { minutes, modified_at: stamp, deleted, dirty_version: dirty, synced_version: synced, error } = record;
+    if (!(minutes === null || Number.isInteger(minutes)) || typeof stamp !== 'string' || typeof deleted !== 'boolean'
+      || !Number.isInteger(dirty) || !Number.isInteger(synced)) continue;
+    out[date] = { minutes, modified_at: stamp, deleted, dirty_version: dirty, synced_version: synced,
+      error: typeof error === 'string' ? error : null };
+  }
+  return out;
+}
 
 function signature(slots) {
   // Reihenfolge der Slots ist keine Änderung (wie am Desktop); eine geänderte Notiz schon.
@@ -183,7 +216,8 @@ export class Store {
     const stored = (await this._adapter.getAll('meta')).find((row) => row.key === 'meta');
     this._days = days;
     this._reservations = reservations;
-    this._meta = { ...structuredClone(DEFAULT_META), ...(stored && isObject(stored.value) ? stored.value : {}) };
+    const meta = { ...structuredClone(DEFAULT_META), ...(stored && isObject(stored.value) ? stored.value : {}) };
+    this._meta = { ...meta, sick_capable: meta.sick_capable === true, sick: cleanSickRecords(meta.sick) };
   }
 
   // --- Lesen -----------------------------------------------------------------------------------
@@ -388,20 +422,26 @@ export class Store {
     };
   }
 
-  /** Nicht übertragene Änderungen: Ist-Zeiten und Reservierungen zusammen (Statuszeile). */
+  /** Nicht übertragene Änderungen: Ist-Zeiten, Reservierungen und Krankheitstage zusammen (Statuszeile). */
   pendingCount() {
     const block = this._meta.settings_writable && editDirty(this._meta.categories_edit) ? 1 : 0;
-    if (!this._meta.reservations_enabled) return this.dirtyDates().length + block;
-    return this.dirtyDates().length + block
+    const sick = this._visibleSick().filter((record) => isDirty(record)).length;
+    if (!this._meta.reservations_enabled) return this.dirtyDates().length + block + sick;
+    return this.dirtyDates().length + block + sick
       + [...this._reservations.values()].filter((record) => isDirty(record)).length;
   }
 
-  /** Tage mit abgelehntem Stand, Ist-Zeiten und Reservierungen zusammen. Ist die Funktion verborgen
-   *  (der Desktop bietet sie nicht an), zählen Reservierungen nicht: man könnte sie nicht ansehen. */
+  /** Tage mit abgelehntem Stand, Ist-Zeiten, Reservierungen und Krankheitstage zusammen. Ist eine Funktion
+   *  verborgen (der Desktop bietet sie nicht an), zählt sie nicht: man könnte sie nicht ansehen. */
   errorCount() {
     const reservations = this._meta.reservations_enabled ? [...this._reservations.values()] : [];
     const block = this._meta.settings_writable && this._meta.categories_edit?.error ? 1 : 0;
-    return [...this._days.values(), ...reservations].filter((record) => record.error).length + block;
+    return [...this._days.values(), ...reservations, ...this._visibleSick()].filter((record) => record.error).length + block;
+  }
+
+  /** Die Krankheitstage, die die Oberfläche zeigt: ohne Fähigkeit des Desktops keine. */
+  _visibleSick() {
+    return this._meta.sick_capable ? Object.values(this._meta.sick) : [];
   }
 
   // --- Kategorien (Einstellungen) --------------------------------------------------------------
@@ -552,10 +592,14 @@ export class Store {
       const record = this._reservations.get(date);
       const sent = sentVersions[date];
       if (record && isDirty(record) && !(sent !== undefined && sent === record.dirty_version)) continue;
+      // Ein Tag vom Desktop ist ihm bekannt: Version ab 1, denn `synced_version` 0 heißt „nie bestätigt“, und
+      // `clearReservation` verwürfe ihn dann nur lokal, ohne Tombstone; der nächste Abgleich brächte ihn zurück.
+      // Ein gespeicherter Desktop-Tag mit Version 0 rückt hier ebenso auf 1.
+      const version = Math.max(record ? record.dirty_version : 0, 1);
       const next = {
         entry: { slots: structuredClone(entry.slots), modified_at: entry.modified_at, deleted: false },
-        dirty_version: record ? record.dirty_version : 0,
-        synced_version: record ? record.dirty_version : 0,
+        dirty_version: version,
+        synced_version: version,
         error: null,
       };
       this._reservations.set(date, next);
@@ -571,6 +615,145 @@ export class Store {
         ops.push({ store: 'reservations', op: 'delete', key: date });
       }
     }
+  }
+
+  // --- Krankheitstage --------------------------------------------------------------------------
+
+  /** Alle Krankheitstage samt Tombstones (Kopie). Die Oberfläche zeigt sie nur mit `sick_capable`. */
+  sickDays() {
+    return structuredClone(this._meta.sick);
+  }
+
+  /** Stempel eines Krankheitstags: der bisherige kann vom Desktop stammen (die Antwort nennt kein Gerät), also nie
+   *  mehr als `FUTURE_LIMIT_MS` vor der Uhr — einen Stempel weiter in der Zukunft lehnte der Desktop ab. */
+  _sickStamp(previous) {
+    return this._stampAfter(previous, true);
+  }
+
+  /** Meldet `from` bis `to` krank. Jeder Tag wird lebend und geht beim nächsten Abgleich hinaus, auch ein schon
+   *  kranker: der Desktop rechnet die Minuten je lückenloser Folge über den ganzen gemeldeten Zeitraum und lässt
+   *  einen unveränderten Tag stehen. Bekannte Minuten eines lebenden Tags bleiben bis zur Antwort (der Desktop
+   *  behält sie), sonst `null`. Wirft ohne Fähigkeit des Desktops und bei ungültigem oder zu langem Zeitraum. */
+  async markSick(from, to) {
+    if (!this._meta.sick_capable) {
+      throw new Error('Der Desktop kennt keine Krankheitstage. Bitte die Desktop-App aktualisieren.');
+    }
+    const dates = sickRange(from, to);
+    if (dates.length === 0) throw new Error('Ungültiger Zeitraum.');
+    if (dates.length > MAX_SICK_BLOCK_DAYS) {
+      throw new Error(`Ein Krankheitszeitraum darf höchstens ${MAX_SICK_BLOCK_DAYS} Tage umfassen.`);
+    }
+    const sick = { ...this._meta.sick };
+    for (const date of dates) {
+      const old = Object.hasOwn(sick, date) ? sick[date] : null;
+      sick[date] = {
+        minutes: old && !old.deleted ? old.minutes : null,
+        modified_at: this._sickStamp(old?.modified_at),
+        deleted: false,
+        dirty_version: (old ? old.dirty_version : 0) + 1,
+        synced_version: old ? old.synced_version : 0,
+        error: null,
+      };
+    }
+    await this.setMeta({ sick });
+  }
+
+  /** „Krankheit entfernen“: ein Tombstone je lebendem Tag aus `dates`, den der nächste Abgleich überträgt. Einen
+   *  Tag, den der Desktop nie bestätigt hat (`synced_version` 0), verwirft das Handy nur lokal. Wirft ohne Fähigkeit
+   *  des Desktops: lokal Gespeichertes wird dann nie gelöscht. */
+  async clearSick(dates) {
+    if (!this._meta.sick_capable) {
+      throw new Error('Der Desktop kennt keine Krankheitstage. Bitte die Desktop-App aktualisieren.');
+    }
+    const sick = { ...this._meta.sick };
+    let changed = false;
+    for (const date of dates) {
+      const old = Object.hasOwn(sick, date) ? sick[date] : null;
+      if (!old || old.deleted) continue;
+      changed = true;
+      if (old.synced_version === 0) {
+        delete sick[date];
+        continue;
+      }
+      sick[date] = {
+        minutes: 0, modified_at: this._sickStamp(old.modified_at), deleted: true,
+        dirty_version: old.dirty_version + 1, synced_version: old.synced_version, error: null,
+      };
+    }
+    if (changed) await this.setMeta({ sick });
+  }
+
+  /** Was der nächste Abgleich an Krankheitstagen schickt: geänderte Tage ohne Fehler, neueste zuerst, höchstens
+   *  `limit` (der Desktop nimmt höchstens 400). Form `{modified_at, deleted}`, nie `minutes`: die rechnet der
+   *  Desktop. `sickVersions` merkt sich die gesendeten Versionen für `applyResponse`. */
+  snapshotSick(limit = MAX_SICK_PER_REQUEST) {
+    const sick = {};
+    const sickVersions = {};
+    let count = 0;
+    for (const date of Object.keys(this._meta.sick).sort().reverse()) {
+      const record = this._meta.sick[date];
+      if (!isDirty(record) || record.error) continue;
+      if (count >= limit) break;
+      sick[date] = { modified_at: record.modified_at, deleted: record.deleted };
+      sickVersions[date] = record.dirty_version;
+      count += 1;
+    }
+    return { sick, sickVersions };
+  }
+
+  /** Markiert einen Krankheitstag als abgelehnt, nur in der gesendeten Version (wie `markDayError`). */
+  async markSickError(date, message, version) {
+    const record = Object.hasOwn(this._meta.sick, date) ? this._meta.sick[date] : null;
+    if (!record) return;
+    if (version !== undefined && record.dirty_version !== version) return;
+    await this.setMeta({ sick: { ...this._meta.sick, [date]: { ...record, error: String(message) } } });
+  }
+
+  /** Die Krankheitstage nach der Antwort (neuer Stand für die Meta). Ohne Fähigkeit oder ohne lesbaren Block
+   *  bleibt alles, wie es ist: nichts bestätigt, nichts gelöscht. Sonst gelten die Regeln der Tage: ein gesendeter,
+   *  unveränderter Tag wird vom Stand des Desktops ersetzt (samt Minuten), ein seither geänderter bleibt; ein
+   *  sauberer Tag, den die Antwort nicht nennt, entfällt im inneren Fenster und weit außerhalb; ein gesendeter,
+   *  unveränderter ohne Antwort ist erledigt. Ein Tag vom Desktop beginnt bei Version 1, damit `synced_version` 0
+   *  nur „nie bestätigt“ heißt (`clearSick`). */
+  _applySick(parsed, snapshot, { innerFrom, innerTo, pruneBefore, pruneAfter }) {
+    const current = this._meta.sick;
+    if (parsed.sick_days !== true || !isObject(parsed.sick)) return current;
+    const remote = parsed.sick;
+    const sentVersions = snapshot.sickVersions ?? {};
+    const next = { ...current };
+    for (const [date, entry] of Object.entries(remote)) {
+      const record = Object.hasOwn(current, date) ? current[date] : null;
+      const sent = sentVersions[date];
+      if (record && isDirty(record) && sent !== record.dirty_version) continue;
+      if (!record && sent !== undefined && !entry.deleted) {
+        // Während der Anfrage lokal verworfen (`clearSick`, nie bestätigt), der Desktop hat ihn aber angenommen:
+        // ohne Tombstone käme der Tag als lebend zurück. Das greift auch, wenn der Desktop den Tag schon vorher lebend
+        // hatte: das Verwerfen ist die letzte Handlung des Nutzers und gilt als seine Absicht.
+        next[date] = { minutes: 0, modified_at: this._sickStamp(entry.modified_at), deleted: true,
+          dirty_version: sent + 1, synced_version: sent, error: null };
+        continue;
+      }
+      const version = record ? record.dirty_version : 1;
+      next[date] = { minutes: entry.minutes, modified_at: entry.modified_at, deleted: entry.deleted,
+        dirty_version: version, synced_version: version, error: null };
+    }
+    for (const [date, record] of Object.entries(next)) {
+      // Ein abgelehnter Tag geht nicht wieder hinaus, und vor dem Fenster lässt er sich nicht erneut melden: ohne Aufräumen
+      // stünde er für immer als „abgelehnt“ und „nicht übertragen“ (wie die vergangenen Reservierungen).
+      if (record.error && date < pruneBefore) {
+        delete next[date];
+        continue;
+      }
+      const outside = date < pruneBefore || date > pruneAfter;
+      if (Object.hasOwn(remote, date)) {
+        if (!isDirty(record) && outside) delete next[date];
+      } else if (isDirty(record)) {
+        if (sentVersions[date] === record.dirty_version) delete next[date];
+      } else if ((date >= innerFrom && date <= innerTo) || outside) {
+        delete next[date];
+      }
+    }
+    return next;
   }
 
   /** Wendet eine geprüfte Antwort an (`sync.parseSyncResponse`). `snapshot` ist, was gesendet
@@ -638,6 +821,7 @@ export class Store {
     }
 
     this._applyReservations(parsed, snapshot, today, ops);
+    const sick = this._applySick(parsed, snapshot, { innerFrom, innerTo, pruneBefore, pruneAfter });
 
     // Kategorien-Block: bestätigt, wenn genau der gesendete Stand noch gilt; ein dirty, nicht
     // (mehr) gesendeter Block bleibt lokal stehen, der Desktop-Stand ersetzt ihn dann nicht.
@@ -659,6 +843,8 @@ export class Store {
       // ohne Pause hinaus und käme als 0 zurück.
       reservation_pause: parsed.reservations != null ? parsed.reservation_pause === true : this._meta.reservation_pause,
       desktop_unpair: parsed.unpair === true,
+      sick_capable: parsed.sick_days === true,
+      sick,
       slot_notes: parsed.slot_notes === true,
       slot_order: normalizeSlotOrder(parsed.slot_order),
       last_pull_at: parsed.last_pull_at,

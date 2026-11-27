@@ -7,7 +7,8 @@ from logging.handlers import RotatingFileHandler
 import pytest
 
 from src.logging_setup import (
-    setup_logging, get_log_path, LOG_SUBDIR, LOGFILE_NAME, QUIET_LOGGERS,
+    setup_logging, get_log_path, LOG_SUBDIR, LOGFILE_NAME, PRIVATE_LOGGERS,
+    QUIET_LOGGERS,
 )
 
 
@@ -17,7 +18,8 @@ def isolated_logging():
     root = logging.getLogger()
     saved_handlers = root.handlers[:]
     saved_level = root.level
-    saved_quiet = {n: logging.getLogger(n).level for n in QUIET_LOGGERS}
+    saved_quiet = {n: logging.getLogger(n).level
+                   for n in (*QUIET_LOGGERS, *PRIVATE_LOGGERS)}
     saved_excepthook = sys.excepthook
     saved_tk_hook = tk.Tk.report_callback_exception
     yield
@@ -133,6 +135,21 @@ def test_noisy_loggers_stay_loud_under_debug(tmp_path, isolated_logging, monkeyp
     setup_logging(str(tmp_path), console=False)
     for name in QUIET_LOGGERS:
         assert logging.getLogger(name).level == logging.NOTSET
+
+
+@pytest.mark.parametrize("level", ["DEBUG", "INFO", ""])
+def test_pdf_library_never_logs_the_report(tmp_path, isolated_logging,
+                                           monkeypatch, level):
+    # xhtml2pdf schreibt auf DEBUG das ganze Quell-HTML ins Log, mit
+    # „Krankheit ausweisen“ also Krankheitstage samt Stunden.
+    logging.getLogger("xhtml2pdf").setLevel(logging.NOTSET)
+    monkeypatch.setenv("ZEITERFASSUNG_LOG_LEVEL", level)
+    setup_logging(str(tmp_path), console=False)
+    for name in ("xhtml2pdf", "xhtml2pdf.document", "xhtml2pdf.parser"):
+        logger = logging.getLogger(name)
+        assert not logger.isEnabledFor(logging.DEBUG)
+        assert not logger.isEnabledFor(logging.INFO)
+        assert logger.isEnabledFor(logging.WARNING)
 
 
 def test_googleapiclient_http_is_not_quieted():

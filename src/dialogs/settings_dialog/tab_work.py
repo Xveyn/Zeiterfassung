@@ -14,6 +14,7 @@ from src.dialogs.settings_dialog.tab_rules import (
     WSL_KEYS, validate_work, work_updates, wsl_snapshot,
 )
 from src.dialogs.vacation_dialog import open_vacation_dialog
+from src.dialogs.sick_dialog import open_sick_manager
 from src.holidays_de import STATES
 from src.settings import WEEKDAY_KEYS
 from src.theme import (
@@ -33,7 +34,9 @@ class WorkTab:
     def __init__(self, frame, dialog, settings, vacation_store=None,
                  on_vacation_change=None, storage=None,
                  reservation_store=None, runner=None,
-                 on_vacation_display_change=None):
+                 on_vacation_display_change=None, sick_store=None,
+                 data_lock=None, on_sick_change=None,
+                 on_reservations_deleted=None):
         self.frame = frame
         form = Form(frame, scroll=True)
         form.frame.pack(fill="both", expand=True)
@@ -200,7 +203,15 @@ class WorkTab:
             specs.append(("Urlaub verwalten", lambda: open_vacation_dialog(
                 dialog, vacation_store, settings, on_vacation_change,
                 storage, reservation_store, runner,
-                on_display_change=on_vacation_display_change)))
+                on_display_change=on_vacation_display_change,
+                sick_store=sick_store)))
+        if sick_store is not None and storage is not None:
+            specs.append(("Krankheit verwalten", lambda: open_sick_manager(
+                dialog, sick_store=sick_store, storage=storage,
+                settings=settings, reservation_store=reservation_store,
+                vacation_store=vacation_store, on_change=on_sick_change,
+                on_reservations_deleted=on_reservations_deleted,
+                data_lock=data_lock)))
         form.buttons(*specs)
 
         self.start_vars = start_vars

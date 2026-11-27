@@ -6,7 +6,8 @@ import traceback
 from tkinter import messagebox
 
 from src import workweek
-from src.dialogs.period_picker import build_period_picker
+from src.absence import cut_for_output
+from src.dialogs.period_picker import build_period_picker, report_sick_days
 from src.dialogs.send_task import format_result_summary, perform_send
 from src.platform_open import open_folder
 from src.slot_order import normalize_mode
@@ -108,8 +109,10 @@ def resolve_send_period(settings, reservation_store, today):
     return send_reminder.default_send_period(today, marked, monthly)
 
 
-def period_has_no_content(ranged, vacation_days, date_from, date_to):
-    """True, wenn im gewählten Zeitraum weder Einträge noch Urlaub liegen.
+def period_has_no_content(ranged, vacation_days, date_from, date_to,
+                          sick_days=None):
+    """True, wenn im gewählten Zeitraum weder Einträge noch Urlaub noch
+    (mit Häkchen, `sick_days` gesetzt) Krankheit liegen.
 
     Kanalunabhängig (seit dem Multi-Kanal-Umbau, M10): Mail und PDF filtern
     `vacation_days` selbst intern (`generate_report`/`generate_pdf`) und
@@ -120,14 +123,20 @@ def period_has_no_content(ranged, vacation_days, date_from, date_to):
     bevor irgendein Kanal feuert.
 
     `ranged` ist bereits zeitraum- **und** kategoriegefiltert; `vacation_days`
-    dagegen ist der rohe (nur workweek-gefilterte) {ISO: minutes}-Snapshot —
-    er läuft hier durch denselben `filter_period` wie die Entries, damit
-    diese Prüfung exakt denselben Ausschnitt beurteilt wie der Report.
+    und `sick_days` dagegen sind die rohen (nur workweek-gefilterten)
+    {ISO: minutes}-Snapshots — sie laufen hier durch denselben `filter_period`
+    und dieselbe `absence.cut_for_output` wie im Report. Entschieden wird über
+    das Ergebnis des Schnitts: ein Urlaubstag unter einem Krankheitstag ohne
+    Minuten ist dort 0 und damit kein Inhalt.
     """
     vacation_in_range = (
         filter_period(date_from, date_to, vacation_days) or {}
     ) if vacation_days else {}
-    return not ranged and not any(vacation_in_range.values())
+    sick_in_range = (None if sick_days is None
+                     else filter_period(date_from, date_to, sick_days) or {})
+    cut = cut_for_output(ranged or {}, vacation_in_range, sick_in_range)
+    return (not ranged and not any(cut.vacation.values())
+            and not any(cut.sick.values()))
 
 
 def _show_single_failure(target, res):
@@ -180,7 +189,7 @@ def smtp_target_label(record):
 
 def open_send_dialog(parent, storage, settings, base_path, runner,
                      reservation_store=None, webhook_store=None,
-                     vacation_store=None, smtp_store=None):
+                     vacation_store=None, smtp_store=None, sick_store=None):
     credentials_path = os.path.join(base_path, "credentials.json")
     token_path = os.path.join(base_path, "token.json")
 
@@ -218,7 +227,7 @@ def open_send_dialog(parent, storage, settings, base_path, runner,
         dialog, storage, settings,
         from_default=period[0] if period else None,
         to_default=period[1] if period else None,
-        vacation_store=vacation_store,
+        vacation_store=vacation_store, sick_store=sick_store,
     )
     picker_frame.grid(row=0, column=0, sticky="w")
 
@@ -341,6 +350,8 @@ def open_send_dialog(parent, storage, settings, base_path, runner,
         if show_vacation and vacation_store is not None:
             vacation_days = workweek.filter_for_report(
                 vacation_store.day_minutes(), settings)
+        sick_days = report_sick_days(picker.get_show_sick(), sick_store,
+                                     settings)
 
         # (a) Ziele einsammeln — zuerst, alles Weitere hängt davon ab.
         selected_hooks = []
@@ -361,7 +372,8 @@ def open_send_dialog(parent, storage, settings, base_path, runner,
         ranged = filter_period(date_from, date_to, entries)
         if ranged is not None:
             ranged = filter_categories(ranged, categories)
-        if period_has_no_content(ranged, vacation_days, date_from, date_to):
+        if period_has_no_content(
+                ranged, vacation_days, date_from, date_to, sick_days):
             themed_showinfo(
                 dialog, "Keine Einträge",
                 f"Keine Einträge für {format_date(date_from)} – "
@@ -386,7 +398,7 @@ def open_send_dialog(parent, storage, settings, base_path, runner,
                 categories=categories,
                 category_breakdown=category_breakdown,
                 note_breakdown=note_breakdown,
-                vacation_days=vacation_days,
+                vacation_days=vacation_days, sick_days=sick_days,
                 slot_order=normalize_mode(settings.get("slot_order_mode")),
             )
             if html is None:
@@ -411,7 +423,7 @@ def open_send_dialog(parent, storage, settings, base_path, runner,
                 name=settings.get("name"), categories=categories,
                 category_breakdown=category_breakdown,
                 note_breakdown=note_breakdown,
-                vacation_days=vacation_days,
+                vacation_days=vacation_days, sick_days=sick_days,
                 send_mail=send_mail,
                 mail={
                     "credentials_path": credentials_path,

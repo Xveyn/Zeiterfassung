@@ -43,16 +43,18 @@ from src.update_coordinator import UpdateCoordinator
 from src.reminder_scheduler import ReminderScheduler
 from src.send_reminder_scheduler import SendReminderScheduler
 from src.dialogs.entry_dialog import open_entry_dialog
+from src.dialogs.sick_dialog import open_sick_dialog
+from src import sick_view
 from src.dialogs.send_dialog import open_send_dialog
 from src.dialogs.settings_dialog import open_settings_dialog
 from src.tooltip import attach_tooltip
 from src.ui_queue import UiQueue
 from src.theme import (
     BG, ACCENT, TEXT, TEXT_MUTED,
-    FONT_HEADER, FONT_FOOTER, FONT_SMALL, apply_dark_titlebar, themed_askyesno, themed_ask_delete_choice, themed_showerror, themed_showinfo,
+    FONT_HEADER, FONT_FOOTER, FONT_SMALL, apply_dark_titlebar, themed_askyesno, themed_ask_action, themed_ask_delete_choice, themed_showerror, themed_showinfo,
     themed_showwarning,
     icon_button, secondary_button, set_toggle_active, toggle_button,
-    _stray_click_suppressed,
+    STRAY_CLICK_GUARD_S, _stray_click_suppressed,
 )
 
 
@@ -75,6 +77,57 @@ def _delete_action(slots, selected, prefix):
     return "save", keep
 
 
+def _sick_delete_option(block):
+    """Die Löscheinheit der Krankheit: immer der ganze Block."""
+    return sick_view.delete_key(block), sick_view.block_label(block)
+
+
+def _apply_sick_selection(selected, sick, sick_store):
+    """Löscht den Krankheitsblock, wenn seine Einheit gewählt ist; True, wenn
+    gelöscht wurde."""
+    if sick is None or sick_view.delete_key(sick) not in selected:
+        return False
+    sick_store.delete_days(sick.days)
+    return True
+
+
+def _delete_units(entry_slots, res_slots, vacation, sick, slot_order="chrono"):
+    """Die löschbaren Einheiten eines Tages als (Schlüssel, Beschriftung):
+    Ist-Slots, Reservierungs-Slots, die Urlaubsperiode und der Krankheitsblock
+    (die beiden Letzten immer als Ganzes)."""
+    options = _delete_options(entry_slots, "entry", "Arbeitszeit",
+                              GridRenderer._fmt_slot_line, slot_order)
+    options += _delete_options(
+        res_slots, "reservation", "Reservierung",
+        lambda s: GridRenderer._fmt_slot_line(s, with_pause=True), slot_order)
+    if vacation is not None:
+        # Einzelne Tage aus der Mitte herauszubrechen würde die days-Invariante
+        # (lückenlos von from bis to) verletzen; Korrekturen laufen über den
+        # Verwaltungs-Dialog.
+        spanne = (f"{format_iso_date(vacation['from'])} – "
+                  f"{format_iso_date(vacation['to'])}")
+        options.append((f"vacation:{vacation['id']}",
+                        f"Urlaub „{vacation['name']}“ ({spanne})"))
+    if sick is not None:
+        options.append(_sick_delete_option(sick))
+    return options
+
+
+def _single_delete_question(key, date_de, vacation, sick):
+    """(Art, Frage) der Bestätigung, wenn der Tag genau eine Einheit hat."""
+    if key.startswith("entry"):
+        return "Arbeitszeit", f"Arbeitszeit für {date_de} löschen?"
+    if key.startswith("reservation"):
+        return "Reservierung", f"Reservierung für {date_de} löschen?"
+    if key.startswith("sick:"):
+        assert sick is not None
+        return "Krankheit", f"{sick_view.block_label(sick)} komplett löschen?"
+    assert vacation is not None
+    return "Urlaub", (f"Urlaub „{vacation['name']}“ "
+                      f"({format_iso_date(vacation['from'])} – "
+                      f"{format_iso_date(vacation['to'])}) komplett löschen?")
+
+
 def _delete_options(slots, prefix, label, fmt, slot_order="chrono"):
     """Löschbare Einheiten eines Typs: ein Slot = der Typ als Ganzes, sonst je
     Slot eine Zeile. Angezeigt wird im eingestellten Slot-Modus (#520), der Schlüssel trägt
@@ -93,7 +146,7 @@ class App:
                  data_lock=None, sync_guard=None, webhook_store=None,
                  vacation_store=None, smtp_store=None, mobile_store=None, mobile_keys=None,
                  mobile_relay_store=None, mobile_box_store=None,
-                 mobile_box_cursor=None):
+                 mobile_box_cursor=None, sick_store=None):
         self.root = root
         self.storage = storage
         self.settings = settings
@@ -102,6 +155,7 @@ class App:
         self.conflicts_store = conflicts_store
         self.reservation_store = reservation_store
         self.vacation_store = vacation_store
+        self.sick_store = sick_store
         self._data_lock = data_lock      # geteilter Store-RLock (Audit H1)
         self._sync_guard = sync_guard    # Sync-Re-Entrancy-Guard (Audit H2)
         self._removal = removal.RemovalState()   # „Zeiterfassung entfernen“ (#50)
@@ -140,7 +194,7 @@ class App:
         self._sync = SyncOrchestrator(
             self.root, self.storage, self.settings, self.conflicts_store,
             self.base_path, self._bg, self._refresh, lambda: self._tray,
-            data_lock=data_lock, sync_guard=sync_guard,
+            data_lock=data_lock, sync_guard=sync_guard, sick_store=sick_store,
         )
         # Lokale HTTP-API (#92): Lebenszyklus samt Token-Laden im Worker. Der
         # Dienst startet nur bei `api_enabled`; lesende Routen halten keinen
@@ -156,6 +210,7 @@ class App:
                        data_lock=self._data_lock,
                        conflicts_store=self.conflicts_store,
                        vacation_store=self.vacation_store,
+                       sick_store=self.sick_store,
                        reservation_store=self.reservation_store,
                        on_reservations_change=self._on_remote_calendar_data_changed,
                        on_vacations_change=self._on_remote_calendar_data_changed,
@@ -177,6 +232,7 @@ class App:
                     desktop_name=lambda: self.settings.get("device_name") or default_device_name(),
                     data_lock=self._data_lock, sync_guard=self._sync_guard,
                     reservation_store=self.reservation_store,
+                    sick_store=self.sick_store, vacation_store=self.vacation_store,
                     relay_store=mobile_relay_store,
                     on_change=self._api_refresh.request,
                     on_reservations_change=self._on_remote_calendar_data_changed,
@@ -195,7 +251,7 @@ class App:
             self.root, self.storage, self.settings, self.reservation_store,
             self.conflicts_store, self._open_dialog, self._delete_day,
             self._reservations_active,
-            vacation_store=self.vacation_store,
+            vacation_store=self.vacation_store, sick_store=self.sick_store,
         )
         self._relay_store = mobile_relay_store
         self._reminders = ReminderScheduler(
@@ -694,6 +750,9 @@ class App:
             api_service=self._api,
             mobile_service=self._mobile,
             relay_service=self._relay,
+            sick_store=self.sick_store,
+            on_sick_change=self._refresh,
+            on_reservations_deleted=self._on_remote_calendar_data_changed,
             initial_tab=initial_tab,
             auto_updater=self._updates.auto_updater,
             on_request_removal=self.remove_application,
@@ -927,50 +986,24 @@ class App:
             self.vacation_store.period_for_date(date_str)
             if self.vacation_store is not None else None
         )
+        sick = (self.sick_store.block_for(date_str)
+                if self.sick_store is not None else None)
         entry_slots = entry["slots"] if entry else []
         res_slots = reservation["slots"] if reservation else []
-        if not entry_slots and not res_slots and vacation is None:
+        if not entry_slots and not res_slots and vacation is None and sick is None:
             return
 
         date_de = format_iso_date(date_str)
 
         # Löschbare Einheiten: bei genau einem Slot der Typ als Ganzes, bei
-        # mehreren je Slot eine Checkbox.
+        # mehreren je Slot eine Checkbox; Urlaub und Krankheit immer als
+        # ganze Periode bzw. ganzer Block.
         slot_order = normalize_mode(self.settings.get("slot_order_mode"))
-        options = _delete_options(entry_slots, "entry", "Arbeitszeit",
-                                  GridRenderer._fmt_slot_line, slot_order)
-        options += _delete_options(
-            res_slots, "reservation", "Reservierung",
-            lambda s: GridRenderer._fmt_slot_line(s, with_pause=True), slot_order)
-        if vacation is not None:
-            # Gelöscht wird IMMER die ganze Periode. Einzelne Tage aus der
-            # Mitte herauszubrechen würde den Zeitraum zerreißen und die
-            # days-Invariante (lückenlos von from bis to) verletzen; wer das
-            # will, bearbeitet die Periode im Verwaltungs-Dialog.
-            spanne = (f"{format_iso_date(vacation['from'])} – "
-                      f"{format_iso_date(vacation['to'])}")
-            options.append((
-                f"vacation:{vacation['id']}",
-                f"Urlaub „{vacation['name']}“ ({spanne})",
-            ))
+        options = _delete_units(entry_slots, res_slots, vacation, sick, slot_order)
 
         if len(options) == 1:
             key = options[0][0]
-            if key.startswith("entry"):
-                kind, frage = "Arbeitszeit", f"Arbeitszeit für {date_de} löschen?"
-            elif key.startswith("reservation"):
-                kind, frage = "Reservierung", f"Reservierung für {date_de} löschen?"
-            else:
-                # Bei genau einer Option, die weder "entry" noch "reservation"
-                # ist, muss es die (einzige weitere Quelle von) options der
-                # Urlaubszweig sein — vacation ist dann zwangsläufig gesetzt.
-                # assert statt weiterer Verzweigung: narrowed für pyright,
-                # ohne das Verhalten zu ändern.
-                assert vacation is not None
-                kind = "Urlaub"
-                frage = (f"Urlaub „{vacation['name']}“ "
-                         f"({format_iso_date(vacation['from'])} – "
-                         f"{format_iso_date(vacation['to'])}) komplett löschen?")
+            kind, frage = _single_delete_question(key, date_de, vacation, sick)
             if not themed_askyesno(self.root, f"{kind} löschen", frage, lock_ms=600):
                 return
             selected = {key}
@@ -1003,6 +1036,8 @@ class App:
             vacation_touched = bool(vacation.get("gcal_event_id"))
             self.vacation_store.delete(vacation["id"])
 
+        _apply_sick_selection(selected, sick, self.sick_store)
+
         self._refresh()
         if res_touched or vacation_touched:
             self._bg.trigger_reconcile(self._on_reconcile_done)
@@ -1027,6 +1062,14 @@ class App:
                 on_resolved=self._refresh,
             )
             return
+        sick = (self.sick_store.block_for(date_str)
+                if self.sick_store is not None else None)
+        if sick is not None and sick.days.get(date_str, 0):
+            # Ein Krankheitstag mit Stunden öffnet den Krankheits-Dialog seines
+            # Blocks statt des Tages-Dialogs (Ist-Zeit und Krankheit schließen
+            # sich aus); 0-Minuten-Tage bleiben normale Tage.
+            self._open_sick_dialog(date_str, sick)
+            return
         # Urlaub und Arbeitszeit schließen sich am selben Tag aus: trägt der
         # Tag Urlaubsstunden, öffnet der Tages-Dialog gar nicht erst. Sonst
         # stünden im Bericht beide Zahlen nebeneinander in „Zu vergüten
@@ -1041,13 +1084,20 @@ class App:
         vacation = (self.vacation_store.period_for_date(date_str)
                     if self.vacation_store is not None else None)
         if vacation is not None and vacation.get("days", {}).get(date_str, 0):
-            themed_showinfo(
-                self.root, "Urlaub an diesem Tag",
+            message = (
                 f"Für den {format_iso_date(date_str)} ist Urlaub eingetragen "
                 f"(„{vacation.get('name', '')}“). An einem Urlaubstag lässt "
                 f"sich keine Arbeitszeit erfassen.\n\nSoll hier doch "
                 f"gearbeitet werden, lösche den Urlaub zuerst per Rechtsklick "
                 f"auf den Tag.")
+            if self.sick_store is None:
+                themed_showinfo(self.root, "Urlaub an diesem Tag", message)
+            elif themed_ask_action(
+                    self.root, "Urlaub an diesem Tag",
+                    message + "\n\nWar es ein Krankheitstag im Urlaub, "
+                    "trägst du ihn als Krankheit ein.", "Krank melden",
+                    lock_ms=int(STRAY_CLICK_GUARD_S * 1000)):
+                self._open_sick_dialog(date_str, None)
             return
         # Bei ausgeschalteten Reservierungen KEIN reservation_store an den Dialog
         # geben — dann wird der Reservierungs-Block nicht angezeigt und ist per
@@ -1057,14 +1107,29 @@ class App:
             on_change=self._refresh,
             reservation_store=self._active_reservation_store(),
             trigger_reconcile=lambda: self._bg.trigger_reconcile(self._on_reconcile_done),
+            on_report_sick=((lambda: self._open_sick_dialog(date_str, None))
+                            if self.sick_store is not None else None),
         )
+
+    def _open_sick_dialog(self, date_str, block):
+        """Krankheits-Dialog: mit `block` bearbeitet er ihn, sonst legt er an
+        (Von = Bis = `date_str`). Liegt der Tag schon in einem Block, ist
+        dieser gemeint."""
+        block = block or self.sick_store.block_for(date_str)
+        open_sick_dialog(
+            self.root, sick_store=self.sick_store, storage=self.storage,
+            settings=self.settings, date_from=date_str, edit_block=block,
+            reservation_store=self._active_reservation_store(),
+            vacation_store=self.vacation_store, data_lock=self._data_lock,
+            on_change=self._refresh,
+            on_reservations_deleted=self._on_remote_calendar_data_changed)
 
     def _send(self):
         open_send_dialog(self.root, self.storage, self.settings, self.base_path,
                          self._bg, reservation_store=self._active_reservation_store(),
                          webhook_store=self._webhook_store,
                          vacation_store=self.vacation_store,
-                         smtp_store=self._smtp_store)
+                         smtp_store=self._smtp_store, sick_store=self.sick_store)
 
     def _share(self):
         from src.dialogs.share_dialog import open_share_dialog
@@ -1077,7 +1142,8 @@ class App:
     def _export(self):
         from src.dialogs.export_dialog import open_export_dialog
         open_export_dialog(self.root, self.storage, self.settings, self._bg,
-                           vacation_store=self.vacation_store)
+                           vacation_store=self.vacation_store,
+                           sick_store=self.sick_store)
 
     def on_sync_pull_success(self):
         """Public-API für main.py: nach erfolgreichem Pull (UI-Thread)."""

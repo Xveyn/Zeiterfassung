@@ -21,6 +21,8 @@ eingeschalteten Reservierungen, danach der Kalender-Abgleich der UI).
 Urlaub (#239): `GET /v1/vacations[/{id}]`, `POST /v1/vacations`, `DELETE
 /v1/vacations/{id}` (Body-Regeln in `api_vacation_write`, gerechnet wird in
 `vacation_plan`, derselben Planung wie im Dialog).
+Krankheit: `GET /v1/sick`, `POST /v1/sick`, `DELETE /v1/sick/{date}` (Body-Regeln
+in `api_sick_write`, gerechnet wird in `sick_plan` wie im Dialog; Reservierungen bleiben).
 Wire-Format der Ist-Zeit-Slots: `{start, end, pause, kategorie}` (Share v3), der
 Reservierungs-Slots: `{start, end, kategorie, send_reminder_minutes, pause}`.
 
@@ -43,9 +45,15 @@ from src.api_entry_write import (
     warnings_for,
 )
 from src.api_reservation_write import check_reservation_day, parse_reservation_body
+from src.api_sick_write import parse_sick_body
 from src.api_vacation_write import parse_vacation_body
 from src.api_summary import (
     category_names, holidays_for, parse_month, parse_week, parse_year, summarize,
+)
+from src.sick_plan import (
+    HINT_AVERAGE_FALLBACK, HINT_SICK_ON_VACATION, plan_sick_save, prefill, stored_overrides,
+    touches_vacation, vacation_sick_conflicts, work_blocking_days,
+    normalize_basis,
 )
 from src.slot_notes import effective_slots
 from src.reservations import inherit_pause, normalize_pause, reservations_active
@@ -111,6 +119,7 @@ class ApiContext:
     data_lock: Any = None
     conflicts_store: Any = None
     vacation_store: Any = None
+    sick_store: Any = None
     # Reservierungen (#239): der Store, und der Kalender-Abgleich, den die UI nach
     # jedem Speichern oder Löschen anstößt (App: `_marshal_to_ui` →
     # `trigger_reconcile`; das gatet selbst auf `gcal_enabled`). `today` ist das
@@ -235,7 +244,8 @@ def _check_year(year: int) -> None:
 
 def _summary(ctx: ApiContext, span: tuple[datetime.date, datetime.date]) -> dict[str, Any]:
     vacation = ctx.vacation_store.day_minutes() if ctx.vacation_store is not None else {}
-    return summarize(span[0], span[1], ctx.storage.get_all(), ctx.settings, vacation)
+    sick = ctx.sick_store.day_minutes() if ctx.sick_store is not None else None
+    return summarize(span[0], span[1], ctx.storage.get_all(), ctx.settings, vacation, sick)
 
 
 def _summary_week(request: ApiRequest, ctx: ApiContext, match: re.Match[str]) -> ApiResponse:
@@ -311,7 +321,8 @@ def _put_entry(request: ApiRequest, ctx: ApiContext, match: re.Match[str]) -> Ap
     with _locked(ctx):
         _refuse_while_closing(ctx)
         check_day_writable(day_key, conflicts_store=ctx.conflicts_store,
-                           vacation_store=ctx.vacation_store, for_save=True)
+                           vacation_store=ctx.vacation_store, for_save=True,
+                           sick_store=ctx.sick_store)
         existing = ctx.storage.get(day_key)
         effective = effective_slots(slots, existing["slots"] if existing else [])
         changed = existing is None or existing["slots"] != effective
@@ -483,6 +494,12 @@ _NO_STATE_WARNING = {
                 "ein Weihnachtsurlaub trägt für den 25./26.12. volle Stunden. Das Bundesland "
                 "in der App setzen und den Urlaub neu anlegen."),
 }
+_NO_STATE_SICK_WARNING = {
+    "code": "no_state",
+    "message": ("Es ist kein Bundesland eingestellt: Feiertage sind nicht berücksichtigt. "
+                "Um nach dem Setzen des Bundeslands neu zu rechnen, die Krankheit löschen "
+                "und neu eintragen."),
+}
 _MAX_LISTED_DAYS = 10
 
 
@@ -536,14 +553,30 @@ def _vacation(request: ApiRequest, ctx: ApiContext, match: re.Match[str]) -> Api
     return ApiResponse(200, wire)
 
 
+def _listed(days: list[str]) -> str:
+    """Die ersten Tage als Liste, der Rest als Zahl."""
+    shown = ", ".join(days[:_MAX_LISTED_DAYS])
+    rest = len(days) - _MAX_LISTED_DAYS
+    return f"{shown} … und {rest} weitere" if rest > 0 else shown
+
+
 def _blocked_message(blocked: list[str]) -> str:
-    shown = ", ".join(blocked[:_MAX_LISTED_DAYS])
-    rest = len(blocked) - _MAX_LISTED_DAYS
-    if rest > 0:
-        shown += f" … und {rest} weitere"
     return ("An diesen Tagen ist bereits Arbeitszeit oder eine Reservierung erfasst: "
-            f"{shown}. Urlaub und Arbeitszeit schließen sich am selben Tag aus; zuerst die "
+            f"{_listed(blocked)}. Urlaub und Arbeitszeit schließen sich am selben Tag aus; "
+            "zuerst die Einträge löschen oder einen anderen Zeitraum wählen.")
+
+
+def _sick_blocked_message(blocked: list[str]) -> str:
+    # Reservierungen sperren Krankheit nie, sie werden nur beim Vorbelegen gelesen.
+    return (f"An diesen Tagen ist bereits Arbeitszeit erfasst: {_listed(blocked)}. "
+            "Krankheit und Arbeitszeit schließen sich am selben Tag aus; zuerst die "
             "Einträge löschen oder einen anderen Zeitraum wählen.")
+
+
+def _sick_vacation_message(days: list[str]) -> str:
+    return (f"An diesen Tagen bist du krank gemeldet: {_listed(days)}. Krankheit und Urlaub "
+            "schließen sich am selben Tag aus; zuerst die Krankheit in der App löschen "
+            "oder einen anderen Zeitraum wählen.")
 
 
 def _notify_vacations(ctx: ApiContext) -> None:
@@ -567,6 +600,15 @@ def _post_vacation(request: ApiRequest, ctx: ApiContext, _match: re.Match[str]) 
         blocked = blocking_days(plan["days"], ctx.storage.get_all(), reservations, ctx.settings)
         if blocked:
             raise _ApiError(409, "work_on_vacation_days", _blocked_message(blocked))
+        if ctx.sick_store is not None:
+            sick_hits = vacation_sick_conflicts(plan["days"], ctx.sick_store.day_minutes())
+            if sick_hits:
+                raise _ApiError(409, "sick_on_vacation_days", _sick_vacation_message(sick_hits))
+        # Lebende 0-Minuten-Krankheitstage sperren nicht, nehmen dem Urlaub dort
+        # aber die Stunden.
+        sick_now = ctx.sick_store.day_minutes() if ctx.sick_store is not None else {}
+        on_sick = any(minutes > 0 and sick_now.get(day) == 0
+                      for day, minutes in plan["days"].items())
         try:
             period_id = store.save(None, parsed.name, parsed.date_from, parsed.date_to,
                                    plan["days"])
@@ -575,7 +617,12 @@ def _post_vacation(request: ApiRequest, ctx: ApiContext, _match: re.Match[str]) 
         saved = store.get(period_id)
     _notify_vacations(ctx)
     wire = _wire_vacation({**(saved or {}), "id": period_id}) or {"id": period_id}
-    return ApiResponse(201, {**wire, "warnings": [] if state else [dict(_NO_STATE_WARNING)]})
+    warnings = [] if state else [dict(_NO_STATE_WARNING)]
+    if on_sick:
+        warnings.append({"code": "vacation_on_sick_day",
+                         "message": ("An Tagen, an denen Krankheit ohne Stunden eingetragen ist, "
+                                     "zählt der Tag als Krankheit und trägt keine Urlaubsstunden.")})
+    return ApiResponse(201, {**wire, "warnings": warnings})
 
 
 def _delete_vacation(request: ApiRequest, ctx: ApiContext, match: re.Match[str]) -> ApiResponse:
@@ -595,6 +642,85 @@ def _delete_vacation(request: ApiRequest, ctx: ApiContext, match: re.Match[str])
     else:
         _notify(ctx)
     return ApiResponse(200, {"id": period_id, "deleted": True})
+
+
+# --- Krankheit ------------------------------------------------------------------
+
+def _sick_store(ctx: ApiContext) -> Any:
+    if ctx.sick_store is None:
+        raise _ApiError(409, "sick_unavailable", "Krankheit ist in dieser App nicht verfügbar.")
+    return ctx.sick_store
+
+
+def _wire_sick(block: Any) -> dict[str, Any]:
+    return {"from": block.date_from, "to": block.date_to, "days": dict(block.days),
+            "total_minutes": block.total_minutes}
+
+
+def _sick(request: ApiRequest, ctx: ApiContext, _match: re.Match[str]) -> ApiResponse:
+    start, end = _query_range(request.query)
+    store = _sick_store(ctx)
+    found = [_wire_sick(block) for block in store.blocks()
+             if not ((end is not None and block.date_from > end.isoformat())
+                     or (start is not None and block.date_to < start.isoformat()))]
+    return ApiResponse(200, {"sick": found})
+
+
+def _post_sick(request: ApiRequest, ctx: ApiContext, _match: re.Match[str]) -> ApiResponse:
+    _only_params(request.query, frozenset())
+    store = _sick_store(ctx)
+    parsed = parse_sick_body(request.body)
+    state = ctx.settings.get("state") or ""
+    with _locked(ctx):
+        _refuse_while_closing(ctx)
+        reservations = (ctx.reservation_store.get_all()
+                        if reservations_active(ctx.reservation_store, ctx.settings) else None)
+        vacation_days = ctx.vacation_store.day_minutes() if ctx.vacation_store is not None else {}
+        sick_days = store.day_minutes()
+        entries = ctx.storage.get_all()
+        basis = normalize_basis(parsed.basis or ctx.settings.get("sick_hours_basis"))
+        filled = prefill(parsed.date_from, parsed.date_to, basis=basis, entries=entries,
+                         reservations=reservations, vacation_days=vacation_days,
+                         sick_days=sick_days, settings=ctx.settings, today=ctx.today())
+        overrides = {**stored_overrides(parsed.date_from, parsed.date_to, sick_days),
+                     **parsed.overrides}
+        plan = plan_sick_save(parsed.date_from, parsed.date_to, filled.days, overrides)
+        if plan["error"]:
+            raise _ApiError(422, "invalid_sick", plan["error"])
+        blocked = work_blocking_days(plan["days"], entries)
+        if blocked:
+            raise _ApiError(409, "work_on_sick_days", _sick_blocked_message(blocked))
+        store.save_range(plan["days"])
+        changed = store.day_minutes() != sick_days
+        block = store.block_for(parsed.date_from)
+        on_vacation = touches_vacation(plan["days"], vacation_days)
+    if changed:
+        _notify(ctx)
+    wire = _wire_sick(block) if block is not None else {
+        "from": parsed.date_from, "to": parsed.date_to, "days": plan["days"],
+        "total_minutes": sum(plan["days"].values())}
+    warnings = [] if state else [dict(_NO_STATE_SICK_WARNING)]
+    if on_vacation:
+        warnings.append({"code": "sick_on_vacation", "message": HINT_SICK_ON_VACATION})
+    for hint in filled.hints:
+        if hint == HINT_AVERAGE_FALLBACK:
+            warnings.append({"code": "average_fallback", "message": hint})
+    return ApiResponse(201, {**wire, "changed": changed, "basis_used": filled.basis_used,
+                             "warnings": warnings})
+
+
+def _delete_sick(request: ApiRequest, ctx: ApiContext, match: re.Match[str]) -> ApiResponse:
+    _only_params(request.query, frozenset())
+    store = _sick_store(ctx)
+    day_key = _write_day(match)
+    with _locked(ctx):
+        _refuse_while_closing(ctx)
+        block = store.block_for(day_key)
+        if block is None:
+            raise _ApiError(404, "not_found", "Für diesen Tag ist keine Krankheit eingetragen.")
+        store.delete_days(list(block.days))
+    _notify(ctx)
+    return ApiResponse(200, {"from": block.date_from, "to": block.date_to, "deleted": True})
 
 
 @dataclass(frozen=True)
@@ -619,6 +745,9 @@ ROUTES: tuple[Route, ...] = (
     Route("POST", re.compile(r"/v1/vacations"), _post_vacation, SCOPE_LOCAL),
     Route("GET", re.compile(r"/v1/vacations/([^/]+)"), _vacation, SCOPE_LOCAL),
     Route("DELETE", re.compile(r"/v1/vacations/([^/]+)"), _delete_vacation, SCOPE_LOCAL),
+    Route("GET", re.compile(r"/v1/sick"), _sick, SCOPE_LOCAL),
+    Route("POST", re.compile(r"/v1/sick"), _post_sick, SCOPE_LOCAL),
+    Route("DELETE", re.compile(r"/v1/sick/([^/]+)"), _delete_sick, SCOPE_LOCAL),
     Route("GET", re.compile(r"/v1/summary/week/([^/]+)"), _summary_week, SCOPE_LOCAL),
     Route("GET", re.compile(r"/v1/summary/month/([^/]+)"), _summary_month, SCOPE_LOCAL),
     Route("GET", re.compile(r"/v1/categories"), _categories, SCOPE_LOCAL),

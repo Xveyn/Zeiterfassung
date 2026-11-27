@@ -5,7 +5,7 @@ from src import workweek
 from src.report import default_pdf_filename
 from src.slot_order import normalize_mode
 from src.time_utils import format_date, validate_period
-from src.dialogs.period_picker import build_period_picker
+from src.dialogs.period_picker import build_period_picker, report_sick_days
 from src.dialogs.export_task import perform_export_pdf
 from src.theme import (
     BG,
@@ -15,7 +15,8 @@ from src.theme import (
 )
 
 
-def open_export_dialog(parent, storage, settings, runner, vacation_store=None):
+def open_export_dialog(parent, storage, settings, runner, vacation_store=None,
+                       sick_store=None):
     """Modal: Zeitraum + Kategorien wählen, daraus die PDF erzeugen und lokal
     über einen 'Speichern unter'-Dialog speichern. Kein Gmail nötig."""
     dialog = create_dialog(parent, "Als PDF exportieren")
@@ -24,7 +25,7 @@ def open_export_dialog(parent, storage, settings, runner, vacation_store=None):
 
     picker_frame, picker = build_period_picker(
         dialog, storage, settings, on_change=lambda: _refresh_export_btn(),
-        vacation_store=vacation_store)
+        vacation_store=vacation_store, sick_store=sick_store)
     picker_frame.grid(row=0, column=0, sticky="w")
 
     busy = {"running": False}
@@ -63,6 +64,8 @@ def open_export_dialog(parent, storage, settings, runner, vacation_store=None):
         if show_vacation and vacation_store is not None:
             vacation_days = workweek.filter_for_report(
                 vacation_store.day_minutes(), settings)
+        sick_days = report_sick_days(picker.get_show_sick(), sick_store,
+                                     settings)
 
         busy["running"] = True
         set_primary_button_enabled(export_btn, False)
@@ -74,7 +77,7 @@ def open_export_dialog(parent, storage, settings, runner, vacation_store=None):
                 name=settings.get("name"), categories=categories,
                 category_breakdown=category_breakdown,
                 note_breakdown=note_breakdown,
-                vacation_days=vacation_days,
+                vacation_days=vacation_days, sick_days=sick_days,
                 slot_order=normalize_mode(settings.get("slot_order_mode")),
             )
 

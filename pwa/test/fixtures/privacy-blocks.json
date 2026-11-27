@@ -1204,6 +1204,128 @@
     }
    ],
    "level": 0
+  },
+  {
+   "kind": "heading",
+   "segments": [
+    {
+     "text": "12. Krankheitstage",
+     "style": "plain",
+     "url": null
+    }
+   ],
+   "level": 0
+  },
+  {
+   "kind": "paragraph",
+   "segments": [
+    {
+     "text": "Krankheitstage sind Gesundheitsdaten (Art. 9 DSGVO). Die App erfasst nur den Tag und die Stunden, nie eine Diagnose oder einen Grund.",
+     "style": "plain",
+     "url": null
+    }
+   ],
+   "level": 0
+  },
+  {
+   "kind": "bullet",
+   "segments": [
+    {
+     "text": "Wo sie liegen:",
+     "style": "bold",
+     "url": null
+    },
+    {
+     "text": " am Rechner in ",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "sick.json",
+     "style": "code",
+     "url": null
+    },
+    {
+     "text": ". Bei eingeschaltetem Drive-Sync zusätzlich im App-Ordner des eigenen Google Drive, bei gekoppeltem Handy zusätzlich auf dem Handy. Die Kopie in Google Drive verschlüsselt die App nicht selbst: Google kann sie lesen wie die übrigen synchronisierten Daten.",
+     "style": "plain",
+     "url": null
+    }
+   ],
+   "level": 0
+  },
+  {
+   "kind": "bullet",
+   "segments": [
+    {
+     "text": "Transport zum Handy:",
+     "style": "bold",
+     "url": null
+    },
+    {
+     "text": " Ende-zu-Ende verschlüsselt, auch über den Relay. Der Relay sieht keine Krankheitstage, genauso wenig wie Einträge (Abschnitt 1). Der lokale Speicher der Web-App auf dem Handy ist derzeit noch unverschlüsselt (Abschnitt 9).",
+     "style": "plain",
+     "url": null
+    }
+   ],
+   "level": 0
+  },
+  {
+   "kind": "bullet",
+   "segments": [
+    {
+     "text": "Ausgabe:",
+     "style": "bold",
+     "url": null
+    },
+    {
+     "text": " In Bericht (Mail und PDF) und Webhook landen Krankheitstage nur mit dem Häkchen „Krankheit ausweisen“. Ohne das Häkchen sind diese Ausgaben unverändert. Die lokale API (standardmäßig aus) liefert Krankheitstage und Minuten ohne Häkchen; sie ist, wenn eingeschaltet, nur von diesem Computer und nur mit dem Token erreichbar.",
+     "style": "plain",
+     "url": null
+    }
+   ],
+   "level": 0
+  },
+  {
+   "kind": "bullet",
+   "segments": [
+    {
+     "text": "Nie dabei:",
+     "style": "bold",
+     "url": null
+    },
+    {
+     "text": " die Teilen-Datei, der Google Kalender und das Protokoll der App (kein Datum, keine Minuten).",
+     "style": "plain",
+     "url": null
+    }
+   ],
+   "level": 0
+  },
+  {
+   "kind": "bullet",
+   "segments": [
+    {
+     "text": "Löschen:",
+     "style": "bold",
+     "url": null
+    },
+    {
+     "text": " „Zeiterfassung entfernen“ und die Deinstallation löschen ",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "sick.json",
+     "style": "code",
+     "url": null
+    },
+    {
+     "text": " nur, wenn du das Löschen der Nutzerdaten wählst. Kopien in Google Drive und auf dem Handy werden dadurch nicht gelöscht.",
+     "style": "plain",
+     "url": null
+    }
+   ],
+   "level": 0
   }
  ],
  "cases": [

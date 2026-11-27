@@ -153,21 +153,20 @@ def test_period_has_no_content_does_not_block_vacation_in_range():
 # ----- Vorschau: Urlaub gekappt wie im Bericht (Xveyn#97) -----
 
 def _preview(**kw):
-    from src.dialogs.period_picker import vacation_preview
-    return vacation_preview(**kw)
+    """Die Vorschau ohne Häkchen „Krankheit ausweisen“ (reiner Urlaubs-Weg)."""
+    from src.dialogs.period_picker import absence_preview
+    return absence_preview(sick_days=None, **kw)
 
 
 def test_vacation_preview_sums_the_period_without_worktime():
-    minutes, notice = _preview(
+    assert _preview(
         date_from=datetime.date(2026, 9, 1), date_to=datetime.date(2026, 9, 30),
         all_entries={}, categories=None,
-        vacation_days={"2026-09-01": 480, "2026-09-02": 480})
-    assert minutes == 960
-    assert notice == ""
+        vacation_days={"2026-09-01": 480, "2026-09-02": 480}) == (960, 0, [])
 
 
 def test_vacation_preview_counts_only_days_in_the_range():
-    minutes, _ = _preview(
+    minutes, _, _ = _preview(
         date_from=datetime.date(2026, 9, 1), date_to=datetime.date(2026, 9, 30),
         all_entries={}, categories=None,
         vacation_days={"2026-09-01": 480, "2026-10-01": 480})
@@ -178,31 +177,27 @@ def test_vacation_preview_caps_against_worktime_like_the_report():
     # Ohne Kappung zeigte die Vorschau „+ 8.0h Urlaub", der erzeugte Bericht
     # aber 4.0h — die beiden duerfen sich nicht widersprechen.
     from tests.conftest import ist_slot
-    minutes, notice = _preview(
+    minutes, sick, notices = _preview(
         date_from=datetime.date(2026, 9, 1), date_to=datetime.date(2026, 9, 30),
         all_entries={"2026-09-01": {"slots": [ist_slot("08:00", "12:00")]}},
         categories=None, vacation_days={"2026-09-01": 480})
-    assert minutes == 240
-    assert "01.09.2026" in notice
+    assert (minutes, sick) == (240, 0)
+    assert len(notices) == 1 and "01.09.2026" in notices[0]
 
 
 def test_vacation_preview_uses_the_selected_categories_only():
     from tests.conftest import ist_slot
-    minutes, notice = _preview(
+    assert _preview(
         date_from=datetime.date(2026, 9, 1), date_to=datetime.date(2026, 9, 30),
         all_entries={"2026-09-01": {
             "slots": [ist_slot("08:00", "12:00", kategorie="B")]}},
-        categories={"A"}, vacation_days={"2026-09-01": 480})
-    assert minutes == 480
-    assert notice == ""
+        categories={"A"}, vacation_days={"2026-09-01": 480}) == (480, 0, [])
 
 
 def test_vacation_preview_without_vacation_is_zero():
-    minutes, notice = _preview(
+    assert _preview(
         date_from=datetime.date(2026, 9, 1), date_to=datetime.date(2026, 9, 30),
-        all_entries={}, categories=None, vacation_days={})
-    assert minutes == 0
-    assert notice == ""
+        all_entries={}, categories=None, vacation_days={}) == (0, 0, [])
 
 
 @pytest.mark.parametrize("category_on,note_on,expected",
@@ -211,3 +206,166 @@ def test_vacation_preview_without_vacation_is_zero():
 def test_note_breakdown_needs_the_category_breakdown(category_on, note_on, expected):
     from src.dialogs.period_picker import note_breakdown_active
     assert note_breakdown_active(category_on, note_on) is expected
+
+
+# ----- Krankheit: Vorschau und Leer-Prüfung -----
+
+def test_absence_preview_matches_report_numbers():
+    """Die Vorschau rechnet wie der Bericht: Krankheit gewinnt gegen Urlaub,
+    beide werden gegen die Ist-Zeit gekappt, Hinweise in Berichtsreihenfolge."""
+    from src.dialogs.period_picker import absence_preview
+    from src.report import generate_report
+    from tests.conftest import ist_slot
+
+    entries = {"2026-09-02": {"slots": [ist_slot("08:00", "10:00")]}}
+    vacation = {"2026-09-01": 480, "2026-09-02": 480, "2026-09-03": 480}
+    sick = {"2026-09-02": 480, "2026-09-03": 240}
+    df, dt = datetime.date(2026, 9, 1), datetime.date(2026, 9, 30)
+
+    vac, sck, notices = absence_preview(df, dt, entries, None, vacation, sick)
+    # 02.09.: Krankheit 480 - 120 Ist = 360, Urlaub 0; 03.09.: Krankheit 240, Urlaub 0
+    assert (vac, sck) == (480, 600)
+    assert len(notices) == 2
+    assert notices[0].startswith("An 1 Tag (02.09.2026) ist Arbeitszeit erfasst")
+    assert "lag Krankheit im Urlaub" in notices[1]
+
+    html, _ = generate_report(df, dt, entries, vacation_days=vacation,
+                              sick_days=sick)
+    for n in notices:
+        assert n in html
+
+
+@pytest.mark.parametrize("work,vacation,sick", [
+    # Krankheit ganz weggekappt: kein Block, aber der Satz.
+    ({"2026-09-02": ("08:00", "16:00")}, {}, {"2026-09-02": 480}),
+    ({"2026-09-02": ("08:00", "16:00")}, {"2026-09-03": 480}, {"2026-09-02": 480}),
+    # Urlaub gekappt, Krankheit gekappt, Krankheit im Urlaub.
+    ({"2026-09-01": ("08:00", "10:00"), "2026-09-02": ("08:00", "16:00")},
+     {"2026-09-01": 480, "2026-09-02": 480, "2026-09-03": 480},
+     {"2026-09-02": 480, "2026-09-03": 0}),
+    ({"2026-09-01": ("08:00", "10:00")}, {"2026-09-01": 480}, None),
+    ({}, {"2026-09-01": 480}, None),
+    ({}, {}, {}),
+])
+def test_preview_notices_are_the_report_footnotes(work, vacation, sick):
+    """Vorschau und Bericht reden wortgleich und in derselben Reihenfolge
+    über dieselben Kürzungen — auch wenn kein Krankheits-Block entsteht."""
+    import html as html_mod
+    import re
+
+    from src.dialogs.period_picker import absence_preview
+    from src.report import HTML_STYLE, generate_report
+    from tests.conftest import ist_slot
+
+    entries = {d: {"slots": [ist_slot(a, b)]} for d, (a, b) in work.items()}
+    df, dt = datetime.date(2026, 9, 1), datetime.date(2026, 9, 30)
+    _, _, notices = absence_preview(df, dt, entries, None, vacation, sick)
+    html, _ = generate_report(df, dt, entries, vacation_days=vacation,
+                              sick_days=sick)
+    footnote = re.escape(f'<p style="{HTML_STYLE["footnote"]}">')
+    footnotes = [html_mod.unescape(t)
+                 for t in re.findall(footnote + "(.*?)</p>", html or "")]
+    assert footnotes == notices
+
+
+class _SickStore:
+    def __init__(self, days):
+        self.days = days
+        self.calls = 0
+
+    def day_minutes(self):
+        self.calls += 1
+        return dict(self.days)
+
+
+def test_report_sick_days_is_none_without_checkbox():
+    """Häkchen aus: nichts aus dem Store, Bericht und Webhook bitgleich."""
+    from src.dialogs.period_picker import report_sick_days
+    store = _SickStore({"2026-09-01": 480})
+    assert report_sick_days(False, store, {"workweek_only": False}) is None
+    assert store.calls == 0
+    assert report_sick_days(True, None, {"workweek_only": False}) is None
+
+
+def test_report_sick_days_with_checkbox_is_the_filtered_snapshot():
+    from src.dialogs.period_picker import report_sick_days
+    days = {"2026-09-04": 480, "2026-09-05": 240, "2026-09-07": 0}  # Fr, Sa, Mo
+    assert report_sick_days(True, _SickStore(days),
+                            {"workweek_only": False}) == days
+    assert report_sick_days(True, _SickStore(days), {"workweek_only": True}) == {
+        "2026-09-04": 480, "2026-09-07": 0}
+    assert report_sick_days(True, _SickStore({}), {"workweek_only": True}) == {}
+
+
+@pytest.mark.parametrize("name", ["send_dialog.py", "export_dialog.py"])
+def test_dialogs_decide_sick_days_only_through_the_helper(name):
+    from pathlib import Path
+    source = (Path(__file__).parent.parent / "src" / "dialogs" / name).read_text(
+        encoding="utf-8")
+    assert "report_sick_days(picker.get_show_sick(), sick_store" in source
+    assert "sick_store.day_minutes()" not in source
+
+
+def test_absence_preview_without_sick_is_the_vacation_path():
+    from src.dialogs.period_picker import absence_preview
+    vac, sck, notices = absence_preview(
+        datetime.date(2026, 9, 1), datetime.date(2026, 9, 30), {}, None,
+        {"2026-09-01": 480}, None)
+    assert (vac, sck, notices) == (480, 0, [])
+
+
+def test_period_with_only_sick_days_has_content():
+    from src.dialogs.send_dialog import period_has_no_content
+    df, dt = datetime.date(2026, 3, 1), datetime.date(2026, 3, 31)
+    assert period_has_no_content(
+        None, None, df, dt, sick_days={"2026-03-10": 480}) is False
+    assert period_has_no_content(
+        None, None, df, dt, sick_days={"2026-01-10": 480}) is True
+    assert period_has_no_content(
+        None, None, df, dt, sick_days={"2026-03-10": 0}) is True
+    assert period_has_no_content(None, None, df, dt) is True
+
+
+def test_vacation_under_sick_day_without_minutes_is_no_content():
+    """Krankheit gewinnt auch hier: der Urlaubstag unter einem 0-Minuten-
+    Krankheitstag ist im Bericht 0, der Bericht also leer."""
+    from src.dialogs.send_dialog import period_has_no_content
+    from src.report import generate_report
+    df, dt = datetime.date(2026, 9, 1), datetime.date(2026, 9, 30)
+    vacation, sick = {"2026-09-02": 480}, {"2026-09-02": 0}
+    assert generate_report(df, dt, {}, vacation_days=vacation,
+                           sick_days=sick)[0] is None
+    assert period_has_no_content(None, vacation, df, dt, sick_days=sick) is True
+
+
+def _day_in(kategorie):
+    from tests.conftest import ist_slot
+    return {"2026-09-02": {"slots": [ist_slot("08:00", "16:00", 0, kategorie)]}}
+
+
+@pytest.mark.parametrize("entries,categories,vacation,sick", [
+    ({}, None, {"2026-09-02": 480}, {"2026-09-02": 0}),
+    ({}, None, {"2026-09-02": 480}, None),
+    ({}, None, {"2026-09-02": 480, "2026-09-03": 480}, {"2026-09-02": 0}),
+    ({}, None, {}, {}),
+    ({}, None, {"2026-08-31": 480}, {"2026-10-01": 480}),
+    # Krankheit ganz weggekappt, die Ist-Zeit bleibt Inhalt.
+    (_day_in("A"), None, None, {"2026-09-02": 480}),
+    (_day_in("A"), None, {"2026-09-02": 480}, {"2026-09-02": 480}),
+    # Ist-Zeit nur in abgewählter Kategorie: sie kappt nichts und zählt nicht.
+    (_day_in("B"), {"A"}, None, {"2026-09-02": 480}),
+    (_day_in("B"), {"A"}, {"2026-09-02": 480}, {"2026-09-02": 0}),
+    (_day_in("B"), {"A"}, {"2026-09-02": 480}, None),
+])
+def test_period_has_no_content_agrees_with_the_report(entries, categories,
+                                                       vacation, sick):
+    from src.dialogs.send_dialog import period_has_no_content
+    from src.report import filter_categories, filter_period, generate_report
+    df, dt = datetime.date(2026, 9, 1), datetime.date(2026, 9, 30)
+    ranged = filter_period(df, dt, entries)
+    if ranged is not None:
+        ranged = filter_categories(ranged, categories)
+    html, _ = generate_report(df, dt, entries, categories=categories,
+                              vacation_days=vacation, sick_days=sick)
+    assert period_has_no_content(ranged, vacation, df, dt,
+                                 sick_days=sick) is (html is None)

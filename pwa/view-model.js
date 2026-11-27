@@ -10,10 +10,12 @@ import {
 import { blocksLan } from './browser-policy.js';
 import { categoryRows, timesSummary } from './categories.js';
 import { WEEKDAY_KEYS, resolveSlotDefaults, weekdayKey } from './defaults.js';
+import { withDetail } from './diagnose.js';
 import { describeError } from './messages.js';
 import { checkNote, groupKey, noteSuggestions } from './notes.js';
 import { openReservationSlots, pendingReservationMinutes, reservationBlockVisible, validateReservationSlots } from './reservations.js';
 import { describeState } from './push-policy.js';
+import { MAX_SICK_BLOCK_DAYS, reservationDatesIn, sickRange, workBlockedDates } from './sick.js';
 import { DEFAULT_SLOT_ORDER, sortedSlots } from './slot-order.js';
 import { LEGACY_AHEAD_DAYS, aheadDays, olderState } from './window-policy.js';
 
@@ -135,11 +137,26 @@ function lastSyncText(lastSyncAt, timeZone, now) {
 
 // --- Woche ---------------------------------------------------------------------------------------
 
+/** Die Zeile eines Krankheitstags in der Woche: „krank“, mit Stunden erst, wenn der Desktop sie gerechnet hat und der
+ *  Tag welche trägt (Wochenende und Feiertag zählen 0, wie am Desktop ohne Stundenzeile).
+ *  @param {number | null} minutes */
+export function sickLabel(minutes) {
+  return Number.isInteger(minutes) && /** @type {number} */ (minutes) > 0 ? `krank · ${formatMinutes(/** @type {number} */ (minutes))} h` : 'krank';
+}
+
+/** Ein lebender Krankheitstag aus der Meta (`Store`-Datensatz) oder `null`. */
+function liveSick(sickDays, date) {
+  if (!isObject(sickDays) || !Object.hasOwn(sickDays, date)) return null;
+  const record = sickDays[date];
+  return isObject(record) && record.deleted === false ? record : null;
+}
+
 // `aheadDays`: wie weit nach heute das Handy Ist-Zeiten kennt (`window-policy.aheadDays`, #265); Tage dahinter räumt der
-// Abgleich wieder auf.
+// Abgleich wieder auf. `sickDays` sind die Krankheitstage der Meta; gezeigt nur mit `sickEnabled` (Fähigkeit des Desktops).
 /** @param {{ getDay: (date: string) => any, getReservation?: (date: string) => any, [key: string]: any }} options */
 export function weekModel({ getDay, anchor, today, conflictDates = [], windowDays = 0, aheadDays = LEGACY_AHEAD_DAYS,
-  getReservation = () => null, reservationsEnabled = false, slotOrder = DEFAULT_SLOT_ORDER, noteDisplay = 'line' }) {
+  getReservation = () => null, reservationsEnabled = false, slotOrder = DEFAULT_SLOT_ORDER, noteDisplay = 'line',
+  sickDays = {}, sickEnabled = false }) {
   const conflicts = new Set(conflictDates);
   const dates = weekDays(anchor);
   const week = dates.map((date, index) => {
@@ -150,6 +167,8 @@ export function weekModel({ getDay, anchor, today, conflictDates = [], windowDay
     const visible = reservationsEnabled && reservationBlockVisible(date, today);
     const planned = visible ? getReservation(date) : null;
     const reservation = planned && !planned.deleted && planned.slots.length > 0 ? planned : null;
+    const sickRecord = sickEnabled ? liveSick(sickDays, date) : null;
+    const sickMinutes = sickRecord && Number.isInteger(sickRecord.minutes) ? sickRecord.minutes : null;
     return {
       date,
       weekday: WEEKDAYS[index],
@@ -168,14 +187,24 @@ export function weekModel({ getDay, anchor, today, conflictDates = [], windowDay
       dirty: Boolean(day?.dirty),
       error: day?.error ?? null,
       conflict: conflicts.has(date),
-      // Einladung auf leeren Tagen, an denen Eintragen geht (nicht außerhalb des Fensters, nicht mit Reservierung).
-      addHint: (!day || cleared) && !reservation && !(date > addDays(today, aheadDays) || (windowDays > 0 && date < addDays(today, -windowDays)))
+      // Einladung auf leeren Tagen, an denen Eintragen geht (nicht außerhalb des Fensters, nicht mit Reservierung, nicht
+      // an einem Krankheitstag: dort ist die Arbeitszeit gesperrt).
+      addHint: (!day || cleared) && !reservation && !sickRecord
+        && !(date > addDays(today, aheadDays) || (windowDays > 0 && date < addDays(today, -windowDays)))
         ? (visible ? 'Eintragen oder planen' : 'Eintragen') : '',
+      // Krankheit zählt nicht in `minutes`/`totalMinutes` (die Woche ist reine Ist-Zeit).
+      sick: sickRecord && {
+        minutes: sickMinutes,
+        label: sickLabel(sickMinutes),
+        dirty: sickRecord.dirty_version > sickRecord.synced_version,
+        error: typeof sickRecord.error === 'string' ? sickRecord.error : null,
+      },
       // Reservierungen zählen nicht in `minutes`/`totalMinutes`; vergangene Tage zeigen nie eine.
       reservationVisible: visible,
       reservation: reservation && {
         slots: sortedSlots(openReservationSlots(reservation.slots, slots, date === today), slotOrder).map(slotText), dirty: reservation.dirty, error: reservation.error },
-      pendingMinutes: reservation ? pendingReservationMinutes(reservation.slots, slots, date === today) : 0,
+      // An einem Krankheitstag steht nichts mehr aus: die Reservierung bleibt zu sehen, zählt aber nicht.
+      pendingMinutes: reservation && !sickRecord ? pendingReservationMinutes(reservation.slots, slots, date === today) : 0,
     };
   });
   const total = week.reduce((sum, day) => sum + day.minutes, 0);
@@ -658,8 +687,14 @@ export function olderModel(state) {
  *  obwohl der Desktop dort Einträge haben kann, und ein Speichern ersetzte sie ohne Konflikt (der Desktop
  *  nimmt an, das Handy habe alles seit dem letzten Abgleich gesehen). Deshalb gesperrt — außer das Handy hält
  *  den Tag schon (`hasRecord`: auch ein nicht übertragener oder geleerter Tag muss korrigierbar bleiben).
- *  Reservierungen haben ein eigenes Fenster und sind davon nicht betroffen. */
+ *  Reservierungen haben ein eigenes Fenster und sind davon nicht betroffen.
+ *
+ *  Ein Krankheitstag (aus `meta.sick`, nur mit `meta.sick_capable`) sperrt die Arbeitszeit immer, auch mit gehaltenem
+ *  Tag: Krankheit und Arbeitszeit schließen sich am selben Tag aus. Der Ausweg ist „Krankheit entfernen“; das Handy
+ *  hält den Krankheitstag, darf ihn also auch außerhalb des Fensters entfernen. */
 export function editLock({ date, today, meta, hasRecord = false }) {
+  const sick = reservationLock({ date, meta });
+  if (sick) return sick;
   if (hasRecord) return null;
   const ahead = aheadDays(meta.window_ahead);
   if (date > addDays(today, ahead)) {
@@ -672,6 +707,116 @@ export function editLock({ date, today, meta, hasRecord = false }) {
   if (!older) return null;
   return { kind: 'older', action: older.action, wish: older.wish, buttonText: older.buttonText,
     text: `Dieser Tag liegt vor dem Zeitraum, den das Handy vom Desktop kennt, und lässt sich hier nicht bearbeiten, damit kein Eintrag am Desktop überschrieben wird. ${older.text}` };
+}
+
+/** Darf die Reservierung dieses Tages hier bearbeitet werden? `null` ja, sonst die Sperre eines Krankheitstags (nur mit
+ *  `meta.sick_capable`, auch mit 0 Minuten: das Handy kennt die Minuten vor dem Abgleich nicht). Der Desktop lässt an
+ *  Krankheitstagen keine Reservierung zu, sie löste Erinnerungen und später ein „verpasst“ aus; bestehende Slots löscht
+ *  das Häkchen beim Krankmelden. Gleiche Sperre und derselbe Ausweg wie bei der Arbeitszeit.
+ *  @param {{ date: string, meta: any }} state */
+export function reservationLock({ date, meta }) {
+  if (meta.sick_capable === true && liveSick(meta.sick, date)) {
+    return { kind: 'sick', action: 'remove-sick', buttonText: 'Krankheit entfernen', text: 'An diesem Tag bist du krank gemeldet.' };
+  }
+  return null;
+}
+
+/** Mit welchem Reiter öffnet der Tages-Editor? An Tagen nach heute bei der Reservierung: die Ist-Zeilen sind mit den
+ *  Standardzeiten vorbelegt, ein Speichern dort legte sonst still eine Ist-Zeit an. An einem Krankheitstag immer bei der
+ *  Arbeitszeit; „Krankheit entfernen“ steht unter beiden Reitern.
+ *  @param {{ date: string, today: string, reservationOn: boolean, lock: { kind: string } | null }} state
+ *  @returns {'work' | 'reservation'} */
+export function editorStartTab({ date, today, reservationOn, lock }) {
+  if (!reservationOn || lock?.kind === 'sick') return 'work';
+  return date > today ? 'reservation' : 'work';
+}
+
+// --- Krankheitstage ------------------------------------------------------------------------------
+
+export const SICK_RESERVATION_TEXT = 'Reservierungen in diesem Zeitraum löschen';
+export const SICK_RESERVATION_TEXT_NEW_DAYS = 'Reservierungen an den neu krank gemeldeten Tagen löschen';
+const MAX_LISTED_DAYS = 8;
+
+/** Bietet der Tages-Editor „Krank melden“ an? Nur mit Fähigkeit des Desktops, nicht an einem Krankheitstag und nur im
+ *  Fenster: außerhalb ist Krankheit gesperrt wie die Arbeitszeit (#273), auch wenn das Handy den Ist-Tag hält — es kennt
+ *  dort die Krankheit des Desktops nicht.
+ *  @param {{ date: string, today: string, meta: any }} state */
+export function canReportSick({ date, today, meta }) {
+  if (meta.sick_capable !== true || !isIsoDate(date)) return false;
+  return editLock({ date, today, meta, hasRecord: false }) === null;
+}
+
+/** Deutsche Datumsliste, ab `MAX_LISTED_DAYS` gekürzt (wie `absence.format_day_list` am Desktop).
+ *  @param {string[]} dates */
+function dayList(dates) {
+  const shown = dates.slice(0, MAX_LISTED_DAYS).map(formatDateDe).join(', ');
+  const rest = dates.length - MAX_LISTED_DAYS;
+  return rest > 0 ? `${shown} … und ${rest} weitere` : shown;
+}
+
+/** Der Dialog „Krank melden“ ab `date` bis `to` (Vorgabe: derselbe Tag). `maxTo` ist das späteste Bis-Datum: das Ende
+ *  des Fensters, höchstens `MAX_SICK_BLOCK_DAYS` Tage. `blocked` sind die Tage mit Ist-Zeit (dort lässt sich keine
+ *  Krankheit melden, `workBlockedDates`). Das Häkchen zum Löschen der Reservierungen erscheint nur, wenn der Desktop
+ *  Reservierungen meldet und an heute oder später Tage welche tragen, die vorher kein Krankheitstag waren (wie
+ *  `sick_plan.reservation_dates_to_offer`); war ein Tag im Zeitraum schon krank, nennt die Beschriftung nur die neuen.
+ *  @param {{ date: string, to?: string, today: string, meta: any, getDay: (date: string) => any,
+ *    getReservation?: (date: string) => any }} state */
+export function sickDialogModel({ date, to = date, today, meta, getDay, getReservation = () => null }) {
+  const windowEnd = addDays(today, aheadDays(meta.window_ahead));
+  const longest = addDays(date, MAX_SICK_BLOCK_DAYS - 1);
+  const [maxTo] = [longest, windowEnd].sort();                   // das frühere (ISO-Daten vergleichen sich als Text)
+  const valid = isIsoDate(to) && to >= date && to <= maxTo;
+  const dates = valid ? sickRange(date, to) : [];
+  const blocked = workBlockedDates(dates, getDay);
+  const wasSick = (/** @type {string} */ day) => liveSick(meta.sick, day) !== null;
+  const offered = dates.filter((day) => !wasSick(day) && reservationBlockVisible(day, today));
+  const reservationDates = meta.reservations_enabled === true ? reservationDatesIn(offered, getReservation) : [];
+  let error = '';
+  if (!valid) error = `Das Bis-Datum muss zwischen ${formatDateDe(date)} und ${formatDateDe(maxTo)} liegen.`;
+  else if (blocked.length > 0) {
+    error = `An diesen Tagen ist bereits Arbeitszeit erfasst: ${dayList(blocked)}. Krankheit und Arbeitszeit schließen sich `
+      + 'am selben Tag aus; zuerst die Einträge löschen oder einen anderen Zeitraum wählen.';
+  }
+  return {
+    from: date,
+    to,
+    maxTo,
+    maxLabel: formatDateDe(maxTo),
+    dates,
+    blocked,
+    error,
+    canSave: valid && blocked.length === 0,
+    reservations: {
+      visible: reservationDates.length > 0,
+      dates: reservationDates,
+      label: dates.some(wasSick) ? SICK_RESERVATION_TEXT_NEW_DAYS : SICK_RESERVATION_TEXT,
+    },
+  };
+}
+
+/** Ausgang von „Krank melden“: `null` bei Erfolg, sonst `{message, final}`. Scheitert schon das Melden, ist nichts
+ *  geschehen und ein neuer Versuch möglich. Scheitert erst das Löschen einer Reservierung, steht die Krankheit schon:
+ *  `final`, der Dialog darf nur noch schließen (ein zweites Melden böte die Reservierungen nicht mehr an, ihre Tage sind
+ *  jetzt krank).
+ *  @param {{ markError?: unknown, reservationError?: unknown }} outcome */
+export function sickSaveResult({ markError, reservationError } = {}) {
+  if (markError !== undefined && markError !== null) {
+    const message = typeof markError === 'object' && 'message' in markError ? String(markError.message) : String(markError);
+    return { message, final: false };
+  }
+  if (reservationError === undefined || reservationError === null) return null;
+  return {
+    message: withDetail('Krankheit gespeichert, aber nicht alle Reservierungen ließen sich löschen. Bitte die Reservierungen prüfen.',
+      reservationError),
+    final: true,
+  };
+}
+
+/** Text der Rückfrage vor „Krankheit entfernen“: gelöscht wird immer der ganze Block.
+ *  @param {{ from: string, to: string }} block */
+export function sickRemovalText(block) {
+  const span = block.from === block.to ? formatDateDe(block.from) : `${formatDateDe(block.from)} bis ${formatDateDe(block.to)}`;
+  return `Die Krankheit vom ${span} wird gelöscht (beim nächsten Abgleich auch am Desktop).`;
 }
 
 /** Die Zeile „Verlauf“ im Reiter „Verbindung“. */

@@ -81,3 +81,18 @@ def test_perform_export_ohne_note_breakdown_reicht_false_durch(monkeypatch):
     monkeypatch.setattr(st, "generate_pdf", lambda *a, **k: seen.update(k) or b"PDF")
     perform_export_pdf(**_kwargs())
     assert seen["note_breakdown"] is False
+
+
+def test_perform_export_passes_sick_days_through(monkeypatch):
+    captured = {}
+
+    def fake_generate_pdf(*args, **kwargs):
+        captured.update(kwargs)
+        return b"PDF"
+
+    monkeypatch.setattr(st, "generate_pdf", fake_generate_pdf)
+    perform_export_pdf(**_kwargs(sick_days={"2026-07-06": 480}))
+    assert captured["sick_days"] == {"2026-07-06": 480}
+    captured.clear()
+    perform_export_pdf(**_kwargs())
+    assert captured["sick_days"] is None

@@ -100,6 +100,23 @@ test('the response of a desktop before slot notes (#519) is still understood', (
   assert.equal(parsed.conflicts.length, doc.conflicts.length);
 });
 
+test('the response of a desktop before sick days leaves the feature off and keeps every stored sick day', async () => {
+  const doc = frozen('sync-response-pre-sick.json');
+  assert.ok(!('sick_days' in doc) && !('sick' in doc));
+  const parsed = parseSyncResponse(doc);
+  assert.equal(parsed.sick_days, false);
+  assert.equal(parsed.sick, null);
+
+  const store = new Store(createMemoryAdapter(), () => new Date(doc.server_time));
+  await store.load();
+  await store.setMeta({ sick_capable: true });                      // ein neuerer Desktop war vorher gekoppelt
+  await store.markSick('2026-10-01', '2026-10-02');
+  const before = store.sickDays();
+  await store.applyResponse(parsed, { entries: {}, versions: {}, ...store.snapshotSick() }, doc.server_time.slice(0, 10));
+  assert.equal(store.getMeta().sick_capable, false);
+  assert.deepEqual(store.sickDays(), before);                       // nichts gelöscht, nichts bestätigt
+});
+
 test('the frozen request before slot notes is still what the phone sends without slot_notes', async () => {
   const example = frozen('sync-request-pre-notes.json');
   const store = new Store(createMemoryAdapter(), () => new Date(example.client_time));

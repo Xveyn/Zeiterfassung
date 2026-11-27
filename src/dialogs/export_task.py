@@ -16,14 +16,15 @@ log = logging.getLogger(__name__)
 
 def perform_export_pdf(*, date_from, date_to, entries, name, categories,
                        category_breakdown, vacation_days=None,
-                       slot_order="chrono", note_breakdown=False):
+                       slot_order="chrono", note_breakdown=False,
+                       sick_days=None):
     started = time.monotonic()
     try:
         pdf_bytes = generate_pdf(
             date_from, date_to, entries, name=name,
             categories=categories, category_breakdown=category_breakdown,
             vacation_days=vacation_days, slot_order=slot_order,
-            note_breakdown=note_breakdown)
+            note_breakdown=note_breakdown, sick_days=sick_days)
     except Exception as e:
         log.exception("PDF-Erzeugung fehlgeschlagen")
         return {"ok": False, "error": e, "tb": traceback.format_exc()}

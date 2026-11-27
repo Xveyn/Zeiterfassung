@@ -125,3 +125,29 @@ def test_perform_send_ohne_note_breakdown_reicht_false_durch(monkeypatch):
     monkeypatch.setattr(st, "generate_pdf", lambda *a, **k: seen.update(k) or b"PDF")
     perform_send(**_kwargs())
     assert seen["note_breakdown"] is False
+
+
+def test_send_task_passes_sick_days_to_report_and_webhook(monkeypatch):
+    seen = {}
+
+    def fake_pdf(*a, **k):
+        seen["pdf"] = k.get("sick_days", "fehlt")
+        return b"PDF"
+
+    def fake_payload(**k):
+        seen["json"] = k.get("sick_days", "fehlt")
+        return {}
+
+    monkeypatch.setattr(st, "generate_pdf", fake_pdf)
+    monkeypatch.setattr(st.webhook, "build_json_payload", fake_payload)
+    monkeypatch.setattr(st.webhook, "deliver", lambda *a, **k: {"ok": True})
+    monkeypatch.setattr(st.webhook_secrets, "resolve",
+                        lambda rec: (rec, None))
+    hook = {"record": {"name": "h"}, "json": True, "pdf": True}
+    perform_send(**_kwargs(send_mail=False, mail=None, webhooks=[hook],
+                           sick_days={"2026-09-01": 480}))
+    assert seen == {"pdf": {"2026-09-01": 480}, "json": {"2026-09-01": 480}}
+
+    seen.clear()
+    perform_send(**_kwargs(send_mail=False, mail=None, webhooks=[hook]))
+    assert seen == {"pdf": None, "json": None}

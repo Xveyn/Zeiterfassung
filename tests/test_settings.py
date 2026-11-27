@@ -929,3 +929,12 @@ def test_mobile_push_keys_are_device_local():
 def test_slot_order_mode_ist_synchronisiert_und_standardmaessig_chronologisch(tmp_path):
     assert "slot_order_mode" in SYNCED_SETTING_KEYS
     assert Settings(str(tmp_path / "s.json")).get("slot_order_mode") == "chrono"
+
+
+def test_fresh_settings_do_not_sync_sick_basis_until_set(tmp_path):
+    s = Settings(str(tmp_path / "s.json"))
+    assert "sick_hours_basis" in SYNCED_SETTING_KEYS
+    assert s.get("sick_hours_basis") == "standard"
+    assert "sick_hours_basis" not in s.get_synced_doc()
+    s.set_synced("sick_hours_basis", "average_3m")
+    assert "sick_hours_basis" in s.get_synced_doc()

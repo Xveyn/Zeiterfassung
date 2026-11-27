@@ -102,6 +102,10 @@ class MobileContext:
     data_lock: Any = None
     sync_guard: Any = None
     reservation_store: Any = None
+    # Krankheitstage im Abgleich; ohne Store meldet die Antwort die Fähigkeit `sick_days` nicht.
+    # Den Urlaub braucht nur die Vorbelegung fehlender Minuten (`sick_plan.prefill`).
+    sick_store: Any = None
+    vacation_store: Any = None
     # `on_change` meldet der UI einen angewendeten Abgleich und läuft nach der Freigabe
     # aller Sperren. `closing` ist wahr, sobald die App beendet oder entfernt wird.
     on_change: Callable[[], None] = _no_change
@@ -370,7 +374,8 @@ def _sync(request: ApiRequest, ctx: MobileContext, principal: Principal) -> ApiR
                 storage=ctx.storage, settings=ctx.settings, conflicts_store=ctx.conflicts_store,
                 base=ctx.base, now=now, today=ctx.today(), data_lock=ctx.data_lock,
                 desktop=mobile_sync.desktop_info(ctx.desktop_name(), version_label(), platform.system()),
-                sync_guard=ctx.sync_guard, reservation_store=ctx.reservation_store, report=report)
+                sync_guard=ctx.sync_guard, reservation_store=ctx.reservation_store, report=report,
+                sick_store=ctx.sick_store, vacation_store=ctx.vacation_store)
         except (_MobileError, SyncError) as exc:
             ctx.devices.save(seen)                       # nur der Zähler: Token bleibt unverändert
             return _sealed(response_key, path="/v1/sync", device_id=record["id"], seq=seq,

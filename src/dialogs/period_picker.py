@@ -5,28 +5,51 @@ import tkinter as tk
 from src import slot_notes, workweek
 from src.dialogs.date_row import build_date_row
 from src.report import filter_categories, filter_period, total_hours
-from src.vacations import cap_by_worktime, cap_notice
+from src.absence import cap_notice, cut_for_output, sick_on_vacation_notice
 from src.theme import (BG, CELL_BG, FONT, FONT_SMALL, TEXT, TEXT_MUTED,
                        px, set_enabled)
 
 
-def vacation_preview(date_from, date_to, all_entries, categories,
-                     vacation_days):
-    """Urlaubsminuten im Zeitraum für die Live-Vorschau, plus Hinweistext.
+def absence_preview(date_from, date_to, all_entries, categories,
+                    vacation_days, sick_days):
+    """Urlaubs- und Krankheitsminuten im Zeitraum samt Hinweistexten.
 
-    Rechnet exakt wie der erzeugte Bericht: derselbe Zeitraum- und
-    Kategorien-Ausschnitt, dieselbe Kappung gegen erfasste Ist-Zeit
-    (`vacations.cap_by_worktime`). Ohne sie behauptete die Vorschau
-    „+ 8.0h Urlaub", während der Bericht für denselben Tag 4.0h ausweist.
+    Rechnet exakt wie der Bericht: derselbe Zeitraum- und
+    Kategorien-Ausschnitt, dieselbe `absence.cut_for_output`; `sick_days=None`
+    (Häkchen aus) nimmt den reinen Urlaubs-Weg, sonst gilt „Krankheit
+    gewinnt“ samt Kappung. Ohne die Kappung behauptete die Vorschau
+    „+ 8.0h Urlaub“, während der Bericht für denselben Tag 4.0h ausweist.
 
-    Returns (Minuten, Hinweistext) — der Text ist "" ohne Kollision.
+    Returns (Urlaubsminuten, Krankheitsminuten, Hinweise) — die Hinweise in
+    der Reihenfolge der Berichts-Fußnoten: Urlaub gekappt, Krankheit gekappt,
+    Krankheit im Urlaub.
     """
     ranged = filter_period(date_from, date_to, all_entries) or {}
     if ranged:
         ranged = filter_categories(ranged, categories)
-    in_range = filter_period(date_from, date_to, vacation_days) or {}
-    capped, hits = cap_by_worktime(in_range, ranged)
-    return sum(capped.values()), cap_notice(hits)
+    vacation_in_range = filter_period(date_from, date_to, vacation_days) or {}
+    sick_in_range = (None if sick_days is None
+                     else filter_period(date_from, date_to, sick_days) or {})
+    cut = cut_for_output(ranged, vacation_in_range, sick_in_range)
+    notices = [cap_notice(cut.vacation_capped),
+               cap_notice(cut.sick_capped, kind="sick"),
+               sick_on_vacation_notice(cut.sick_on_vacation)]
+    return (sum(cut.vacation.values()), sum(cut.sick.values()),
+            [n for n in notices if n])
+
+
+def report_sick_days(show: bool, sick_store,
+                     settings) -> dict[str, int] | None:
+    """Krankheitstage für Bericht und Webhook, oder None.
+
+    None heißt Häkchen „Krankheit ausweisen“ aus (oder kein Store): dann wird
+    der Store gar nicht gelesen, und Bericht und Webhook bleiben bitgleich.
+    Sonst der Snapshot durch denselben Wochentags-Filter wie die Einträge,
+    auch leer. Senden und Export entscheiden darüber nur hier.
+    """
+    if not show or sick_store is None:
+        return None
+    return workweek.filter_for_report(sick_store.day_minutes(), settings)
 
 
 def note_breakdown_active(category_on, note_on):
@@ -62,13 +85,14 @@ class _PeriodPickerHandle:
     Tk-Vars kennt."""
 
     def __init__(self, from_vars, to_vars, category_vars, breakdown_var,
-                vacation_var=None, note_var=None):
+                vacation_var=None, note_var=None, sick_var=None):
         self._from = from_vars        # (day_var, month_var, year_var)
         self._to = to_vars            # (day_var, month_var, year_var)
         self._cats = category_vars    # {kategorie: BooleanVar}
         self._breakdown = breakdown_var  # BooleanVar
         self._vacation = vacation_var    # BooleanVar oder None
         self._note = note_var            # BooleanVar oder None
+        self._sick = sick_var            # BooleanVar oder None
 
     def get_range(self):
         try:
@@ -99,10 +123,15 @@ class _PeriodPickerHandle:
         Schalter gar nicht gebaut wurde (kein Urlaub vorhanden)."""
         return bool(self._vacation.get()) if self._vacation is not None else False
 
+    def get_show_sick(self):
+        """True = Krankheits-Block in den Bericht aufnehmen. False, wenn der
+        Schalter nicht gebaut wurde (keine Krankheit mit Stunden vorhanden)."""
+        return bool(self._sick.get()) if self._sick is not None else False
+
 
 def build_period_picker(parent, storage, settings, on_change=None,
                         from_default=None, to_default=None,
-                        vacation_store=None):
+                        vacation_store=None, sick_store=None):
     """Baut Von/Bis-Datumszeilen + Kategorie-Checkboxen + Live-Stundenvorschau
     in einen eigenen Frame. Liefert (frame, handle). Der Frame wird vom
     Aufrufer ins Dialog-Layout gegridded; die Aktions-Buttons bleiben Sache
@@ -117,7 +146,9 @@ def build_period_picker(parent, storage, settings, on_change=None,
     sie gilt wie bisher „Vormonats-Pendant bis heute" (_default_from_date).
 
     vacation_store: optionaler Urlaubs-Store. Ohne ihn (oder ohne Urlaub im
-    Bestand) wird der „Urlaub ausweisen"-Schalter gar nicht gebaut."""
+    Bestand) wird der „Urlaub ausweisen"-Schalter gar nicht gebaut.
+
+    sick_store: dasselbe für „Krankheit ausweisen“ (Minute > 0 im Bestand)."""
     frame = tk.Frame(parent, bg=BG)
 
     today = datetime.date.today()
@@ -227,19 +258,33 @@ def build_period_picker(parent, storage, settings, on_change=None,
             highlightthickness=0, bd=0, anchor="w",
         ).grid(row=5, column=0, columnspan=6, padx=10, pady=(0, 4), sticky="w")
 
+    # Wie beim Urlaub: derselbe Wochentags-Filter wie im erzeugten Bericht.
+    sick_days = workweek.filter_for_report(
+        sick_store.day_minutes(), settings) if sick_store else {}
+    sick_var = None
+    if any(sick_days.values()):
+        sick_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(
+            frame, text="Krankheit ausweisen", variable=sick_var,
+            command=lambda: _changed(),
+            font=FONT, bg=BG, fg=TEXT, selectcolor=CELL_BG,
+            activebackground=BG, activeforeground=TEXT,
+            highlightthickness=0, bd=0, anchor="w",
+        ).grid(row=6, column=0, columnspan=6, padx=10, pady=(0, 4), sticky="w")
+
     handle = _PeriodPickerHandle(
         from_vars, to_vars, category_vars, breakdown_var, vacation_var,
-        note_var)
+        note_var, sick_var)
 
     # Live-Vorschau (Gesamtstunden über den Build-Zeit-Snapshot all_entries).
     total_label = tk.Label(frame, text="", font=FONT, bg=BG, fg=TEXT)
-    total_label.grid(row=6, column=0, columnspan=6, padx=10, pady=(0, 8), sticky="w")
+    total_label.grid(row=7, column=0, columnspan=6, padx=10, pady=(0, 8), sticky="w")
 
     # Gedämpfte Hinweiszeile: nur im Nur-Werktage-Modus und nur, wenn im
     # gewählten Zeitraum tatsächlich Wochenend-Einträge liegen. Ohne sie
     # verlöre jemand mit Alt-Daten stillschweigend Stunden aus dem Bericht.
     weekend_hint = tk.Label(frame, text="", font=FONT_SMALL, bg=BG, fg=TEXT_MUTED)
-    weekend_hint.grid(row=7, column=0, columnspan=6, padx=10, pady=(0, 8), sticky="w")
+    weekend_hint.grid(row=8, column=0, columnspan=6, padx=10, pady=(0, 8), sticky="w")
     weekend_hint.grid_remove()  # startet unsichtbar; ein leeres Label würde trotzdem eine Zeile beanspruchen
 
     # Zweite gedämpfte Hinweiszeile, gleiche Machart: sie erscheint nur, wenn
@@ -248,7 +293,7 @@ def build_period_picker(parent, storage, settings, on_change=None,
     # und die Vorschau wiche unerklärt vom Urlaubs-Dialog ab.
     vacation_hint = tk.Label(frame, text="", font=FONT_SMALL, bg=BG,
                              fg=TEXT_MUTED, wraplength=px(460), justify="left")
-    vacation_hint.grid(row=8, column=0, columnspan=6, padx=10, pady=(0, 8), sticky="w")
+    vacation_hint.grid(row=9, column=0, columnspan=6, padx=10, pady=(0, 8), sticky="w")
     vacation_hint.grid_remove()
 
     def _update_total(*_):
@@ -260,16 +305,26 @@ def build_period_picker(parent, storage, settings, on_change=None,
             return
         hours = total_hours(df, dt, all_entries, handle.get_categories())
         text = f"Gesamtstunden: {hours}h"
-        notice = ""
-        if handle.get_show_vacation():
-            minutes, notice = vacation_preview(
-                df, dt, all_entries, handle.get_categories(), vacation_days)
-            urlaub = round(minutes / 60, 2)
+        notices = []
+        show_vacation = handle.get_show_vacation()
+        show_sick = handle.get_show_sick()
+        if show_vacation or show_sick:
+            vac_min, sick_min, notices = absence_preview(
+                df, dt, all_entries, handle.get_categories(),
+                vacation_days if show_vacation else {},
+                sick_days if show_sick else None)
+            parts = []
+            urlaub = round(vac_min / 60, 2)
             if urlaub:
-                text += f"  (+ {urlaub}h Urlaub)"
+                parts.append(f"+ {urlaub}h Urlaub")
+            krank = round(sick_min / 60, 2)
+            if krank:
+                parts.append(f"+ {krank}h Krankheit")
+            if parts:
+                text += f"  ({' '.join(parts)})"
         total_label.config(text=text)
-        if notice:
-            vacation_hint.config(text=notice)
+        if notices:
+            vacation_hint.config(text="\n".join(notices))
             vacation_hint.grid()
         else:
             vacation_hint.grid_remove()

@@ -1,10 +1,13 @@
 """Tk-freie Planungslogik des Urlaubs-Dialogs (M16: Verhalten gehört in pure
 Funktionen, nicht ins Widget)."""
 
+import ast
+import pathlib
+
 import pytest
 
 from src.dialogs.vacation_dialog import (
-    _format_day_list, blocking_days, parse_hours, plan_vacation_save,
+    format_day_list, blocking_days, parse_hours, plan_vacation_save,
     prune_overrides,
 )
 
@@ -105,28 +108,39 @@ def test_dominant_minutes_breaks_ties_deterministically():
 
 
 def test_format_hours_uses_german_decimal_comma():
-    from src.dialogs.vacation_dialog import _format_hours
-    assert _format_hours(480) == "8,00"
-    assert _format_hours(390) == "6,50"
-    assert _format_hours(0) == "0,00"
+    from src.dialogs.vacation_dialog import format_hours
+    assert format_hours(480) == "8,00"
+    assert format_hours(390) == "6,50"
+    assert format_hours(0) == "0,00"
 
 
-# ---------------------------------------------------------- _format_day_list
+def test_the_sick_dialog_imports_only_public_names_from_the_vacation_dialog():
+    # Beide Dialoge teilen das Format der Stundenfelder; ein privater Name wäre eine Abhängigkeit, die niemand sieht.
+    source = pathlib.Path(__file__).resolve().parent.parent / "src" / "dialogs" / "sick_dialog.py"
+    tree = ast.parse(source.read_text(encoding="utf-8"))
+    names = [alias.name for node in ast.walk(tree)
+             if isinstance(node, ast.ImportFrom) and node.module == "src.dialogs.vacation_dialog"
+             for alias in node.names]
+    assert "format_hours" in names
+    assert [name for name in names if name.startswith("_")] == []
+
+
+# ---------------------------------------------------------- format_day_list
 
 def test_format_day_list_renders_german_dates():
-    assert _format_day_list(["2026-07-01", "2026-07-02"]) == (
+    assert format_day_list(["2026-07-01", "2026-07-02"]) == (
         "01.07.2026" + chr(10) + "02.07.2026")
 
 
 def test_format_day_list_truncates_long_lists():
     days = [f"2026-07-{d:02d}" for d in range(1, 15)]
-    lines = _format_day_list(days, limit=3).split(chr(10))
+    lines = format_day_list(days, limit=3).split(chr(10))
     assert lines[:3] == ["01.07.2026", "02.07.2026", "03.07.2026"]
     assert lines[3] == "… und 11 weitere"
 
 
 def test_format_day_list_without_truncation_has_no_suffix():
-    assert "weitere" not in _format_day_list(["2026-07-01"], limit=3)
+    assert "weitere" not in format_day_list(["2026-07-01"], limit=3)
 
 
 # --------------------------------------------------- Obergrenze / Zahleneingabe
@@ -178,9 +192,26 @@ def test_plan_rejects_a_non_numeric_value():
     ("", 0.0),          # leeres Feld zählt als 0, nicht als Fehler
     ("abc", None),      # keine Zahl -> None, kein Sentinel wie -1
     ("-2", -2.0),       # das Vorzeichen bewertet plan_vacation_save
+    ("nan", None),      # nicht endlich: wie keine Zahl, sonst wirft die
+    ("inf", None),      # Umrechnung in Minuten im trace-Callback
+    ("-inf", None),
+    ("Infinity", None),
+    ("1e999", None),
+    ("1e307", None),    # endlich, aber in Minuten (× 60) nicht mehr
+    ("-1e307", None),
 ])
 def test_parse_hours(text, expected):
     assert parse_hours(text) == expected
+
+
+@pytest.mark.parametrize("text", ["1e306", "-1e306", "1e307", "24"])
+def test_parse_hours_result_converts_to_minutes(text):
+    """Was `parse_hours` als Zahl liefert, rechnet `hours_to_minutes_exact`
+    ohne `OverflowError` um (trace-Callbacks, `plan_vacation_save`)."""
+    from src.vacation_plan import hours_to_minutes_exact
+    value = parse_hours(text)
+    if value is not None:
+        assert isinstance(hours_to_minutes_exact(value), int)
 
 
 def test_prune_overrides_drops_days_outside_a_valid_plan():
@@ -238,3 +269,17 @@ def test_blocking_days_counts_reservations_only_when_enabled(
     settings = {"reservations_enabled": enabled, "gcal_enabled": gcal}
 
     assert blocking_days(_DAYS, None, reservations, settings) == expected
+
+
+def test_vacation_save_blocked_by_sick_days():
+    from src.dialogs.vacation_dialog import sick_blocked_message
+    msg = ("An diesen Tagen bist du krank gemeldet:\n\n01.07.2026\n\n"
+           "Einen Urlaub über Krankheitstage legt die App nicht an; "
+           "Krankheit im Urlaub trägst du als Krankheit ein.")
+    assert sick_blocked_message({"2026-07-01": 480}, {"2026-07-01": 480}) == msg
+    # 0-Minuten-Tage (Wochenende) sperren nicht.
+    assert sick_blocked_message({"2026-07-01": 480}, {"2026-07-01": 0}) is None
+    assert sick_blocked_message({"2026-07-01": 0}, {"2026-07-01": 480}) is None
+    # Bearbeiten: ein schon abgedeckter Tag sperrt nicht.
+    assert sick_blocked_message(
+        {"2026-07-01": 240}, {"2026-07-01": 480}, {"2026-07-01": 480}) is None

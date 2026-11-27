@@ -50,6 +50,9 @@ from src.theme.palette import (  # noqa: F401
     TEXT_MUTED,
     TIME_VALUES,
     TODAY_ACCENT,
+    SICK_ACCENT,
+    SICK_BG,
+    SICK_BG_HOVER,
     VACATION_ACCENT,
     VACATION_BG,
     VACATION_BG_HOVER,
@@ -117,6 +120,7 @@ from src.theme.chrome import (  # noqa: F401
 )
 from src.theme.messagebox import (  # noqa: F401
     run_modal,
+    themed_ask_action,
     themed_ask_delete_choice,
     themed_ask_save_changes,
     themed_askyesno,
@@ -130,7 +134,8 @@ __all__ = [
     "ACCENT", "ACCENT_DISABLED", "ACCENT_HOVER", "BG", "CELL_BG", "CELL_BG_HOVER",
     "ENTRY_BG", "ENTRY_BG_HOVER", "HOLIDAY_ACCENT", "HOLIDAY_BG", "HOLIDAY_BG_HOVER",
     "PAUSE_VALUES", "REMINDER_ACCENT", "RESERVATION_ACCENT", "SEPARATOR", "STATUS_OK", "STATUS_WARN", "TEXT",
-    "TEXT_DISABLED", "TEXT_MUTED", "TIME_VALUES", "TODAY_ACCENT", "VACATION_ACCENT",
+    "SICK_ACCENT", "SICK_BG", "SICK_BG_HOVER", "TEXT_DISABLED", "TEXT_MUTED",
+    "TIME_VALUES", "TODAY_ACCENT", "VACATION_ACCENT",
     "VACATION_BG", "VACATION_BG_HOVER", "WEEKEND_BG", "WEEKEND_BG_HOVER",
     "WEEKEND_ENTRY_BG", "WEEKEND_ENTRY_BG_HOVER", "WEEKEND_FG",
     # fonts
@@ -154,6 +159,6 @@ __all__ = [
     "apply_app_icon", "apply_dark_titlebar", "create_dialog", "disable_min_max",
     "reveal_dialog",
     # messagebox
-    "run_modal", "themed_ask_delete_choice", "themed_ask_save_changes", "themed_askyesno", "themed_showerror",
+    "run_modal", "themed_ask_action", "themed_ask_delete_choice", "themed_ask_save_changes", "themed_askyesno", "themed_showerror",
     "themed_showinfo", "themed_showwarning",
 ]

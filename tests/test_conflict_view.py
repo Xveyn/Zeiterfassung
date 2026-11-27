@@ -341,3 +341,9 @@ def test_entry_choice_carries_notes_only_with_key():
     assert cv.entry_choice(plain) == {"slots": plain["slots"], "deleted": False}
     assert cv.entry_choice({"slots": [], "deleted": True, "notes": {}}) == {
         "slots": [], "deleted": True}
+
+
+def test_sick_basis_value_is_shown_in_words():
+    assert cv.SETTING_LABELS["sick_hours_basis"] == "Grundlage der Krankheitsstunden"
+    assert cv.format_setting_value(
+        "sick_hours_basis", "average_3m") == "Durchschnitt der letzten 3 Monate"

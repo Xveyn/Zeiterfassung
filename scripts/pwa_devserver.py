@@ -3,6 +3,7 @@
 
     python scripts/pwa_devserver.py                 # Web :8099, Handy-Server :17654
     python scripts/pwa_devserver.py --address 192.168.1.20   # nur private LAN-Adressen, die PWA lehnt Loopback ab
+    python scripts/pwa_devserver.py --no-sick       # wie ein Desktop ohne Krankheitstage
 
 Startet den `MobileService` der App (gleiche Routen, gleiche Prüfungen, gleiche Sync-Logik) auf
 einer temporären Datenablage und serviert `pwa/` unter `http://localhost:<port>/`. `localhost`
@@ -39,7 +40,9 @@ from src.mobile_store import MobileStore  # noqa: E402
 from src.mobile_pairing import PairingSession  # noqa: E402
 from src.reservations import ReservationStore  # noqa: E402
 from src.settings import Settings  # noqa: E402
+from src.sick_days import SickStore  # noqa: E402
 from src.storage import Storage  # noqa: E402
+from src.vacations import VacationStore  # noqa: E402
 
 
 def build_id(directory: pathlib.Path) -> str:
@@ -117,11 +120,12 @@ class Dev:
 @contextlib.contextmanager
 def running(data_dir: pathlib.Path, *, web_port: int, api_port: int, address: str,
             seed_days: int = 0, seed_slots: int = 1, window_max: int = 365,
-            reservations: bool = False) -> Iterator[Dev]:
+            reservations: bool = False, sick: bool = True) -> Iterator[Dev]:
     """Startet beide Server und räumt sie wieder ab. Port 0 = frei wählen. `seed_days` legt
     Beispieleinträge für die letzten Tage an (`seed_slots` Slots je Tag), `window_max` ist die
     Obergrenze des Lesefensters (#250). Mit `reservations` ist der Reservierungs-Abgleich an
-    (wie „Reservierungen verwenden“ am Desktop)."""
+    (wie „Reservierungen verwenden“ am Desktop). Ohne `sick` fehlt der Krankheits-Store: die
+    Antwort meldet `sick_days` nicht, wie ein Desktop ohne Krankheitstage."""
     handler = functools.partial(_Handler, directory=str(PWA))
     web = http.server.ThreadingHTTPServer(("127.0.0.1", web_port), handler)
     web_port = web.server_address[1]
@@ -154,7 +158,9 @@ def running(data_dir: pathlib.Path, *, web_port: int, api_port: int, address: st
         storage=storage,
         settings=settings, conflicts_store=ConflictsStore(str(data_dir / "conflicts.json")),
         base=str(data_dir), desktop_name=lambda: "Desktop (Dev)",
-        reservation_store=ReservationStore(str(data_dir / "reservations.json")) if reservations else None)
+        reservation_store=ReservationStore(str(data_dir / "reservations.json")) if reservations else None,
+        sick_store=SickStore(str(data_dir / "sick.json"), device_id="DESKTOP-DEV") if sick else None,
+        vacation_store=VacationStore(str(data_dir / "vacations.json")))
 
     def run(fn, done=None):
         result = fn()
@@ -215,12 +221,14 @@ def main(argv: list[str] | None = None) -> int:
                         help="Obergrenze des Lesefensters in Tagen (Standard 365)")
     parser.add_argument("--reservations", action="store_true",
                         help="Reservierungen im Abgleich anbieten (reservations_enabled)")
+    parser.add_argument("--no-sick", dest="sick", action="store_false",
+                        help="Ohne Krankheitstage im Abgleich (die Antwort meldet sick_days nicht)")
     args = parser.parse_args(argv)
     address = args.address or (netinfo.lan_candidates() or ["127.0.0.1"])[0]
     data_dir = args.data_dir or pathlib.Path(tempfile.mkdtemp(prefix="zeiterfassung-pwa-dev-"))
     with running(data_dir, web_port=args.port, api_port=args.api_port, address=address,
                  seed_days=args.seed_days, seed_slots=args.seed_slots, window_max=args.window_max,
-                 reservations=args.reservations) as dev:
+                 reservations=args.reservations, sick=args.sick) as dev:
         code = dev.new_code()
         print(f"PWA:           http://localhost:{dev.web_port}/")
         print(f"Handy-Server:  http://{address}:{dev.api_port}")

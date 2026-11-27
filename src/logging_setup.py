@@ -34,6 +34,14 @@ QUIET_LOGGERS = {
     "google_auth_oauthlib.flow": logging.WARNING,
 }
 
+# Fremd-Logger, die auch unter DEBUG gedeckelt bleiben: der Inhalt eines
+# Berichts (mit „Krankheit ausweisen“ auch Gesundheitsdaten) darf nie ins Log.
+# `xhtml2pdf.document` schreibt auf DEBUG das ganze Quell-HTML der PDF; die
+# Kinder-Logger erben den Deckel vom Paket-Logger.
+PRIVATE_LOGGERS = {
+    "xhtml2pdf": logging.WARNING,
+}
+
 
 def _resolve_level() -> int:
     """Log-Level: `ZEITERFASSUNG_LOG_LEVEL` (z.B. `DEBUG`) überschreibt den
@@ -70,7 +78,7 @@ def setup_logging(base_path: str, console: bool | None = None) -> str:
     die App aus dem Quellcode läuft, s. `_console_wanted`).
 
     `ZEITERFASSUNG_LOG_LEVEL=DEBUG` hebt die Ausführlichkeit an (Konsole und
-    Logfile).
+    Logfile), außer für `PRIVATE_LOGGERS`.
 
     Idempotent: ein zweiter Aufruf addiert keinen weiteren Handler.
     """
@@ -83,6 +91,8 @@ def setup_logging(base_path: str, console: bool | None = None) -> str:
     if root.level > logging.DEBUG:
         for name, level in QUIET_LOGGERS.items():
             logging.getLogger(name).setLevel(level)
+    for name, level in PRIVATE_LOGGERS.items():
+        logging.getLogger(name).setLevel(level)
     if not any(isinstance(h, RotatingFileHandler) for h in root.handlers):
         handler = RotatingFileHandler(
             log_path,

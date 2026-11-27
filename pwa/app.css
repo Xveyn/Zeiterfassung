@@ -13,6 +13,8 @@
   --muted: #a8a8ba;
   --ok: #4ade80;
   --warn: #fbbf24;
+  --sick: #4c1d3d;              /* Krankheitstag wie am Desktop (SICK_BG); Text und Markierungen erreichen dort 4,5:1 */
+  --sick-text: #f472b6;         /* „krank“ auf --sick (SICK_ACCENT) */
   --gutter: 16px;
   --tap: 44px;
   color-scheme: dark;
@@ -75,6 +77,9 @@ button.option.active { background: var(--accent); color: #fff; font-weight: 600;
 .hint.warn { border-color: var(--warn); }
 .hint.info { border-color: #60a5fa; }
 .hint .actions { margin-top: 6px; display: flex; gap: 8px; flex-wrap: wrap; }
+/* Auf der Karte des Hinweises hätte ein normaler Knopf dieselbe Fläche (--cell) und läse sich als Text: umrandet, kein
+   Hauptknopf (es wird gelöscht, mit Rückfrage). */
+.hint button.remove-sick { border: 1px solid var(--line); }
 
 .weekbar { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
 .weekbar .title { flex: 1; text-align: center; }
@@ -88,6 +93,11 @@ button.option.active { background: var(--accent); color: #fff; font-weight: 600;
 }
 .day.weekend { background: var(--weekend); }
 .day.filled { background: var(--entry); }
+/* Krankheit gewinnt die Farbe der Zeile, auch über Wochenende und Ist-Zeit (wie am Desktop); der Streifen links hebt sie
+   zusätzlich vom Wochenende ab. */
+.day.sick { background: var(--sick); box-shadow: inset 4px 0 0 var(--sick-text); }
+.day .sick-line { font-size: .95rem; }
+.day .sick-label { color: var(--sick-text); font-weight: 600; }
 .day.today { outline: 2px solid var(--accent); }
 .day .wd { font-weight: 700; }
 .day .date { color: var(--muted); font-size: .85rem; }
@@ -138,6 +148,7 @@ video { width: 100%; border-radius: 8px; background: #000; }
 
 label.check { display: flex; align-items: center; gap: 8px; min-height: var(--tap); margin: 4px 0; }
 label.check input { width: auto; min-height: 0; flex: none; }
+label.check[hidden] { display: none; }
 
 .hint.older { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 

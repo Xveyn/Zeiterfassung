@@ -114,6 +114,12 @@ def test_app_passes_the_reservation_store_and_the_hook_to_the_mobile_context():
     assert "on_reservations_change=self._on_remote_calendar_data_changed" in context
 
 
+def test_app_passes_the_sick_and_vacation_stores_to_the_mobile_context():
+    context = UI.read_text(encoding="utf-8").split("MobileContext(")[1].split("run=self._bg.run")[0]
+    assert "sick_store=self.sick_store" in context
+    assert "vacation_store=self.vacation_store" in context
+
+
 def test_the_relay_store_is_built_in_main_and_reaches_the_mobile_context():
     main_source = MAIN.read_text(encoding="utf-8")
     ui_source = UI.read_text(encoding="utf-8")

@@ -32,6 +32,7 @@ from src.paths import get_base_path, get_resource_path
 from src.reservations import ReservationStore, migrate_reservations_enabled
 from src.settings import Settings, clamp_ui_scale
 from src.storage import Storage
+from src.sick_days import SickStore
 from src.vacations import VacationStore
 from src.startup_info import describe_environment, describe_features
 from src.sync_runtime import run_pull_in_background
@@ -118,7 +119,8 @@ def _ensure_device_name(settings) -> str:
     return settings.get("device_name") or ""
 
 
-def _sweep_orphan_tombstones(storage, reservation_store, settings, base) -> int:
+def _sweep_orphan_tombstones(storage, reservation_store, settings, base,
+                             sick_store=None) -> int:
     """Verwirft beim Start Tombstones, die nie einen Abnehmer bekommen (N6).
 
     Storage-Tombstones löst nur ein Drive-Sync ein, Reservierungs-Tombstones
@@ -138,7 +140,8 @@ def _sweep_orphan_tombstones(storage, reservation_store, settings, base) -> int:
     from src import reservations_sync, sync
     dropped = 0
     if not sync_history.ever_synced(base):
-        dropped += sync.drop_orphan_tombstones(storage, settings)
+        dropped += sync.drop_orphan_tombstones(storage, settings,
+                                               sick_store=sick_store)
     if not sync_history.ever_reconciled(base):
         dropped += reservations_sync.drop_orphan_reservation_tombstones(
             reservation_store, settings)
@@ -323,6 +326,11 @@ def main():
     vacation_store = VacationStore(os.path.join(base, "vacations.json"),
                                    lock=data_lock)
 
+    # Krankheitstage: am geteilten data_lock, weil sie im Sync-Doc reisen und
+    # Snapshot → Merge → Apply unter demselben Lock klammern (Audit H1/H2).
+    sick_store = SickStore(os.path.join(base, "sick.json"), device_id=device_id,
+                           lock=data_lock)
+
     # BEWUSST OHNE den geteilten data_lock — der Store legt sich seinen eigenen an.
     # Der geteilte Lock (Audit H1/H2) existiert, um Snapshot→Merge→Apply der
     # SYNC-Flows über storage/settings/conflicts/reservations atomar zu klammern.
@@ -357,7 +365,7 @@ def main():
     from src import sync_journal
     sync_journal.recover_pending_apply(
         os.path.join(base, sync_journal.JOURNAL_FILENAME),
-        storage, settings, conflicts_store)
+        storage, settings, conflicts_store, sick_store=sick_store)
 
     # Reservierungen hingen bis dahin an gcal_enabled (einmalige Umstellung,
     # s. reservations.migrate_reservations_enabled). Nicht-fatal wie die
@@ -375,7 +383,8 @@ def main():
     # ein Schreibfehler (Platte voll o.ä.) darf den Start nicht verhindern —
     # --noconsole schluckt stderr, ein Crash hier wäre spurlos.
     try:
-        _sweep_orphan_tombstones(storage, reservation_store, settings, base)
+        _sweep_orphan_tombstones(storage, reservation_store, settings, base,
+                                 sick_store=sick_store)
     except Exception:
         logging.getLogger(__name__).exception(
             "Tombstone-Sweep fehlgeschlagen (nicht-fatal)")
@@ -394,7 +403,8 @@ def main():
     app = App(root, storage, settings, base_path=base, conflicts_store=conflicts_store,
               reservation_store=reservation_store, single_instance=guard,
               data_lock=data_lock, sync_guard=sync_guard, webhook_store=webhook_store,
-              vacation_store=vacation_store, smtp_store=smtp_store,
+              vacation_store=vacation_store, sick_store=sick_store,
+              smtp_store=smtp_store,
               mobile_store=mobile_store, mobile_keys=mobile_keys,
               mobile_relay_store=mobile_relay_store,
               mobile_box_store=mobile_box_store,
@@ -426,7 +436,8 @@ def main():
         threading.Thread(
             target=run_pull_in_background,
             args=(storage, settings, conflicts_store, base, _on_sync_done),
-            kwargs={"data_lock": data_lock, "sync_guard": sync_guard},
+            kwargs={"data_lock": data_lock, "sync_guard": sync_guard,
+                    "sick_store": sick_store},
             daemon=True,
         ).start()
 

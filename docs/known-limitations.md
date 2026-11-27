@@ -863,6 +863,36 @@ Die Slots eines Tages stehen chronologisch, nach Kategorie oder in einer eigenen
   (kein Konflikt, kein Datenverlust an den Zeiten selbst).
 - **Lokale API und Sync-Doc** liefern die gespeicherte Reihenfolge, nicht die angezeigte.
 
+## Krankheitstage: bekannte Grenzen
+
+- **Der Durchschnitt der letzten 3 Monate zählt unerfasste Tage als 0 Minuten.** Die App unterscheidet „noch nicht
+  erfasst“ nicht von „nicht gearbeitet“; und er enthält Mehrarbeit, weil sie die vertragliche Arbeitszeit nicht kennt.
+  Bei einem Zeitraum in der Zukunft endet das Fenster heute.
+- **Ein gelöschter Krankheitstag kann zurückkehren.** Es gibt keinen Self-Heal (ein fehlender Tag beweist keine Löschung,
+  ältere Geräte lassen den Bereich beim Push fallen): hat ein Gerät den Tombstone vor der Kompaktierung nicht erhalten,
+  weil es offline war oder weil ein älteres Gerät den Bereich `sick` gerade fallen ließ, bringt es den Tag zurück.
+- **Ein Block kann länger als 366 Tage werden.** Das Handy kann Tage krank melden, die zusammen mit angrenzenden
+  Krankheitstagen einen Block von mehr als 366 Tagen bilden; der Abgleich prüft die Länge des Blocks nicht. Der
+  Krankheits-Dialog am Desktop lehnt das Speichern eines solchen Blocks ab, er lässt sich dort nur löschen oder kürzen.
+  Die lokale API verhält sich genauso (`POST /v1/sick` an einen bestehenden Block angrenzend).
+- **Eine Reservierung, die nur am Handy lebte und im selben Abgleich gelöscht ankommt, kennt der Desktop nicht.** Legt
+  jemand am Handy eine Reservierung an, löscht sie vor dem nächsten Abgleich wieder und meldet sich für den Tag krank,
+  kommt nur ihr Tombstone an: der Tag wird aus der Standardzeit bzw. dem Durchschnitt vorbelegt, nicht aus der
+  Reservierung. Eine Reservierung, die das Handy lebend mitschickt, zählt dagegen schon, ebenso die Ist-Zeiten derselben
+  Anfrage.
+- **Nach einer verlorenen Antwort kann ein am Handy entfernter Krankheitstag einmal zurückkommen.** Die Web-App verwirft
+  einen nie abgeglichenen Tag nur lokal; `synced_version 0` beweist aber nicht, dass der Desktop ihn nie kannte, wenn
+  die Antwort auf den Abgleich verloren ging. Erneutes Entfernen hält.
+- **„Krankheit entfernen“ in der Web-App entfernt nur die Tage, die das Handy kennt.** Das Handy hält Krankheitstage nur
+  in seinem Lesefenster (standardmäßig die letzten 90 Tage, dazu 14 Tage voraus). Beginnt ein Block vor dem Fenster
+  (oder endet er dahinter), entfernt das Handy nur den Teil darin; die Tage davor bzw. danach bleiben am Desktop krank
+  gemeldet. Die Rückfrage am Handy nennt genau die Tage, die es entfernt; den Rest löscht der Desktop (Rechtsklick auf
+  den Block).
+- **Das Bis-Datum von „Krank melden“ in der Web-App ist auf iOS ungeprüft.** Der Dialog nutzt ein natives
+  `<input type="date">`; Safari zeichnet solche Felder mit eigener Breite (bei der Zeitauswahl führte das zu #511). Das
+  Feld steht allein in voller Breite, Überlappen ist daher unwahrscheinlich. Zu prüfen im Pre-Release auf einem
+  iOS-Gerät.
+
 ## Beschädigte oder fremde Daten (Storage)
 
 - **Ungültige Slot-Werte werden beim Lesen ersetzt, nicht repariert.** Eine gespeicherte Pause, die keine ganze Zahl von 0 bis 1440 ist (`null`, Text, `30.5`, negativ, `inf`), zählt `0`; `start`/`end` ohne Text zählen als leer, eine Kategorie ohne Text als „ohne Kategorie“. Die Datei behält den Originalwert, bis der Tag neu gespeichert wird.

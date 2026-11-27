@@ -465,3 +465,74 @@ test('the app wires the note display: week model option, settings section only w
   assert.match(app, /notes: meta\.slot_notes \? \{ display: normalizeNoteDisplay\(meta\.note_display\), options: NOTE_DISPLAY_OPTIONS \} : null/);
   assert.match(app, /setNoteDisplay: async[\s\S]*?this\.store\.setMeta\(\{ note_display: display \}\);\s*this\.render\(\);/);   // die Woche folgt sofort
 });
+
+// --- Krankheitstage ----------------------------------------------------------------------------------
+
+test('a checkbox row that is hidden really disappears (label.check is display: flex)', () => {
+  assert.match(rule('label.check[hidden]'), /display: none/);
+});
+
+test('the week row shows a sick day with its label, the hours from the model and its flags', () => {
+  assert.match(views, /day\.sick && 'sick'/);
+  assert.match(views, /day\.sick && h\('div', \{ class: 'sick-line' \}, h\('span', \{ class: 'sick-label' \}, day\.sick\.label\)\)/);
+  assert.match(views, /day\.sick\?\.dirty && h\('span', \{ class: 'mark-dirty', title: 'Krankheit nicht übertragen' \}/);
+  assert.match(views, /day\.sick\?\.error && h\('span', \{ class: 'err' \}, day\.sick\.error\)/);
+});
+
+test('the editor offers „Krank melden“ only when told so and removes the sickness from the lock hint', () => {
+  assert.match(views, /reportSick && button\('Krank melden', \(\) => handlers\.reportSick\(dialog\)/);
+  // Unter beiden Reitern: an Tagen nach heute öffnet der Editor bei der Reservierung.
+  assert.doesNotMatch(views, /sickButton\.hidden/);
+  assert.match(views, /l\.action === 'remove-sick' && button\(l\.buttonText, \(\) => handlers\.removeSick\(dialog\), 'remove-sick'/);
+  // Auf der Hinweiskarte (--cell) braucht der Knopf einen Rahmen, sonst läse er sich als Text.
+  assert.match(rule('.hint button.remove-sick'), /border: 1px solid var\(--line\)/);
+});
+
+test('app.js wires sick days: week model only with the capability, report and removal through the store', () => {
+  assert.match(app, /sickDays: meta\.sick, sickEnabled: meta\.sick_capable/);
+  assert.match(app, /reportSick: canReportSick\(\{ date, today, meta \}\)/);
+  assert.match(app, /await this\.store\.markSick\(date, to\)/);
+  assert.match(app, /for \(const day of current\.reservations\.dates\)[\s\S]*?await this\.store\.clearReservation\(day\)/);
+  assert.match(app, /confirmDialog\(\{ title: 'Krankheit entfernen\?', text: sickRemovalText\(block\)[\s\S]*?await this\.store\.clearSick\(block\.dates\)/);
+  // Nach dem Melden und Entfernen läuft ein Abgleich, wie nach dem Speichern eines Tages.
+  const sickCode = /\n {2}reportSick\(date, editor\) \{[\s\S]*?\n {2}\}\n[\s\S]*?\n {2}removeSick\(date, editor\) \{[\s\S]*?\n {2}\}\n/.exec(app)?.[0];
+  assert.ok(sickCode, 'reportSick/removeSick fehlen');
+  assert.equal((sickCode.match(/this\.scheduleSyncAfterSave\(\)/g) || []).length, 2);
+  // Krankheitstage gehen nie ins Debug-Protokoll: weder Daten noch Minuten.
+  assert.doesNotMatch(sickCode, /logFailure|debugLog|console\./);
+  // Das Modell (welche Reservierungen gelöscht werden) entsteht VOR `markSick`: danach sind die Tage krank, das
+  // Häkchen böte keine mehr an und löschte still nichts.
+  const model = sickCode.indexOf('const current = modelFor(to);');
+  const mark = sickCode.indexOf('await this.store.markSick(date, to)');
+  assert.ok(model > 0 && mark > model, 'modelFor(to) muss vor markSick stehen');
+  assert.match(sickCode, /return sickSaveResult\(\{ markError: error \}\)/);
+  assert.match(sickCode, /return sickSaveResult\(\{ reservationError: failed \}\)/);
+});
+
+test('app.js opens a future sick day on the actual time and re-checks the lock when saving work time', () => {
+  // „Krankheit entfernen“ steht nur unter der Arbeitszeit; welcher Reiter vorn ist, entscheidet `editorStartTab`.
+  assert.match(app, /const startWith = editorStartTab\(\{ date, today, reservationOn, lock \}\);/);
+  // Ein Abgleich bei offenem Editor kann den Tag krank gemacht haben: die Sperre vom Öffnen genügt beim Speichern nicht.
+  const save = /\n {6}save: async \(kind, rows\) => \{[\s\S]*?\n {6}\},\n {6}clear:/.exec(app)?.[0];
+  assert.ok(save, 'save-Handler des Tages-Editors fehlt');
+  assert.match(save, /const current = this\.store\.getDay\(date\);\s*const currentLock = editLock\(\{ date, today: localIsoDate\(new Date\(\)\), meta: this\.store\.getMeta\(\),\s*hasRecord: Boolean\(current\) \}\);\s*if \(currentLock\) return currentLock\.text;/);
+  assert.doesNotMatch(save, /if \(lock\) return lock\.text;/);
+});
+
+test('after a partial failure the sick dialog only closes: no second report, the message stays', () => {
+  const dialog = /export function sickDialog[\s\S]*?\n}\n/.exec(views)?.[0];
+  assert.ok(dialog, 'sickDialog fehlt');
+  assert.match(dialog, /if \(result\.final\) \{[\s\S]*?save\.disabled = true;[\s\S]*?save\.hidden = true;[\s\S]*?cancel\.textContent = 'Schließen';[\s\S]*?message\.textContent = result\.message;/);
+  assert.match(dialog, /if \(finished\) return;/);                        // auch Enter im Feld meldet nicht erneut
+});
+
+test('on a sick day the reservation tab is locked in the editor and re-checked when saving', () => {
+  assert.match(views, /reservationLock = null/);
+  assert.match(views, /save\.disabled = Boolean\(active === 'work' \? lock : reservationLock\)/);
+  assert.match(views, /res\.element\.inert = Boolean\(reservationLock\)/);
+  assert.match(views, /resHint\.hidden = kind !== 'reservation'/);
+  assert.match(app, /reservationLock: reservationLock\(\{ date, meta \}\)/);
+  const save = /\n {6}save: async \(kind, rows\) => \{[\s\S]*?\n {6}\},\n {6}clear:/.exec(app)?.[0];
+  assert.ok(save);
+  assert.match(save, /const resLock = reservationLock\(\{ date, meta: this\.store\.getMeta\(\) \}\);\s*if \(resLock\) return resLock\.text;/);
+});

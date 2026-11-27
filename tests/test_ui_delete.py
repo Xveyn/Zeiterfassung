@@ -76,3 +76,41 @@ def test_delete_options_show_notes_and_keep_them():
     options = _delete_options(slots, "entry", "Arbeitszeit", GridRenderer._fmt_slot_line)
     assert options[0] == ("entry:0", "Arbeitszeit  08:00-12:00  Montage · Kunde Mustermann")
     assert _delete_action(slots, {"entry:1"}, "entry") == ("save", [slots[0]])
+
+
+def _sick_block(tmp_path):
+    from src.sick_days import SickStore
+    store = SickStore(str(tmp_path / "sick.json"), device_id="d")
+    store.save_range({"2026-03-02": 480, "2026-03-03": 480, "2026-03-04": 0})
+    return store, store.block_for("2026-03-03")
+
+
+def test_delete_day_offers_whole_sick_block(tmp_path):
+    from src.ui import _delete_units
+    store, block = _sick_block(tmp_path)
+    entry = [{"start": "08:00", "end": "12:00"}]
+    options = _delete_units(entry, [], None, block)
+    assert ("sick:2026-03-02", "Krankheit 02.03.2026 – 04.03.2026") in options
+    assert options[0][0] == "entry:all"
+    # Auch ein 0-Minuten-Tag des Blocks bietet ihn an; allein ist er die einzige Einheit.
+    assert _delete_units([], [], None, block) == [options[-1]]
+
+
+def test_single_sick_unit_question(tmp_path):
+    from src.ui import _single_delete_question
+    _store, block = _sick_block(tmp_path)
+    assert _single_delete_question(
+        "sick:2026-03-02", "03.03.2026", None, block) == (
+        "Krankheit", "Krankheit 02.03.2026 – 04.03.2026 komplett löschen?")
+
+
+def test_selecting_sick_key_deletes_all_block_days(tmp_path):
+    from src.ui import _apply_sick_selection
+    store, block = _sick_block(tmp_path)
+    assert _apply_sick_selection({"entry:all"}, block, store) is False
+    assert len(store.blocks()) == 1
+    assert _apply_sick_selection({"sick:2026-03-02"}, block, store) is True
+    assert store.blocks() == []
+    assert store.day_minutes() == {}
+    assert all(store.get_all_raw()[d]["deleted"] for d in block.days)
+    assert _apply_sick_selection({"sick:2026-03-02"}, None, store) is False

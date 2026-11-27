@@ -217,8 +217,8 @@ liefert `None`, wenn sich nicht ermitteln ließ, ob ein Passwort existiert
 `share_task`, `smtp_dialog.do_test`) melden das als eigenen Fehlerfall statt
 sich mit leerem Passwort anzumelden.
 
-**Datenschicht-Locking (Audit H1/H2/M1):** Fünf Stores
-(`storage`/`settings`/`conflicts_store`/`reservations`/`vacations`) teilen
+**Datenschicht-Locking (Audit H1/H2/M1):** Sechs Stores
+(`storage`/`settings`/`conflicts_store`/`reservations`/`vacations`/`sick`) teilen
 sich einen in `main()` erzeugten `RLock` (Konstruktor-Param `lock=`; ohne
 Injektion legt jeder Store einen eigenen an — Tests bleiben unverändert); alle übrigen
 (`webhook_store`, `smtp_store` und die gerätelokalen `mobile_*`-Stores: Geräte, Schlüssel,
@@ -284,10 +284,23 @@ den Store zu — dieselbe Regel wie beim Entries-Snapshot.
 
 Der Snapshot ist dabei **nicht** der endgültige Wert: `report.generate_report`,
 `report.generate_pdf` und `webhook.build_json_payload` schicken ihn jeweils
-noch durch `vacations.cap_by_worktime`, das die Urlaubsminuten eines Tages um
+noch durch `absence.cap_by_worktime`, das die Urlaubsminuten eines Tages um
 die dort erfasste Ist-Zeit kappt (Xveyn#97, Begründung in der Wurzel-CLAUDE.md
 unter „Urlaub"). Gekappt wird erst dort, weil erst dort feststeht, auf welchen
 Zeitraum und welche Kategorien der Bericht gefiltert ist.
+
+**Krankheit reist ebenso, aber als `sick_days=None | dict`.** `None` heißt
+„Häkchen aus“ (Bericht und Webhook bitgleich zu vorher), ein Dict (auch `{}`)
+„ausweisen“. Der Dialog-Thread zieht es über `period_picker.report_sick_days`
+(`SickStore.day_minutes()` durch denselben Wochentags-Filter wie den Urlaub,
+ohne Häkchen gar nicht) und reicht es an `perform_send`,
+`perform_export_pdf` und (für die Mail-HTML) `generate_report`. Ob `None` den
+reinen Urlaubs-Weg nimmt oder der Schnitt gilt, entscheidet überall
+`absence.cut_for_output`: in Bericht, Webhook, der Vorschau des Zeitraum-Pickers
+(`period_picker.absence_preview`) und der Leer-Prüfung
+`send_dialog.period_has_no_content`. Die Leer-Prüfung urteilt wie der Bericht
+über das Ergebnis des Schnitts (ein Urlaubstag unter einem Krankheitstag ohne
+Minuten ist kein Inhalt).
 
 ## Daten- & Persistenz-Schicht
 
@@ -494,6 +507,39 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
   erlaubt), kann ein zweites Speichern kurz nach dem Abgleich einen Konflikt `setting` „Handy gegen Handy“
   erzeugen; der neuere Stand gewinnt vorläufig, Daten gehen nicht verloren (bei Einträgen ist es dasselbe).
   Die Antwort trägt `writable_settings` (Feature-Erkennung der PWA: nur wenn sie die Schlüssel nennt, bietet das Handy das Bearbeiten an).
+  **Krankheitstage reisen additiv mit** (`sick`, `PROTOCOL` bleibt 2): `parse_request` prüft den Teil `sick` immer über
+  `mobile_sick.parse_sick` (je Tag `{modified_at, deleted, minutes?}`, `minutes` 0–1440 oder fehlend, Datum 2000–2100,
+  Stempel höchstens 15 Minuten in der Zukunft, höchstens 400 Tage, unbekannte Felder abgelehnt; `422 invalid_entry`, die
+  Meldung beginnt mit `Krankheit <Datum>:`, damit die PWA den Tag zuordnet). **Die Minuten rechnet der Desktop, und zwar vor
+  dem Merge** (`clean_section` verwirft einen Datensatz ohne Minuten): fehlen sie an einem lebenden Tag, behält er die eines
+  lebenden Desktop-Krankheitstags, sonst rechnet `sick_plan.prefill` — dieselbe Regel wie Dialog und API
+  (`mobile_sick.fill_minutes`). Die Folgen bilden sich über **alle** lebenden Handy-Tage ohne Minuten, auch über Tage, die
+  der Desktop schon hat (der erste Tag ist der Anker des Durchschnitts), und laufen in Datumsreihenfolge; spätere Folgen
+  sehen die früheren samt den Handy-Tagen mit eigenen Minuten als Krankheit, sonst zählten sie bei `average_3m` als
+  Arbeitstage mit 0 Minuten; ein Desktop-Tag, den das Handy in derselben Anfrage löscht, zählt dabei weiter als Krankheit.
+  Eingaben: `sick_hours_basis`, `Storage.get_all()` mit den Ist-Zeiten derselben Anfrage darüber (ein Handy-Tag ersetzt die
+  Slots, ein Tombstone nimmt den Tag heraus, `mobile_sick.prefill_entries`), der Urlaub über `MobileContext.vacation_store`,
+  die Reservierungen nur bei `reservations_active`, im Stand **vor** `merge_phone` plus den lebenden Handy-Reservierungen an
+  Tagen ohne lebende Desktop-Reservierung (`prefill_reservations`; eine in derselben Anfrage gelöschte Desktop-Reservierung
+  bestimmt die Minuten noch), `today` als lokales Datum des Desktops. Schickt das
+  Handy `minutes` doch, gelten sie (das Protokoll erlaubt es, die PWA tut es nicht). **Unveränderte Tage bleiben weg**
+  (`phone_records`): ein lebender Tag, den der Desktop mit denselben Minuten lebend hat (auch ohne `minutes`), und ein
+  Tombstone über einem Desktop-Tombstone; der Desktop-Datensatz behält Stempel und Gerät, sonst schlüge eine wiederholte
+  Anfrage eine gleichzeitige Änderung auf einem anderen Gerät (wie `SickStore._put_days`/`delete_days`). `_phone_doc` setzt
+  den Bereich `sick` nur mit Tagen, die Stempel wie bei den Einträgen auf `last_pull_at + 1 s` angehoben (außer bei
+  `excluded`); der Merge ist `sync.merge` (LWW je Tag, keine Konflikte, kein Self-Heal), `build_local_doc` **und**
+  `apply_merged_doc_journaled` bekommen den Store, im selben `data_lock`. Ein Handy-Tombstone, der im LWW gewinnt, aber
+  unter dem Watermark liegt (`excluded` oder erster Abgleich nach dem Koppeln), entfernte der Merge als erledigt, und das
+  Anwenden stellte den lebenden Desktop-Tag wieder her; `mobile_sick.keep_phone_deletions` setzt ihn deshalb mit dem
+  Stempel `max(Handy, Watermark)` wieder ein (bleibt bis zur nächsten Kompaktierung). Eine Ist-Zeit am selben Tag lehnt den Abgleich
+  nicht ab — anders als Dialog und API (`409 work_on_sick_days`): die Kappung (`absence.cut_absences`) behandelt den
+  Zustand wie beim Urlaub; auch die Länge eines entstehenden Blocks prüft der Abgleich nicht (Grenze:
+  `docs/known-limitations.md`). Die Antwort trägt `sick_days: true` und `sick` (`{ISO: {minutes, modified_at, deleted}}`:
+  lebende Tage und Tombstones im Fenster, das die Antwort nennt (`window_days` nach `fit_window`, bis heute +
+  `WINDOW_AHEAD_DAYS`), plus die gesendeten Tage, `mobile_sick.build_sick`) **nur** mit `MobileContext.sick_store`; der
+  Block zählt nicht ins Mengenbudget von `fit_window`. Eine Anfrage ohne `sick` (ältere
+  PWA) bleibt gültig, eingefroren als `pwa/test/fixtures/compat/sync-request-pre-sick.json` (die Antwort davor:
+  `sync-response-pre-sick.json`). Kein Log nennt einen Krankheitstag.
   `mobile_settings.py` — Prüfung und Helfer der Einstellungen im Handy-Abgleich, Tk-frei und ohne I/O.
   `parse_settings` → `{key: {value, modified_at}}` oder `SettingsError` (`mobile_sync` macht daraus `422
   invalid_entry`, ein eigener Code brauchte einen Eintrag in `pwa/test/fixtures/errors.json`). Grenzen: höchstens
@@ -520,6 +566,12 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
   `build_response` ist rein: Fenster `[heute − Fenster, heute + WINDOW_AHEAD_DAYS]` (14 Tage nach vorn, nicht im Budget; gewährt über `grant_window`, vom Budget `fit_window` gekürzt, #250/#292) plus gesendete Tage, offene Eintrags-Konflikte
   mit Gerätenamen aus der Registry, alle Slots über `storage.sanitize_slot`. `on_change` ruft die Route
   nach Freigabe von Guard und Lock.
+
+  Der Zeitraum-Kern von Urlaub und Krankheit — `date_range`, `holiday_dates`,
+  `apportion_minutes`, `cap_by_worktime`, `cap_notice`, `format_day_list`, dazu der
+  Schnitt der beiden gegeneinander (`cut_absences`/`cut_for_output`, Krankheit gewinnt) —
+  liegt Tk-frei in `absence.py`. `vacations`/`vacation_plan` re-exportieren ihn, die
+  Krankheits-Module (`sick_days`, `sick_plan`, `mobile_sick`) importieren direkt von dort.
 
   `VacationStore` (`vacations.json`) hängt am geteilten `data_lock` wie
   `Storage`, `Settings`, `ConflictsStore` und `ReservationStore` — anders als
@@ -634,6 +686,27 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
   beides gleich). Ein anders gestempelter Eintrag ohne `notes` ist ein späterer Schreibvorgang und erbt
   nicht. Ein Tombstone wird nie ergänzt und gewinnt oder verliert nach LWW; Kompaktierung und
   Startup-Sweep sehen nur `deleted` und entfernen ihn samt Markierung (Grenze: `docs/known-limitations.md`).
+
+  **Krankheitstage** liegen in `sick.json` (`SickStore`, am geteilten `data_lock`) und reisen als
+  additiver Bereich `sick` im Sync-Doc (kein Schema-Bump; er fehlt, solange kein Gerät einen Tag oder
+  Tombstone hat). Je Tag gewinnt der neuere Datensatz, Konflikte gibt es nicht. Darum behält ein
+  lebender Tag, den `save_range`/`replace_block` mit denselben Minuten erneut schreiben, seinen
+  Datensatz samt Stempel und Gerät: ein neuer Stempel ohne Änderung schlüge eine gleichzeitige
+  Löschung auf einem anderen Gerät. Dieselben Wege räumen
+  ihre Tombstones ab: die Kompaktierung strippt erledigte (`compact_local`), der Startup-Sweep verwirft
+  sie auf nie gesyncten Geräten (`drop_orphan_tombstones`). **Anders als bei den Einträgen gibt es
+  keinen Self-Heal:** ein fehlender Tag beweist keine Löschung, weil ältere Geräte den Bereich beim
+  Push fallen lassen. Der akzeptierte Preis: ein gelöschter Tag, dessen Tombstone kompaktiert wurde,
+  kann von jedem Gerät zurückkommen, das den Tombstone vor der Kompaktierung nicht erhalten hat —
+  weil es offline war oder weil ein älteres Gerät den Bereich `sick` gerade fallen ließ. Jeder Flow, der ein
+  lokales Doc baut **und** ein gemergtes anwendet (Drive-Pull, Push, Kompaktierung und der
+  Handy-Abgleich `mobile_sync.perform_sync`), reicht `sick_store` an
+  `build_local_doc` **und** an `apply_merged_doc_journaled` weiter: bekäme nur das Anwenden den Store,
+  fehlten dem Merge die lokalen Tage. `apply_merged_doc` behält deshalb jeden lebenden lokalen Tag, der im
+  gemergten Bereich fehlt (`merge` entfernt nie einen lebenden Tag); fehlende Tombstones fallen weg.
+  Ein Datensatz trägt genau `minutes`, `modified_at`, `device_id`, `deleted`, unbekannte Felder entfallen
+  beim Merge; weitere Tagesdaten bekommen einen eigenen Bereich im Sync-Doc, nie ein Feld im Datensatz. Das Journal-Recovery wendet
+  nur an und bekommt den Store ebenfalls. Logs nennen höchstens Anzahlen, nie Datum oder Minuten.
 
   Die Bedingung des Sweeps ist bewusst eng: Feature AUS reicht nicht, es muss
   **nie an** gewesen sein. Wer den Sync abschaltet, dessen Remote kennt die
@@ -932,6 +1005,7 @@ Wert.
   unbekannte und doppelte Query-Parameter sind 400. Ein Programmfehler wirft
   durch; der Server macht daraus eine 500 ohne Details.
 - `api_vacation_write.py` + `vacation_plan.py` — Urlaub in der lokalen API (#239, PR 7). `parse_vacation_body` prüft den Body als Fremddaten (`name`, `from`, `to`, genau eines von `hours_per_day`/`total_hours`, optional `day_hours`; höchstens 366 Tage) und baut die Eingabe des Planers; **gerechnet wird nicht dort**, sondern in `vacation_plan.plan_vacation_save` — derselben Funktion wie im Urlaubs-Dialog (Arbeitstage, Feiertage über `settings["state"]`, `apportion_minutes`, 24-h-Grenze, Overrides), die dafür aus `dialogs/vacation_dialog.py` Tk-frei nach `vacation_plan.py` gezogen wurde (der Dialog importiert sie unter den alten Namen zurück; `blocking_days` ebenso). Die Routen `GET /v1/vacations[/{id}]`, `POST /v1/vacations`, `DELETE /v1/vacations/{id}` stehen in `api_routes`: kein `PUT` (Bearbeiten = Löschen + Neuanlegen, die Tageswerte-Frage von `prune_overrides` stellt sich so nicht), gelöscht wird immer die ganze Periode. `POST` prüft unter `data_lock` die Sperre durch Ist-Zeit/aktive Reservierung (`blocking_days`, nur Tage mit Minuten > 0) und fängt `VacationStore.save`-`ValueError` als `409 vacation_overlap`; ohne Bundesland trägt die Antwort die Warnung `no_state`. Danach `ctx.on_change` und `ctx.on_vacations_change` (App: `_on_remote_calendar_data_changed` → `trigger_reconcile`, derselbe Hook wie bei Reservierungen und Handy); `DELETE` stößt den Abgleich nur an, wenn die Periode eine `gcal_event_id` trug (wie `App._delete_day`). Die Perioden erscheinen ungekappt.
+- `api_sick_write.py` — Krankheit in der lokalen API: `parse_sick_body` (`from`/`to`, optional `basis`, `day_hours`; höchstens 366 Tage) als Fremddaten; gerechnet wird in `sick_plan` (`prefill`, `plan_sick_save`) wie im Dialog. `GET /v1/sick` (Blöcke, ungekappt), `POST /v1/sick` (bestehende Tage behalten ihre Minuten, `day_hours` gewinnt; `409 work_on_sick_days`, Reservierungen bleiben), `DELETE /v1/sick/{date}` (ganzer Block). `PUT /v1/entries` an einem Krankheitstag mit Minuten > 0 ist `409 sick_day`, ein neuer Urlaub darüber `409 sick_on_vacation_days`. `summarize` trägt `sick_minutes` und `sick_capped_days` (über `absence.cut_absences`). Prüfen, Planen und Speichern laufen unter `data_lock` (nach `_refuse_while_closing`, `503 shutting_down`); `ctx.on_change` kommt nach dem Lock und nur, wenn sich Tage geändert haben (`changed` in der Antwort; sie ist der ganze entstandene Block, er kann vor `from` beginnen, wenn der Zeitraum einen Block berührt). Die Antwort trägt `basis_used` und `warnings` (`no_state` mit eigenem Text, `sick_on_vacation`, `average_fallback`); ein neuer Urlaub über einem lebenden 0-Minuten-Krankheitstag warnt mit `vacation_on_sick_day`. `summarize` nennt dazu `sick_on_vacation_days` (die unter Krankheit entfallenen Urlaubsminuten). Unterschiede zum Bericht: kein Kategorie-Filter, `workweek_only` gilt nicht, „Krankheit gewinnt“ immer. Das Log nennt nie Datum oder Minuten, die Zeile jeder Anfrage maskiert ISO-Daten (`api_server.log_message`).
 - `api_reservation_write.py` — Schreibpfad der lokalen API für Reservierungen (#239), Tk-frei, nimmt Fremddaten: `parse_reservation_body` (Slot-Regeln der Ist-Zeiten über `parse_slots`, dazu optionales `pause` (fehlt der Schlüssel, bleibt er im Ergebnis weg; ungültig → `422 invalid_pause`, Pause ≥ Spanne → `422 invalid_slots`) und nie `gcal_event_id`; `send_reminder_minutes` 0–120 oder `null`, höchstens an einem Slot; liefert zusätzlich `reminder_given`, ob der Body das Feld überhaupt nennt) und `check_reservation_day` (heute bis heute + `HORIZON_DAYS`, dieselbe Grenze wie im Handy-Abgleich). Die Routen `GET /v1/reservations[/{date}]`, `PUT`/`DELETE /v1/reservations/{date}` stehen in `api_routes`: **Lesen** braucht nur den Store, **Schreiben** zusätzlich `reservations_enabled` (sonst `409 reservations_disabled` mit Hinweis auf die Einstellung — Reservierungen, die die App nicht zeigt, wären unsichtbar und nicht löschbar). Prüfen und Speichern laufen unter `data_lock`, danach `ctx.on_change` und `ctx.on_reservations_change` (App: `_on_remote_calendar_data_changed` → `trigger_reconcile`, gleicher Abgleich wie nach dem Tages-Dialog; gemeinsamer Hook mit der Handy-Instanz). Ohne `send_reminder_minutes` im Body übernimmt ein `PUT` die bisherige Markierung positionsweise; ohne `pause` an einem Slot erbt er `reservations.inherit_pause` (gleicher Index, gleiche Zeiten, sonst 0) — **vor** dem Vergleich mit dem Bestand, damit ein unveränderter Body kein `changed` ist. GET und PUT-Antwort liefern `pause` je Slot immer.
 - `api_entry_write.py` — Schreibpfad der lokalen API für Ist-Zeiten (#92), Tk-frei: nimmt
   **Fremddaten** und bildet die Regeln nach, die die UI an ihren Eingängen durchsetzt und
@@ -950,7 +1024,7 @@ Wert.
   Reservierungs-Slots lehnen `notiz` weiter als unbekanntes Feld ab. In `api_routes` liefert `_wire_slots`
   `notiz` an jedem Slot immer (`""` ohne); beim `PUT` erbt ein Slot ohne Feld die Notiz des bisherigen
   Slots mit gleicher Startzeit, ein Slot mit Feld (auch `""`) gilt wie angegeben.
-- `api_summary.py` — Auswertungen der lokalen API (#92), Tk-frei, rein: Pfad-Parser (`parse_week`, `parse_month`, `parse_year`, nur ASCII-Ziffern, `fromisocalendar` entscheidet über KW 53), `summarize` (Tage, Kategorien, `weeks[]` mit Wochenlimit, Pausenwarnungen, Urlaub über `vacations.cap_by_worktime`), `category_names`, `holidays_for`. Gerechnet wird über **Minuten je Slot**; gespeicherte Slots sind Fremddaten, ein ungewöhnlicher Slot zählt 0 Minuten und wird geloggt. Schlüssel zählen nur als echter Kalendertag (`_is_day_key`: `2025-12-32` passt auf die Form, nicht auf den Kalender), Urlaubsminuten nur zwischen 0 und 1440; `VacationStore.day_minutes` überspringt Perioden ohne lesbare `days`. Die Routen (`/v1/summary/week|month`, `/v1/categories`, `/v1/holidays`) in `api_routes` holen nur den Snapshot (`Storage.get_all()`, `VacationStore.day_minutes()`), halten keinen Lock und melden nie `on_change`.
+- `api_summary.py` — Auswertungen der lokalen API (#92), Tk-frei, rein: Pfad-Parser (`parse_week`, `parse_month`, `parse_year`, nur ASCII-Ziffern, `fromisocalendar` entscheidet über KW 53), `summarize` (Tage, Kategorien, `weeks[]` mit Wochenlimit, Pausenwarnungen, Urlaub und Krankheit über `absence.cut_absences`, Krankheit gewinnt; `sick_minutes`/`sick_capped_days`), `category_names`, `holidays_for`. Gerechnet wird über **Minuten je Slot**; gespeicherte Slots sind Fremddaten, ein ungewöhnlicher Slot zählt 0 Minuten und wird geloggt. Schlüssel zählen nur als echter Kalendertag (`_is_day_key`: `2025-12-32` passt auf die Form, nicht auf den Kalender), Urlaubsminuten nur zwischen 0 und 1440; `VacationStore.day_minutes` überspringt Perioden ohne lesbare `days`. Die Routen (`/v1/summary/week|month`, `/v1/categories`, `/v1/holidays`) in `api_routes` holen nur den Snapshot (`Storage.get_all()`, `VacationStore.day_minutes()`, `SickStore.day_minutes()`), halten keinen Lock und melden nie `on_change`.
 - `api_server.py` — HTTP-Server, seit #221 für zwei Instanzen gebaut: die lokale API (Loopback, ein Token) und die Handy-Instanz (LAN, Gerätetoken) teilen sich ihn und unterscheiden sich in der **`Surface`** (`dispatch`, `route_methods(path)` für den Preflight **und** das `Allow` eines 405 (RFC 9110: die Methoden der Zielressource), `methods` (Vereinigung aller Routen) nur als `Allow` für einen unbekannten Pfad, `public` = exakte (Methode, Pfad)-Paare ohne Token, `cors`); `ApiServer(context, …)` baut ohne Angabe die lokale (`local_surface`). Ein Prüfer liefert `Principal | Denied | None` (`Denied(code)` → `401 <code>`).
   Ein Daemon-Thread mit eigener `handle_request()`-Schleife (kein
   `serve_forever()`/`shutdown()`: `shutdown()` wartet, bis die Schleife verlassen
@@ -1213,7 +1287,7 @@ nicht antwortet (s. „Google-Integration“).
 Die Zeile ergänzt „Berechtigungen" daneben: die sagt, **welche** Scopes
 gewährt sind, diese, **ob** der Token überhaupt noch trägt.
 Weitere Dialoge: `share_dialog`, `import_dialog`, `category_dialog`,
-`conflicts_dialog`, `scopes_dialog`, `vacation_dialog` (Urlaub verwalten, Einstieg
+`conflicts_dialog`, `scopes_dialog`, `sick_dialog` (Krankheit eintragen/verwalten; aus dem Kalender per Linksklick auf einen Krankheitstag mit Stunden, per „Krank melden“ im Tages-Dialog und in der Urlaubs-Meldung; `vacation_dialog` lehnt Urlaub über Krankheitstagen ab, `sick_blocked_message`), `vacation_dialog` (Urlaub verwalten, Einstieg
 Einstellungen → Arbeitszeit; die Tk-freie Planung `plan_vacation_save`/`blocking_days` liegt in
 `vacation_plan.py`, der Dialog importiert sie zurück) und `mobile_pair_dialog` (Koppel-Dialog,
 Modus „lan“ oder „relay“; Verträge unter `relay_service.py` und `mobile_routes.py` oben). `period_picker` ist kein Dialog, sondern der von
@@ -1221,6 +1295,7 @@ Modus „lan“ oder „relay“; Verträge unter `relay_service.py` und `mobile
 „Nach Notiz aufschlüsseln“ nur, wenn der Bestand mindestens eine Notiz hat (`slot_notes.has_notes`);
 er steht unter „Nach Kategorie aufschlüsseln“ und ist ausgegraut, solange dieses aus ist, weil die
 Unterzeilen an der Kategorie-Tabelle hängen. Senden und Export reichen ihn als `note_breakdown` durch.
+Den Schalter „Krankheit ausweisen“ baut er nur mit einem Krankheitstag mit Minuten > 0 im Bestand.
 
 `conflicts_dialog` wählt über `conflict_view.entry_choice(cand)` und gibt dabei die Notizen der
 gewählten Karte ausdrücklich an `sync.resolve_conflict`: zwei Stände, die sich nur in der Notiz
@@ -1282,6 +1357,11 @@ Einstellungen → Google-Tab → „Konflikte ansehen" (ungefiltert, volle Liste
 nimmt optional `on_resolved` (von beiden
 Einstiegen auf `App._refresh`/`on_change` gesetzt) — ohne den Callback bliebe die
 Kalenderzelle hinter dem Dialog nach dem Auflösen auf dem alten Stand.
+
+Danach folgen in `_open_dialog` die Schritte für Krankheit und Urlaub: ein Krankheitstag mit
+Minuten > 0 öffnet `sick_dialog.open_sick_dialog` für seinen Block (0-Minuten-Tage nicht),
+ein Urlaubstag mit Minuten > 0 zeigt die Meldung, mit dem Knopf „Krank melden“
+(`themed_ask_action`) nur bei vorhandenem `sick_store`; erst dann der Tages-Dialog.
 
 Alle Dialoge beziehen ihre Fenster-Chrome über `theme.create_dialog(...)`
 (Audit M13); Content-Styles (`apply_combobox_style`/`apply_notebook_style`/

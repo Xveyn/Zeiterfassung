@@ -1,4 +1,5 @@
 # tests/test_pwa_devserver.py
+import contextlib
 import importlib.util
 import json
 import pathlib
@@ -126,6 +127,40 @@ def test_the_dev_server_never_touches_the_developers_keyring(devserver, tmp_path
         dev.service._maintain_keys()                     # Umzug versuchen: bleibt in der Datei
         assert dev.service._context.keys.where() == {"phone-0001": "file"}
     assert mobile_keys.keyring_store is original          # zurückgesetzt
+
+
+def test_the_dev_phone_context_has_sick_and_vacation_stores_in_the_data_dir(devserver, tmp_path):
+    with devserver.running(tmp_path, web_port=0, api_port=0, address="127.0.0.1") as dev:
+        context = dev.service._context
+        assert context.sick_store.filepath == str(tmp_path / "sick.json")
+        assert context.vacation_store.filepath == str(tmp_path / "vacations.json")
+
+
+def test_without_sick_days_the_dev_phone_context_has_no_sick_store(devserver, tmp_path):
+    with devserver.running(tmp_path, web_port=0, api_port=0, address="127.0.0.1", sick=False) as dev:
+        assert dev.service._context.sick_store is None
+        assert dev.service._context.vacation_store is not None
+
+
+class _Stop(Exception):
+    pass
+
+
+@pytest.mark.parametrize("argv,sick", [([], True), (["--no-sick"], False)])
+def test_the_no_sick_switch_reaches_the_server(devserver, tmp_path, monkeypatch, argv, sick):
+    seen = {}
+
+    @contextlib.contextmanager
+    def fake_running(data_dir, **kwargs):
+        seen.update(kwargs)
+        raise _Stop
+        yield                                              # macht daraus einen Generator
+
+    monkeypatch.setattr(devserver, "running", fake_running)
+    with pytest.raises(_Stop):
+        devserver.main([*argv, "--address", "127.0.0.1", "--data-dir", str(tmp_path)])
+
+    assert seen["sick"] is sick
 
 
 def test_the_dev_origin_does_not_leak_into_the_process(devserver, tmp_path):

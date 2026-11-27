@@ -31,14 +31,15 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from src import (
-    mobile_pairing, mobile_reminders, mobile_reservations, mobile_settings, slot_notes, sync,
-    sync_history, sync_journal,
+    mobile_pairing, mobile_reminders, mobile_reservations, mobile_settings, mobile_sick, slot_notes,
+    sync, sync_history, sync_journal,
 )
 from src.api_entry_write import WriteError, check_date_range, load_json_body, parse_slots
 from src.api_summary import category_names
 from src.devices import sanitize_registry, with_own_entry
 from src.mobile_settings import clean_category_times, clock, pause
 from src.reservations import reservations_active
+from src.sick_plan import normalize_basis, prefill
 from src.slot_order import DEFAULT_MODE, normalize_mode
 from src.settings import WEEKDAY_KEYS
 from src.storage import sanitize_slot
@@ -47,7 +48,9 @@ if TYPE_CHECKING:
     from src.conflicts_store import ConflictsStore
     from src.reservations import ReservationStore
     from src.settings import Settings
+    from src.sick_days import SickDay, SickStore
     from src.storage import Storage
+    from src.vacations import VacationStore
 
 PROTOCOL = 2                  # Protokoll v2 (#249): verschlüsselt, s. `mobile_crypto`
 WINDOW_DAYS = 90                    # Standardfenster, wenn das Handy keinen Wunsch äußert
@@ -90,6 +93,9 @@ class SyncRequest:
     # Das Relay-Geheimnis des Handys (Teil `push` der Anfrage, #331); `None`, wenn keins kam oder
     # es unbrauchbar war. Der Handler legt es beim Gerät ab, `perform_sync` fasst es nicht an.
     relay_secret: str | None = None
+    # {date: {modified_at, deleted[, minutes]}} der Krankheitstage; leer, wenn das Handy keine
+    # sendet. Geprüft von `mobile_sick.parse_sick`; `minutes` fehlt in der Regel (der Desktop rechnet).
+    sick: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
 @dataclass
@@ -169,8 +175,8 @@ def parse_request(body: bytes, *, now: str, today: datetime.date | None = None,
     """Body → geprüfte Einträge. `now` ist die Desktop-Zeit (UTC-Text), `today` sein lokales
     Datum (Standard: das UTC-Datum von `now`). Mit `accept_reservations=False` wird das Feld
     `reservations` gar nicht gelesen — ein Desktop mit ausgeschalteten Reservierungen ignoriert
-    es, statt es abzulehnen. `settings` darf nur `categories`/`category_times` enthalten.
-    Wirft `SyncError`."""
+    es, statt es abzulehnen. `settings` darf nur `categories`/`category_times` enthalten;
+    `sick` wird immer geprüft. Wirft `SyncError`."""
     try:
         data = load_json_body(body)
     except WriteError as error:
@@ -212,10 +218,17 @@ def parse_request(body: bytes, *, now: str, today: datetime.date | None = None,
                 data["settings"], now_dt=now_dt, parse_utc=_parse_utc, skew_limit=CLOCK_SKEW_LIMIT)
         except mobile_settings.SettingsError as error:
             raise SyncError(422, "invalid_entry", error.message) from None
+    sick: dict[str, dict[str, Any]] = {}
+    if "sick" in data:
+        try:
+            sick = mobile_sick.parse_sick(
+                data["sick"], now_dt=now_dt, parse_utc=_parse_utc, skew_limit=CLOCK_SKEW_LIMIT)
+        except mobile_sick.SickError as error:
+            raise SyncError(422, "invalid_entry", error.message) from None
     wish = data.get("window_days")
     window_days = wish if isinstance(wish, int) and not isinstance(wish, bool) and wish >= 1 else None
     return SyncRequest(str(data["client_time"]), entries, window_days, reservations, settings,
-                       mobile_reminders.parse_push(data.get("push")))
+                       mobile_reminders.parse_push(data.get("push")), sick=sick)
 
 
 def window_cap(raw: object) -> int:
@@ -354,7 +367,9 @@ def build_response(merged: Mapping[str, Any], *, sent_dates: Iterable[str],
                    window_max_days: int,
                    reservations: Mapping[str, Any] | None = None,
                    reminders: Mapping[str, Any] | None = None,
-                   slot_order: str = DEFAULT_MODE) -> dict[str, Any]:
+                   slot_order: str = DEFAULT_MODE,
+                   sick: Mapping[str, Any] | None = None,
+                   sick_sent: Iterable[str] = ()) -> dict[str, Any]:
     """Die Antwort des Abgleichs aus dem Merge-Ergebnis, ohne `token`/`expires_at`
     (die ergänzt die Route). Fenster `[heute − Fenster, heute + WINDOW_AHEAD_DAYS]` (heute ist das lokale
     Datum des Desktops) plus alle gesendeten Tage — beides für Einträge **und**
@@ -364,7 +379,11 @@ def build_response(merged: Mapping[str, Any], *, sent_dates: Iterable[str],
 
     `window_days` ist das **gewährte** Fenster (`grant_window`); `fit_window` kürzt es,
     wenn die Einträge mehr als `MAX_RESPONSE_ENTRY_BYTES` ergäben (#250). Die Antwort
-    nennt das Fenster, das tatsächlich gilt."""
+    nennt das Fenster, das tatsächlich gilt.
+
+    `sick` ist der Block der Krankheitstage (`mobile_sick.build_sick`), `None` ohne
+    Krankheits-Store. Die Antwort trägt davon die Tage im Fenster, das sie nennt, plus die
+    gesendeten (`sick_sent`); er zählt nicht ins Mengenbudget."""
     sent = set(sent_dates)
     last = (today + datetime.timedelta(days=WINDOW_AHEAD_DAYS)).isoformat()
 
@@ -414,12 +433,24 @@ def build_response(merged: Mapping[str, Any], *, sent_dates: Iterable[str],
         response["reservation_pause"] = True   # Fähigkeit: Slots tragen `pause` (PWA-Erkennung)
     if reminders is not None:          # Feature-Erkennung der PWA; ausgeschaltet ein leerer Block (#331)
         response["reminders"] = dict(reminders)
+    if sick is not None:
+        # Fähigkeit: der Desktop nimmt `sick` an (Feature-Erkennung der PWA), auch mit leerem Block.
+        response["sick_days"] = True
+        sent_sick = set(sick_sent)
+        response["sick"] = {date: day for date, day in sick.items()
+                            if date in sent_sick or first <= date <= last}
     return response
+
+
+def _stamp_floor(changed_since: str) -> str:
+    """`changed_since + 1 s`, leer ohne `changed_since` (Begründung in `_phone_doc`)."""
+    return mobile_pairing.shift(changed_since, datetime.timedelta(seconds=1)) if changed_since else ""
 
 
 def _phone_doc(request: SyncRequest, device_id: str, device_name: str, now: str,
                changed_since: str = "",
-               desktop_entries: Mapping[str, Any] | None = None) -> dict[str, Any]:
+               desktop_entries: Mapping[str, Any] | None = None,
+               sick: Mapping[str, SickDay] | None = None) -> dict[str, Any]:
     """Das Handy als `local` des Merges: nur die geschickten Tage, die Geräte-ID aus
     dem Token. So wirkt die Self-Heal-Regel (`excluded`) für das Handy richtig.
 
@@ -433,9 +464,12 @@ def _phone_doc(request: SyncRequest, device_id: str, device_name: str, now: str,
     Die Einstellungen bekommen denselben angehobenen Stempel.
 
     Den Schlüssel `notes` richtet `_notes_key_like_desktop` am Desktop-Eintrag aus
-    (`desktop_entries`): ein Tag, der nie eine Notiz hatte, bleibt ohne `notes`."""
-    floor = mobile_pairing.shift(changed_since, datetime.timedelta(seconds=1)) if changed_since else ""
-    return {
+    (`desktop_entries`): ein Tag, der nie eine Notiz hatte, bleibt ohne `notes`.
+
+    `sick` sind die fertigen Datensätze aus `mobile_sick.phone_records` (Stempel schon
+    angehoben); der Bereich steht nur mit Tagen im Doc."""
+    floor = _stamp_floor(changed_since)
+    doc: dict[str, Any] = {
         "schema_version": sync.SCHEMA_VERSION,
         "entries": {
             date: {**_notes_key_like_desktop(entry, (desktop_entries or {}).get(date)),
@@ -451,6 +485,40 @@ def _phone_doc(request: SyncRequest, device_id: str, device_name: str, now: str,
         "devices": with_own_entry(None, device_id, device_name, now),
         "meta": {"gc_watermark": ""},
     }
+    if sick:
+        doc["sick"] = dict(sick)
+    return doc
+
+
+def _phone_sick(request: SyncRequest, *, sick_store: SickStore, storage: Storage,
+                settings: Settings, reservation_store: ReservationStore | None,
+                vacation_store: VacationStore | None, device_id: str, floor: str,
+                today: datetime.date) -> dict[str, SickDay]:
+    """Die geänderten Krankheitstage des Handys als Datensätze, unter `data_lock`. Fehlende
+    Minuten rechnet `prefill` je lückenloser Folge wie Dialog und API (`mobile_sick.fill_minutes`).
+    Ist-Zeiten und Reservierungen derselben Anfrage zählen schon mit, obwohl sie erst danach
+    gemergt werden (`mobile_sick.prefill_entries`/`prefill_reservations`). Reservierungen nur,
+    solange sie aktiv sind, und im Stand vor `merge_phone`: eine in derselben Anfrage gelöschte
+    Desktop-Reservierung bestimmt die Minuten noch."""
+    desktop_raw = sick_store.get_all_raw()
+    inputs: dict[str, Any] = {}
+
+    def fill(first: str, last: str, sick_days: Mapping[str, int]) -> Mapping[str, int]:
+        if not inputs:          # erst gelesen, wenn eine Folge wirklich etwas zu rechnen hat
+            inputs.update(
+                basis=normalize_basis(settings.get("sick_hours_basis")),
+                entries=mobile_sick.prefill_entries(storage.get_all(), request.entries),
+                reservations=(mobile_sick.prefill_reservations(reservation_store.get_all(),
+                                                               request.reservations)
+                              if reservation_store is not None
+                              and reservations_active(reservation_store, settings) else None),
+                vacation_days=vacation_store.day_minutes() if vacation_store is not None else {})
+        return prefill(first, last, sick_days=sick_days, settings=settings, today=today,
+                       **inputs).days
+
+    computed = mobile_sick.fill_minutes(request.sick, desktop_raw=desktop_raw, fill=fill)
+    return mobile_sick.phone_records(request.sick, desktop_raw=desktop_raw, computed=computed,
+                                     device_id=device_id, floor=floor)
 
 
 def _notes_key_like_desktop(entry: Mapping[str, Any], desktop: object) -> dict[str, Any]:
@@ -478,7 +546,9 @@ def perform_sync(request: SyncRequest, *, device_id: str, device_name: str,
                  reservation_store: ReservationStore | None = None,
                  report: SyncReport | None = None,
                  categories: list[str] | None = None,
-                 local_now: datetime.datetime | None = None) -> dict[str, Any]:
+                 local_now: datetime.datetime | None = None,
+                 sick_store: SickStore | None = None,
+                 vacation_store: VacationStore | None = None) -> dict[str, Any]:
     """Wendet den Abgleich an und liefert die Antwort (ohne `token`/`expires_at`).
 
     `last_pull_at` ist der Stand aus dem Gerätespeicher des Desktops, nie der Wert
@@ -487,6 +557,10 @@ def perform_sync(request: SyncRequest, *, device_id: str, device_name: str,
     belegt → `SyncError` 503. `categories` (`None`: aus den Einstellungen **nach** dem
     Anwenden) bestimmt die Namen der Antwort. `data_lock` klammert Snapshot → Merge → Apply. Die
     Route ruft `on_change` erst danach.
+
+    Ohne `sick_store` bleibt `request.sick` unbeachtet und die Antwort ohne Krankheit; mit ihm
+    bekommen Snapshot **und** Anwenden den Store (sonst fehlten dem Merge die lokalen Tage).
+    `vacation_store` braucht nur die Vorbelegung fehlender Minuten.
 
     Idempotent: derselbe Request liefert dasselbe Ergebnis (der Merge ist es, und
     `merge` dedupliziert gleichwertige offene Konflikte)."""
@@ -502,18 +576,30 @@ def perform_sync(request: SyncRequest, *, device_id: str, device_name: str,
                         request.settings["category_times"]["value"], category_names(settings))
                 except mobile_settings.SettingsError as error:
                     raise SyncError(422, "invalid_entry", error.message) from None
-            desktop_doc = sync.build_local_doc(storage, settings, conflicts_store)
+            desktop_doc = sync.build_local_doc(storage, settings, conflicts_store,
+                                               sick_store=sick_store)
             watermark = (desktop_doc.get("meta") or {}).get("gc_watermark") or ""
             excluded = bool(last_pull_at) and last_pull_at < watermark
             # Bei `excluded` bleiben die Stempel unangetastet: die Self-Heal-Regel
             # vergleicht sie mit dem Watermark und soll alte Tage nicht wiederbeleben.
-            phone_doc = _phone_doc(request, device_id, device_name, now,
-                                   "" if excluded else last_pull_at,
-                                   desktop_entries=desktop_doc.get("entries"))
+            changed_since = "" if excluded else last_pull_at
+            phone_sick = (_phone_sick(request, sick_store=sick_store, storage=storage,
+                                      settings=settings, reservation_store=reservation_store,
+                                      vacation_store=vacation_store, device_id=device_id,
+                                      floor=_stamp_floor(changed_since), today=today)
+                          if sick_store is not None and request.sick else None)
+            phone_doc = _phone_doc(request, device_id, device_name, now, changed_since,
+                                   desktop_entries=desktop_doc.get("entries"), sick=phone_sick)
             merged = sync.merge(phone_doc, desktop_doc, last_pull_at)
+            if phone_sick:
+                merged["sick"] = mobile_sick.keep_phone_deletions(
+                    merged.get("sick") or {}, records=phone_sick,
+                    desktop_raw=desktop_doc.get("sick") or {},
+                    watermark=merged["meta"]["gc_watermark"])
             sync_journal.apply_merged_doc_journaled(
                 merged, storage, settings, conflicts_store,
-                os.path.join(base, sync_journal.JOURNAL_FILENAME))
+                os.path.join(base, sync_journal.JOURNAL_FILENAME), sick_store=sick_store)
+            sick_raw = sick_store.get_all_raw() if sick_store is not None else None
             # Der Startup-Sweep verwirft Tombstones auf Rechnern, die „nie gesynct"
             # haben: nach einem Abgleich mit dem Handy haben sie einen Abnehmer.
             sync_history.mark_synced(base)
@@ -533,16 +619,23 @@ def perform_sync(request: SyncRequest, *, device_id: str, device_name: str,
             if active and reservation_store is not None else None)
         names = categories if categories is not None else category_names(settings)
         cap = window_cap(settings.get("mobile_window_max_days"))
+        granted = grant_window(request.window_days, cap)
+        # Vorauswahl über das gewährte Fenster; auf das Fenster nach `fit_window` kürzt `build_response`.
+        sick = (mobile_sick.build_sick(
+            sick_raw, first=(today - datetime.timedelta(days=granted)).isoformat(),
+            last=(today + datetime.timedelta(days=WINDOW_AHEAD_DAYS)).isoformat(),
+            sent=request.sick) if sick_raw is not None else None)
         # `local_now`: die lokale (naive) Desktop-Zeit für die Sende-Zeitpunkte; die Tests setzen sie.
         reminders = mobile_reminders.build_block(
             settings, reservation_store, local_now or datetime.datetime.now())
         return build_response(merged, sent_dates=request.entries, today=today, now=now,
                               excluded=excluded, categories=names,
                               defaults=build_defaults(settings, names), desktop=desktop,
-                              window_days=grant_window(request.window_days, cap),
+                              window_days=granted,
                               window_max_days=cap, reservations=reservations,
                               reminders=reminders,
-                              slot_order=normalize_mode(settings.get("slot_order_mode")))
+                              slot_order=normalize_mode(settings.get("slot_order_mode")),
+                              sick=sick, sick_sent=request.sick)
     finally:
         if sync_guard is not None:
             sync_guard.release()

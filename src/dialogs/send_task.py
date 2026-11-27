@@ -140,7 +140,8 @@ def _log_summary(results, started):
 def perform_send(*, date_from, date_to, entries, name, categories,
                  category_breakdown, send_mail, mail, webhooks,
                  smtp_accounts=None, pdf_filename, settings,
-                 vacation_days=None, note_breakdown=False):
+                 vacation_days=None, note_breakdown=False,
+                 sick_days=None):
     """Feuert alle gewählten Kanäle und sammelt ein Ergebnis je Kanal.
 
     Wirft nie. `webhooks` ist eine Liste von
@@ -189,7 +190,7 @@ def perform_send(*, date_from, date_to, entries, name, categories,
                 date_from, date_to, entries, name=name,
                 categories=categories, category_breakdown=category_breakdown,
                 vacation_days=vacation_days, slot_order=slot_order,
-                note_breakdown=note_breakdown)
+                note_breakdown=note_breakdown, sick_days=sick_days)
         except Exception as e:
             log.exception("PDF-Erzeugung fehlgeschlagen")
             failure = {"ok": False, "kind": "error", "detail": str(e),
@@ -253,7 +254,7 @@ def perform_send(*, date_from, date_to, entries, name, categories,
                 date_from=date_from, date_to=date_to, entries=entries,
                 name=name, sender=settings.get("sender_email"),
                 categories=categories, vacation_days=vacation_days,
-                slot_order=slot_order)
+                slot_order=slot_order, sick_days=sick_days)
             json_bytes = _json.dumps(
                 payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
         except Exception as e:  # bewusst alles, s.o.

@@ -101,11 +101,12 @@ def _stray_click_suppressed(closed_at, now, window=STRAY_CLICK_GUARD_S):
 
 
 def _should_show_delete_button(is_macos, has_entry, has_reservation,
-                               has_vacation=False):
+                               has_vacation=False, has_sick=False):
     """macOS-only Lösch-Button (✕) in der Tageszelle: nur auf macOS und nur,
     wenn der Tag löschbare Einheiten hat — Ist-Zeit, aktive Reservierung ODER
-    Urlaub."""
-    return is_macos and (has_entry or has_reservation or has_vacation)
+    Urlaub oder Krankheit."""
+    return is_macos and (has_entry or has_reservation or has_vacation
+                         or has_sick)
 
 
 # Aufschlag auf die Arbeitsfläche, bis zu dem eine Schätzung noch als passend

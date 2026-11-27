@@ -8,6 +8,7 @@ und `entry_dialog.py` (M16).
 
 import datetime
 import logging
+import math
 import tkinter as tk
 from tkinter import ttk
 
@@ -23,20 +24,24 @@ from src.time_utils import (
 )
 from src.dialogs.date_row import build_date_row
 from src.reservations import reservations_active
+from src.sick_plan import vacation_sick_conflicts
 from src.vacation_plan import (
-    blocking_days, format_day_list as _format_day_list,
+    blocking_days, format_day_list,
     hours_to_minutes_exact as _hours_to_minutes_exact, plan_vacation_save,
 )
 
 log = logging.getLogger(__name__)
 
-def _format_hours(minutes: int) -> str:
-    """Minuten → Anzeigewert der Stundenfelder, deutsches Dezimalkomma.
-
-    Eine Schreibweise im ganzen Dialog: Sammelfeld und Tageszeilen sprechen
-    dasselbe Format, statt `str(8.0)` = „8.0" neben „8,00" zu stellen.
-    """
-    return f"{minutes / 60:.2f}".replace(".", ",")
+def sick_blocked_message(plan_days, sick_days, existing_days=None):
+    """Fehlertext, wenn der Urlaub neu über Krankheitstage (Minuten > 0) läge,
+    sonst None (`existing_days`: die Tage der bearbeiteten Periode)."""
+    blocked = vacation_sick_conflicts(plan_days, sick_days, existing_days)
+    if not blocked:
+        return None
+    return ("An diesen Tagen bist du krank gemeldet:\n\n"
+            + format_day_list(blocked)
+            + "\n\nEinen Urlaub über Krankheitstage legt die App nicht an; "
+              "Krankheit im Urlaub trägst du als Krankheit ein.")
 
 
 def _dominant_minutes(days: dict) -> int:
@@ -56,6 +61,16 @@ def _dominant_minutes(days: dict) -> int:
     return max(counts, key=lambda m: (counts[m], m))
 
 
+def format_hours(minutes: int) -> str:
+    """Minuten → Anzeigewert der Stundenfelder, deutsches Dezimalkomma; das
+    Gegenstück zu `parse_hours`, auch im Krankheits-Dialog.
+
+    Eine Schreibweise in beiden Dialogen: Sammelfeld und Tageszeilen sprechen
+    dasselbe Format, statt `str(8.0)` = „8.0" neben „8,00" zu stellen.
+    """
+    return f"{minutes / 60:.2f}".replace(".", ",")
+
+
 def parse_hours(text):
     """Eine Stundeneingabe als Zahl, deutsches Komma erlaubt; ein leeres Feld
     zählt als 0.
@@ -63,11 +78,15 @@ def parse_hours(text):
     None bei Buchstabensalat — kein Sentinel wie -1: der ergäbe die Meldung
     „darf nicht negativ sein“ für eine Eingabe, die gar keine Zahl ist. Das
     Vorzeichen bewertet `plan_vacation_save`, nicht diese Funktion.
+    Ebenso None, wenn der Wert oder seine Minuten (× 60) nicht endlich sind
+    („nan“, „inf“, „1e307“): die Umrechnung in Minuten würfe sonst im
+    trace-Callback eines Tagesfelds und in `plan_vacation_save`.
     """
     try:
-        return float((text or "0").replace(",", "."))
+        value = float((text or "0").replace(",", "."))
     except ValueError:
         return None
+    return value if math.isfinite(value * 60) else None
 
 
 def prune_overrides(overrides, plan):
@@ -97,7 +116,7 @@ def _period_line(period):
 
 def open_vacation_dialog(parent, vacation_store, settings, on_change=None,
                          storage=None, reservation_store=None, runner=None,
-                         on_display_change=None):
+                         on_display_change=None, sick_store=None):
     """Übersicht aller Urlaubsperioden mit Neu / Bearbeiten / Löschen.
 
     storage/reservation_store dienen allein der Kollisionsprüfung beim
@@ -261,7 +280,7 @@ def open_vacation_dialog(parent, vacation_store, settings, on_change=None,
 
     def _new():
         _open_edit_dialog(dialog, vacation_store, settings, None, _changed,
-                          storage, reservation_store)
+                          storage, reservation_store, sick_store)
 
     def _edit():
         pid = _selected_id()
@@ -270,7 +289,7 @@ def open_vacation_dialog(parent, vacation_store, settings, on_change=None,
                              "Bitte zuerst einen Urlaubszeitraum auswählen.")
             return
         _open_edit_dialog(dialog, vacation_store, settings, pid, _changed,
-                          storage, reservation_store)
+                          storage, reservation_store, sick_store)
 
     def _delete():
         pid = _selected_id()
@@ -304,7 +323,7 @@ def open_vacation_dialog(parent, vacation_store, settings, on_change=None,
 
 
 def _open_edit_dialog(parent, vacation_store, settings, period_id, on_saved,
-                      storage=None, reservation_store=None):
+                      storage=None, reservation_store=None, sick_store=None):
     """Anlegen bzw. Bearbeiten einer Periode: Name, Von/Bis, Stunden-Modus und
     die aufklappbare Tagesliste."""
     existing = vacation_store.get(period_id) if period_id else None
@@ -358,7 +377,7 @@ def _open_edit_dialog(parent, vacation_store, settings, period_id, on_saved,
     # Settings: sonst zeigte der Dialog einem Urlaub mit 6 h/Tag ein „8,0",
     # und die erste Änderung schriebe stillschweigend 8 h in alle Tage.
     mode_var = tk.StringVar(value="per_day")
-    value_var = tk.StringVar(value=_format_hours(
+    value_var = tk.StringVar(value=format_hours(
         _dominant_minutes(existing["days"]) if existing
         else _hours_to_minutes_exact(settings.get("vacation_hours_per_day") or 8.0)
     ))
@@ -445,7 +464,7 @@ def _open_edit_dialog(parent, vacation_store, settings, period_id, on_saved,
             row.pack(anchor="w", pady=1)
             tk.Label(row, text=format_iso_weekday_date(day), font=FONT_SMALL,
                      bg=BG, fg=TEXT, width=24, anchor="w").pack(side=tk.LEFT)
-            var = tk.StringVar(value=_format_hours(days[day]))
+            var = tk.StringVar(value=format_hours(days[day]))
             day_vars[day] = var
             dark_entry(row, var, width=6).pack(side=tk.LEFT)
             holiday_name = holidays.get(datetime.date.fromisoformat(day))
@@ -529,10 +548,17 @@ def _open_edit_dialog(parent, vacation_store, settings, period_id, on_saved,
                 dialog, "Urlaub nicht gespeichert",
                 "An diesen Tagen ist bereits Arbeitszeit oder eine "
                 "Reservierung erfasst:\n\n"
-                + _format_day_list(blocked)
+                + format_day_list(blocked)
                 + "\n\nUrlaub und Arbeitszeit schließen sich am selben Tag "
                   "aus. Lösche zuerst die Einträge (Rechtsklick im Kalender) "
                   "oder wähle einen anderen Zeitraum.")
+            return
+        sick_msg = (sick_blocked_message(
+            plan["days"], sick_store.day_minutes(),
+            existing["days"] if existing else None)
+                    if sick_store is not None else None)
+        if sick_msg:
+            themed_showerror(dialog, "Urlaub nicht gespeichert", sick_msg)
             return
         df, dt = _range()
         try:

@@ -38,6 +38,7 @@ from src import sync
 if TYPE_CHECKING:  # nur für die Signaturen
     from src.conflicts_store import ConflictsStore
     from src.settings import Settings
+    from src.sick_days import SickStore
     from src.storage import Storage
 
 JOURNAL_FILENAME = "sync-apply.journal"
@@ -68,13 +69,15 @@ def _atomic_write_json(path: str, obj: Any) -> None:
 def apply_merged_doc_journaled(merged_doc: dict[str, Any], storage: Storage,
                                settings: Settings,
                                conflicts_store: ConflictsStore,
-                               journal_path: str) -> None:
+                               journal_path: str,
+                               sick_store: SickStore | None = None) -> None:
     """Wie `sync.apply_merged_doc`, aber crash-sicher über ein Journal (M6):
     merged_doc erst durable auf Platte, dann die Store-Writes, dann Journal
     löschen. Stürzt der Prozess dazwischen ab, holt `recover_pending_apply` den
     Apply beim nächsten Start nach."""
     _atomic_write_json(journal_path, merged_doc)
-    sync.apply_merged_doc(merged_doc, storage, settings, conflicts_store)
+    sync.apply_merged_doc(merged_doc, storage, settings, conflicts_store,
+                          sick_store=sick_store)
     try:
         os.remove(journal_path)
     except FileNotFoundError:
@@ -82,7 +85,8 @@ def apply_merged_doc_journaled(merged_doc: dict[str, Any], storage: Storage,
 
 
 def recover_pending_apply(journal_path: str, storage: Storage, settings: Settings,
-                          conflicts_store: ConflictsStore) -> bool:
+                          conflicts_store: ConflictsStore,
+                          sick_store: SickStore | None = None) -> bool:
     """Beim App-Start (vor dem Start der Sync-Threads, single-threaded → kein
     Lock nötig) aufrufen: existiert ein Journal, war der letzte Apply
     unvollständig → idempotent wiederholen.
@@ -104,7 +108,8 @@ def recover_pending_apply(journal_path: str, storage: Storage, settings: Setting
         return False
 
     log.warning("Unvollständiger Sync-Apply gefunden — hole ihn nach (M6-Recovery)")
-    sync.apply_merged_doc(merged_doc, storage, settings, conflicts_store)
+    sync.apply_merged_doc(merged_doc, storage, settings, conflicts_store,
+                          sick_store=sick_store)
     _remove_quietly(journal_path)
     return True
 

@@ -103,3 +103,21 @@ def test_recover_discards_unreadable_journal(tmp_path):
 
     assert recovered is False
     assert not journal.exists()               # kaputtes Journal verworfen
+
+
+def test_recover_pending_apply_restores_sick_days(tmp_path):
+    from src.sick_days import SickStore
+    storage, settings, conflicts = _stores(tmp_path)
+    sick = SickStore(str(tmp_path / "sick.json"), device_id="A")
+    journal = str(tmp_path / sync_journal.JOURNAL_FILENAME)
+    doc = _merged_doc()
+    doc["sick"] = {"2026-03-02": {"minutes": 480, "modified_at": "2026-03-02T10:00:00Z",
+                                  "device_id": "A", "deleted": False}}
+    with open(journal, "w", encoding="utf-8") as f:
+        json.dump(doc, f)
+
+    assert sync_journal.recover_pending_apply(
+        journal, storage, settings, conflicts, sick_store=sick) is True
+
+    assert sick.day_minutes() == {"2026-03-02": 480}
+    assert not os.path.exists(journal)

@@ -17,6 +17,7 @@ import {
   PROTOCOL, isBoxSecret, isLanAddress, isValidDeviceId, newDeviceId, normalizeCode, pairRequestBody,
 } from './pairing.js';
 import { logFailure } from './diagnose.js';
+import { parseSickBlock } from './sick.js';
 import { RelayTransport } from './relay-transport.js';
 import { SyncError, classifyHttpError, classifyNetworkError } from './sync-errors.js';
 import { LanTransport, endpointOf, isPaired } from './transport.js';
@@ -146,6 +147,9 @@ export function parseSyncResponse(raw) {
     slot_notes: notes,
     slot_order: normalizeSlotOrder(raw.slot_order),      // fehlt bei älterem Desktop: chronologisch (#520)
     reminders: parseReminders(raw.reminders),
+    // Fähigkeit: der Desktop kennt Krankheitstage. Fehlt sie (älterer Desktop), bleibt die Funktion verborgen.
+    sick_days: raw.sick_days === true,
+    sick: raw.sick_days === true ? parseSickBlock(raw.sick) : null,
     writable_settings: Array.isArray(raw.writable_settings) ? raw.writable_settings.filter((key) => typeof key === 'string') : [],
   };
 }
@@ -410,6 +414,8 @@ export class SyncClient {
       ? this._store.snapshotReservations() : { reservations: {}, reservationVersions: {} });
     const settings = first ? this._store.snapshotSettings() : null;
     if (settings) Object.assign(snapshot, settings); else snapshot.settingsVersion = undefined;
+    // Krankheitstage nur an einen Desktop, der sie kennt: ein älterer ignorierte sie, und die Antwort bestätigte nichts.
+    Object.assign(snapshot, first && meta.sick_capable ? this._store.snapshotSick() : { sick: {}, sickVersions: {} });
     const now = this._now();
     const wishSent = meta.window_wish ?? 90;
     // Den Zähler VOR dem Senden dauerhaft ablegen: ein Absturz mitten im Request darf ihn nie
@@ -425,6 +431,7 @@ export class SyncClient {
           window_days: wishSent, entries: snapshot.entries,
           ...(Object.keys(snapshot.reservations).length > 0 ? { reservations: snapshot.reservations } : {}),
           ...(settings ? { settings: settings.settings } : {}),
+          ...(Object.keys(snapshot.sick).length > 0 ? { sick: snapshot.sick } : {}),
           // Das Relay-Geheimnis geht nur an einen Desktop, der das Feld kennt (er sendet `reminders`).
           ...(first && meta.reminders && meta.relay_secret ? { push: { relay_secret: meta.relay_secret } } : {}) } });
     } catch (error) {
@@ -434,6 +441,8 @@ export class SyncClient {
       if (error instanceof SyncError && error.kind === 'invalid_entry' && error.day) {
         if (error.dayKind === 'reservation') {
           await this._store.markReservationError(error.day, error.message, snapshot.reservationVersions[error.day]);
+        } else if (error.dayKind === 'sick') {
+          await this._store.markSickError(error.day, error.message, snapshot.sickVersions[error.day]);
         } else {
           await this._store.markDayError(error.day, error.message, snapshot.versions[error.day]);
         }

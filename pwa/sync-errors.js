@@ -51,10 +51,11 @@ export function classifyHttpError(status, body) {
   const code = typeof detail.code === 'string' ? detail.code : '';
   const message = typeof detail.message === 'string' ? detail.message : '';
   const kind = KINDS[code] ?? fallbackKind(status);
-  // Der Desktop nennt den Tag vorn in der Meldung; eine Reservierung mit dem Vorsatz „Reservierung“.
-  const named = kind === 'invalid_entry' ? /^(Reservierung )?(\d{4}-\d{2}-\d{2}):/.exec(message) : null;
+  // Der Desktop nennt den Tag vorn in der Meldung; eine Reservierung mit dem Vorsatz „Reservierung“, ein
+  // Krankheitstag mit „Krankheit“.
+  const named = kind === 'invalid_entry' ? /^(Reservierung |Krankheit )?(\d{4}-\d{2}-\d{2}):/.exec(message) : null;
   const day = named?.[2] ?? null;
-  const dayKind = day ? (named[1] ? 'reservation' : 'entry') : null;
+  const dayKind = day ? ({ 'Reservierung ': 'reservation', 'Krankheit ': 'sick' }[named[1]] ?? 'entry') : null;
   // Eine abgelehnte Einstellung nennt der Desktop vorn: „Einstellung categories: …“.
   const setting = kind === 'invalid_entry' ? (/^Einstellung (categories|category_times)[: ]/.exec(message)?.[1] ?? null) : null;
   const protocolNumber = detail.supported_protocol;
