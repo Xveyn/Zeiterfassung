@@ -863,6 +863,15 @@ Die Slots eines Tages stehen chronologisch, nach Kategorie oder in einer eigenen
   (kein Konflikt, kein Datenverlust an den Zeiten selbst).
 - **Lokale API und Sync-Doc** liefern die gespeicherte Reihenfolge, nicht die angezeigte.
 
+## Krankheitstage: bekannte Grenzen
+
+- **Der Durchschnitt der letzten 3 Monate zählt unerfasste Tage als 0 Minuten.** Die App unterscheidet „noch nicht
+  erfasst“ nicht von „nicht gearbeitet“; und er enthält Mehrarbeit, weil sie die vertragliche Arbeitszeit nicht kennt.
+  Bei einem Zeitraum in der Zukunft endet das Fenster heute.
+- **Ein gelöschter Krankheitstag kann zurückkehren.** Es gibt keinen Self-Heal (ein fehlender Tag beweist keine Löschung,
+  ältere Geräte lassen den Bereich beim Push fallen): hat ein Gerät den Tombstone vor der Kompaktierung nicht erhalten,
+  weil es offline war oder weil ein älteres Gerät den Bereich `sick` gerade fallen ließ, bringt es den Tag zurück.
+
 ## Beschädigte oder fremde Daten (Storage)
 
 - **Ungültige Slot-Werte werden beim Lesen ersetzt, nicht repariert.** Eine gespeicherte Pause, die keine ganze Zahl von 0 bis 1440 ist (`null`, Text, `30.5`, negativ, `inf`), zählt `0`; `start`/`end` ohne Text zählen als leer, eine Kategorie ohne Text als „ohne Kategorie“. Die Datei behält den Originalwert, bis der Tag neu gespeichert wird.

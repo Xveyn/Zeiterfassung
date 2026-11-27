@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 
 from src.absence import date_range, format_day_list, holiday_dates
 from src.settings import WEEKDAY_KEYS
+from src.sick_days import MAX_MINUTES
 from src.time_utils import calculate_hours, hours_to_minutes
 
 if TYPE_CHECKING:
@@ -22,7 +23,7 @@ if TYPE_CHECKING:
 
 SIX_WEEKS_DAYS = 42
 MAX_BLOCK_DAYS = 366
-MAX_MINUTES_PER_DAY = 1440
+MAX_MINUTES_PER_DAY = MAX_MINUTES
 
 HINT_SIX_WEEKS = (
     "Die Entgeltfortzahlung endet in der Regel nach sechs Wochen; danach "
@@ -103,18 +104,22 @@ def _first_worked_day(entries: Mapping[str, Any]) -> datetime.date | None:
     return best
 
 
-def reference_period(first_day: datetime.date, entries: Mapping[str, Any]
+def reference_period(first_day: datetime.date, entries: Mapping[str, Any],
+                     today: datetime.date | None = None
                      ) -> tuple[datetime.date, datetime.date] | None:
-    """Drei Monate vor `first_day` bis zum Vortag, frühestens ab dem ersten
-    Tag mit Ist-Zeit; `None`, wenn davon nichts übrig bleibt."""
-    month = first_day.month - 3
-    year = first_day.year
+    """Drei Monate vor dem Anker bis zum Vortag, frühestens ab dem ersten Tag
+    mit Ist-Zeit; `None`, wenn davon nichts übrig bleibt. Anker ist der
+    frühere von `first_day` und `today` (`None` = heute): Tage, die noch
+    nicht stattgefunden haben, zählten sonst als Arbeitstage mit 0 Minuten."""
+    anchor = min(first_day, today or datetime.date.today())
+    month = anchor.month - 3
+    year = anchor.year
     if month < 1:
         month += 12
         year -= 1
-    day = min(first_day.day, calendar.monthrange(year, month)[1])
+    day = min(anchor.day, calendar.monthrange(year, month)[1])
     start = datetime.date(year, month, day)
-    end = first_day - datetime.timedelta(days=1)
+    end = anchor - datetime.timedelta(days=1)
     first_worked = _first_worked_day(entries)
     if first_worked is None:
         return None
@@ -126,13 +131,14 @@ def reference_period(first_day: datetime.date, entries: Mapping[str, Any]
 
 def average_minutes(first_day: datetime.date, *, entries: Mapping[str, Any],
                     vacation_days: Mapping[str, int],
-                    sick_days: Mapping[str, int], state: str) -> int | None:
+                    sick_days: Mapping[str, int], state: str,
+                    today: datetime.date | None = None) -> int | None:
     """Arbeitstäglicher Durchschnitt der Ist-Zeit im Referenzzeitraum.
 
     Zähler: alle Tage, Wochenende eingeschlossen; Nenner: Mo–Fr ohne
     Feiertage. Tage mit Urlaubs- oder Krankheitsminuten fallen aus beiden.
     """
-    period = reference_period(first_day, entries)
+    period = reference_period(first_day, entries, today)
     if period is None:
         return None
     days = date_range(period[0].isoformat(), period[1].isoformat())
@@ -162,11 +168,14 @@ def prefill(date_from: str, date_to: str, *, basis: str,
             entries: Mapping[str, Any],
             reservations: Mapping[str, Any] | None,
             vacation_days: Mapping[str, int], sick_days: Mapping[str, int],
-            settings: SettingsLike) -> Prefill:
+            settings: SettingsLike,
+            today: datetime.date | None = None) -> Prefill:
     """Vorbelegte Minuten je Kalendertag (Reihenfolge: Reservierung,
-    Wochenende/Feiertag, Grundlage). `reservations` ist `None`, wenn
-    Reservierungen nicht aktiv sind. Das 366-Tage-Limit prüft der Aufrufer
-    vorher, der Zeitraum wird Tag für Tag aufgebaut."""
+    Wochenende/Feiertag, Grundlage). `entries` ist die Sicht von
+    `Storage.get_all()`, `reservations` die lebende von
+    `ReservationStore.get_all()` (ohne Tombstones) oder `None`, wenn
+    Reservierungen nicht aktiv sind. Wirft `ValueError` bei einem Datum
+    ohne ISO-Form; Datum und 366-Tage-Limit prüft der Aufrufer vorher."""
     basis = normalize_basis(basis)
     days = date_range(date_from, date_to)
     state = settings.get("state") or ""
@@ -177,7 +186,7 @@ def prefill(date_from: str, date_to: str, *, basis: str,
     if basis == "average_3m" and days:
         average = average_minutes(
             days[0], entries=entries, vacation_days=vacation_days,
-            sick_days=sick_days, state=state)
+            sick_days=sick_days, state=state, today=today)
         if average is None:
             basis = DEFAULT_BASIS
             fell_back = True
@@ -206,7 +215,8 @@ def plan_sick_save(date_from: str, date_to: str, prefilled: Mapping[str, int],
     """Tagesminuten eines Krankheitsblocks aus Vorbelegung und Überschreibungen.
 
     Liefert {"error": str | None, "days": {ISO: minutes}}; Fehler sind
-    erwartete Eingabefehler, der Aufrufer zeigt sie themed.
+    erwartete Eingabefehler, der Aufrufer zeigt sie themed. Der Aufrufer
+    übergibt geprüfte ISO-Daten und ganzzahlige Minuten.
     """
     if date_to < date_from:
         return {"error": "Das Bis-Datum liegt vor dem Von-Datum.", "days": {}}

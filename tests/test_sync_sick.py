@@ -186,11 +186,25 @@ def test_apply_writes_store_only_when_doc_has_section(tmp_path, stamp):
 
     apply_merged_doc(_doc({"2026-03-05": _rec(240, T2, "B")}), storage, settings,
                      conflicts, sick_store=sick)
-    assert sick.get_all_raw() == {"2026-03-05": _rec(240, T2, "B")}
+    # Der lebende lokale Tag fehlt im Doc und bleibt (Fehlen heißt nie gelöscht).
+    assert sick.get_all_raw() == {"2026-03-02": before["2026-03-02"],
+                                  "2026-03-05": _rec(240, T2, "B")}
 
     # Ohne Store wird der Bereich übergangen, nicht verlangt.
     apply_merged_doc(_doc({"2026-03-06": _rec(60, T2, "B")}), storage, settings, conflicts)
-    assert sick.get_all_raw() == {"2026-03-05": _rec(240, T2, "B")}
+    assert sick.get_all_raw() == {"2026-03-02": before["2026-03-02"],
+                                  "2026-03-05": _rec(240, T2, "B")}
+
+
+def test_apply_keeps_live_local_sick_days_missing_from_merged_doc(tmp_path, stamp):
+    storage, settings, conflicts, sick = _stores(tmp_path)
+    sick.save_range({"2026-03-02": 480, "2026-03-03": 480})
+    sick.delete_days(["2026-03-03"])
+    live = sick.get_all_raw()["2026-03-02"]
+
+    apply_merged_doc(_doc({}), storage, settings, conflicts, sick_store=sick)
+
+    assert sick.get_all_raw() == {"2026-03-02": live}
 
 
 def test_round_trip_between_two_desktops(tmp_path, stamp):

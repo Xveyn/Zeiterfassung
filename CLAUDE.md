@@ -1601,7 +1601,7 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
   kennt das Feld nicht) und wird in `share.py` bewusst aus dem Share-Doc
   projiziert, weil dessen Validator unbekannte Felder ablehnt.
 - `src/reservations_sync.py` — Abgleich der Reservierungen mit einem Google Kalender
-- `src/absence.py` — gemeinsamer Zeitraum-Kern von Urlaub und Krankheit, Tk-frei: `date_range`, `holiday_dates`, `apportion_minutes`, `CappedDay`/`cap_by_worktime`/`cap_notice(kind)` (Kappung gegen erfasste Ist-Zeit, Wortlaut je Art) und `format_day_list`. `vacations` und `vacation_plan` re-exportieren die Namen
+- `src/absence.py` — gemeinsamer Zeitraum-Kern von Urlaub und Krankheit, Tk-frei: `date_range`, `holiday_dates`, `apportion_minutes`, `CappedDay`/`cap_by_worktime`/`cap_notice(kind)` (Kappung gegen erfasste Ist-Zeit, Wortlaut je Art), `AbsenceCut`/`cut_absences` („Krankheit gewinnt“ über Urlaub), `sick_on_vacation_notice` und `format_day_list`. `vacations` und `vacation_plan` re-exportieren die Namen
 - `src/vacations.py` — Urlaubsperioden (eigenes Konzept neben Ist-Zeiten und
   Reservierungen). Die **Periode** ist der Record mit Identität
   (`{id: {name, from, to, days: {ISO: minutes}, gcal_event_id, modified_at,
@@ -1624,8 +1624,8 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
   Anzahlen
 - `src/sick_plan.py` — Planung der Krankheitstage, Tk-frei und ohne I/O:
   Grundlage der Stunden (`sick_hours_basis`: Standardzeit des Wochentags oder
-  Durchschnitt der letzten drei Monate), Vorbelegung, Sperren gegen Ist-Zeit und
-  Reservierung, Hinweise (Sechs-Wochen-Grenze, Vorschlag, Attest)
+  Durchschnitt der letzten drei Monate), Vorbelegung, Sperre gegen Ist-Zeit und gegen
+  Urlaub über Krankheitstagen, Hinweise (Sechs-Wochen-Grenze, Vorschlag, Attest)
 - `src/dialogs/vacation_dialog.py` — Verwaltung der Perioden (Einstieg:
   Einstellungen → Arbeitszeit → „Urlaub verwalten"). Die Entscheidungen des
   Bearbeiten-Dialogs sind Tk-frei und getestet: `prune_overrides` (welche

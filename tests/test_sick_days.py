@@ -148,3 +148,31 @@ def test_runs():
     assert sick_days.runs(["2026-03-04", "2026-03-02", "2026-03-03", "2026-03-09"]) == [
         ("2026-03-02", "2026-03-04"), ("2026-03-09", "2026-03-09")]
     assert sick_days.runs([]) == []
+
+
+@pytest.mark.parametrize("stamp", ["9999", "", "2026-03-02 10:00:00",
+                                   "2026-03-02T10:00:00+00:00", "2026-03-02T10:00Z"])
+def test_clean_record_rejects_modified_at_outside_the_fixed_shape(stamp):
+    assert sick_days.clean_record({**_rec(), "modified_at": stamp}) is None
+
+
+def test_apply_merge_error_names_no_date(store):
+    with pytest.raises(ValueError) as exc:
+        store.apply_merge({"2026-03-03": {"minutes": 1}})
+    assert "2026" not in str(exc.value)
+
+
+def test_apply_merge_with_current_state_does_not_write(store, monkeypatch):
+    store.save_range({"2026-03-02": 480})
+    calls = []
+    monkeypatch.setattr(store, "_save_to_disk", lambda: calls.append(1))
+    store.apply_merge(store.get_all_raw())
+    assert calls == []
+    store.apply_merge({"2026-03-03": _rec(60)})
+    assert calls == [1]
+
+
+def test_apply_merge_empty_on_fresh_store_creates_no_file(tmp_path):
+    path = tmp_path / "sick.json"
+    SickStore(str(path)).apply_merge({})
+    assert not path.exists()

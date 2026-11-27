@@ -43,9 +43,8 @@ Bereich oder Datensatz wird verworfen, nicht das Doc.
 Ein fehlender Krankheitstag heißt **nie „gelöscht“**: ältere Clients lassen den
 Bereich beim Push fallen, und ein neueres Gerät lädt danach nur die Tage hoch,
 die es kennt. Anders als bei den Einträgen gibt es deshalb keinen Self-Heal
-für zurückkehrende Geräte. Der Preis: ein gelöschter Krankheitstag, dessen
-Tombstone kompaktiert wurde, kann von einem Gerät zurückkommen, das über die Kompaktierung hinweg
-offline war.
+für zurückkehrende Geräte; der Preis dafür steht in `src/CLAUDE.md`
+(Tombstone-Lebenszyklus).
 """
 
 from __future__ import annotations
@@ -534,8 +533,8 @@ def build_local_doc(storage: Storage, settings: Settings,
                     conflicts_store: ConflictsStore,
                     sick_store: SickStore | None = None) -> Doc:
     """Erzeugt das Sync-Doc-Format aus den lokalen Stores. `sick` steht nur
-    darin, wenn der Store einen Datensatz hat: ohne Krankheitstage bleibt das
-    Doc wie bisher."""
+    darin, wenn der Store einen Datensatz hat: ohne Krankheitstage fehlt der
+    Bereich."""
     doc: Doc = {
         "schema_version": SCHEMA_VERSION,
         "entries": storage.get_all_raw(),
@@ -568,7 +567,13 @@ def apply_merged_doc(merged_doc: Doc, storage: Storage, settings: Settings,
     settings.apply_synced(merged_doc.get("settings", {}))
     conflicts_store.save_all(merged_doc.get("conflicts", []))
     if sick_store is not None and "sick" in merged_doc:
-        sick_store.apply_merge(clean_section(merged_doc["sick"]))
+        section = clean_section(merged_doc["sick"])
+        # `merge` entfernt nie einen lebenden Tag: fehlt einer, hat ein Aufrufer
+        # `sick_store` nur dem Anwenden gegeben. Tombstones entfallen (Kompaktierung).
+        for date_str, rec in sick_store.get_all_raw().items():
+            if not rec["deleted"] and date_str not in section:
+                section[date_str] = rec
+        sick_store.apply_merge(section)
     # Ein set_many statt zweier set-Aufrufe: jedes set schreibt settings.json
     # komplett neu (atomic write + fsync), und diese Funktion läuft bei jedem
     # Pull, Push und jeder Kompaktierung.

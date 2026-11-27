@@ -4,6 +4,9 @@
 Gespeichert wird je Kalendertag ein Datensatz
 `{minutes, modified_at, device_id, deleted}` (LWW je Tag im Sync). Ein
 „Block" ist nur eine Ableitung: die maximale Folge lückenloser lebender Tage.
+Der Datensatz trägt genau diese vier Felder, unbekannte entfallen beim Merge;
+weitere Tagesdaten gehören deshalb in einen eigenen Bereich des Sync-Docs
+(wie `sick` selbst), nie in den Datensatz.
 Gesundheitsdaten: in Logs stehen höchstens Anzahlen, nie Datum oder Minuten.
 """
 
@@ -11,6 +14,7 @@ from __future__ import annotations
 
 import datetime
 import logging
+import re
 import threading
 from dataclasses import dataclass
 from typing import Any, Iterable
@@ -24,6 +28,7 @@ _log = logging.getLogger(__name__)
 SickDay = dict[str, Any]
 
 MAX_MINUTES = 1440
+_STAMP = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z")
 REQUIRED_SICK_KEYS = frozenset({"minutes", "modified_at", "device_id", "deleted"})
 
 
@@ -51,6 +56,7 @@ def clean_record(raw: object) -> SickDay | None:
     device_id = raw.get("device_id")
     deleted = raw.get("deleted")
     if (not _valid_minutes(minutes) or not isinstance(modified_at, str)
+            or not _STAMP.fullmatch(modified_at)
             or not isinstance(device_id, str) or not isinstance(deleted, bool)):
         return None
     return {"minutes": 0 if deleted else minutes, "modified_at": modified_at,
@@ -220,12 +226,15 @@ class SickStore:
             return {d: dict(r) for d, r in self._data.items()}
 
     def apply_merge(self, merged: dict[str, SickDay]) -> None:
-        """Ersetzt den Stand durch das Merge-Ergebnis. Wirft `ValueError`,
-        wenn ein Datensatz Pflichtfelder vermissen lässt."""
+        """Ersetzt den Stand durch das Merge-Ergebnis; geschrieben wird nur
+        bei einer Änderung. Wirft `ValueError`, wenn ein Datensatz
+        Pflichtfelder vermissen lässt (die Meldung nennt kein Datum)."""
         with self._lock:
-            for date_str, rec in merged.items():
+            for rec in merged.values():
                 missing = REQUIRED_SICK_KEYS - rec.keys()
                 if missing:
                     raise ValueError(
-                        f"apply_merge: Krankheitstag {date_str!r} ohne {sorted(missing)}")
-            self._commit({d: dict(r) for d, r in merged.items()})
+                        f"apply_merge: Krankheitstag ohne {sorted(missing)}")
+            new = {d: dict(r) for d, r in merged.items()}
+            if new != self._data:
+                self._commit(new)

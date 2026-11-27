@@ -25,13 +25,17 @@ def _slot(start="08:00", end="16:00", pause=0):
     return {"start": start, "end": end, "pause": pause, "kategorie": ""}
 
 
+LATER = datetime.date(2030, 1, 1)  # nach jedem Testblock: Anker ist der Blockbeginn
+
+
 def _entries(*days, slot=None):
     return {d: {"slots": [slot or _slot()]} for d in days}
 
 
 def _prefill(date_from, date_to, **kw):
     args = dict(basis="standard", entries={}, reservations=None,
-                vacation_days={}, sick_days={}, settings=SETTINGS)
+                vacation_days={}, sick_days={}, settings=SETTINGS,
+                today=LATER)
     args.update(kw)
     return sick_plan.prefill(date_from, date_to, **args)
 
@@ -44,7 +48,7 @@ def _avg_entries():
 
 def _avg(first="2026-03-16", **kw):
     args = dict(entries=_avg_entries(), vacation_days={}, sick_days={},
-                state="")
+                state="", today=LATER)
     args.update(kw)
     return sick_plan.average_minutes(datetime.date.fromisoformat(first), **args)
 
@@ -117,13 +121,13 @@ def test_average_skips_holidays_in_denominator():
 
 def test_reference_period_three_months_back_across_year():
     e = _entries("2025-01-01")
-    r = sick_plan.reference_period(datetime.date(2026, 1, 10), e)
+    r = sick_plan.reference_period(datetime.date(2026, 1, 10), e, today=LATER)
     assert r == (datetime.date(2025, 10, 10), datetime.date(2026, 1, 9))
 
 
 def test_reference_period_clamps_to_month_length():
     e = _entries("2025-01-01")
-    r = sick_plan.reference_period(datetime.date(2026, 5, 31), e)
+    r = sick_plan.reference_period(datetime.date(2026, 5, 31), e, today=LATER)
     assert r == (datetime.date(2026, 2, 28), datetime.date(2026, 5, 30))
 
 
@@ -131,10 +135,10 @@ def test_reference_period_starts_at_first_recorded_day():
     e = _entries("2026-02-10", "2026-02-20")
     e["2026-01-15"] = {"slots": []}
     e["kaputt"] = {"slots": [_slot()]}
-    r = sick_plan.reference_period(datetime.date(2026, 3, 2), e)
+    r = sick_plan.reference_period(datetime.date(2026, 3, 2), e, today=LATER)
     assert r == (datetime.date(2026, 2, 10), datetime.date(2026, 3, 1))
-    assert sick_plan.reference_period(datetime.date(2026, 2, 10), e) is None
-    assert sick_plan.reference_period(datetime.date(2026, 3, 2), {}) is None
+    assert sick_plan.reference_period(datetime.date(2026, 2, 10), e, today=LATER) is None
+    assert sick_plan.reference_period(datetime.date(2026, 3, 2), {}, today=LATER) is None
 
 
 def test_average_none_without_worktime_falls_back_with_hint():
@@ -251,11 +255,29 @@ def test_prefill_caps_overlapping_reservation_slots():
 
 def test_reference_period_clamps_in_leap_year():
     e = _entries("2027-01-01")
-    r = sick_plan.reference_period(datetime.date(2028, 5, 31), e)
+    r = sick_plan.reference_period(datetime.date(2028, 5, 31), e, today=LATER)
     assert r[0] == datetime.date(2028, 2, 29)
 
 
 @pytest.mark.parametrize("bad", ["x", None])
 def test_reference_period_ignores_non_date_keys(bad):
     e = {bad: {"slots": [_slot()]}}
-    assert sick_plan.reference_period(datetime.date(2026, 3, 2), e) is None
+    assert sick_plan.reference_period(datetime.date(2026, 3, 2), e, today=LATER) is None
+
+
+def test_reference_period_anchors_at_today_for_future_blocks():
+    e = _entries("2026-01-05")
+    r = sick_plan.reference_period(
+        datetime.date(2027, 1, 15), e, today=datetime.date(2026, 11, 28))
+    assert r == (datetime.date(2026, 8, 28), datetime.date(2026, 11, 27))
+
+
+def test_average_for_future_block_uses_the_three_months_before_today():
+    start = datetime.date(2026, 8, 3)
+    days = [start + datetime.timedelta(days=i) for i in range(117)]
+    e = _entries(*[d.isoformat() for d in days if d.weekday() < 5
+                   and d <= datetime.date(2026, 11, 27)])
+    avg = sick_plan.average_minutes(
+        datetime.date(2027, 1, 15), entries=e, vacation_days={},
+        sick_days={}, state="", today=datetime.date(2026, 11, 28))
+    assert avg == 480

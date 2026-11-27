@@ -646,10 +646,15 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
   sie auf nie gesyncten Geräten (`drop_orphan_tombstones`). **Anders als bei den Einträgen gibt es
   keinen Self-Heal:** ein fehlender Tag beweist keine Löschung, weil ältere Geräte den Bereich beim
   Push fallen lassen. Der akzeptierte Preis: ein gelöschter Tag, dessen Tombstone kompaktiert wurde,
-  kann von einem Gerät zurückkommen, das über die Kompaktierung hinweg offline war. Jeder Flow, der ein
-  lokales Doc baut **und** ein gemergtes anwendet (Pull, Push, Kompaktierung), reicht `sick_store` an
+  kann von jedem Gerät zurückkommen, das den Tombstone vor der Kompaktierung nicht erhalten hat —
+  weil es offline war oder weil ein älteres Gerät den Bereich `sick` gerade fallen ließ. Jeder Flow, der ein
+  lokales Doc baut **und** ein gemergtes anwendet (Drive-Pull, Push, Kompaktierung und der
+  Handy-Abgleich `mobile_sync.perform_sync`), reicht `sick_store` an
   `build_local_doc` **und** an `apply_merged_doc_journaled` weiter: bekäme nur das Anwenden den Store,
-  fehlten dem Merge die lokalen Tage, und das Anwenden überschriebe sie. Das Journal-Recovery wendet
+  fehlten dem Merge die lokalen Tage. `apply_merged_doc` behält deshalb jeden lebenden lokalen Tag, der im
+  gemergten Bereich fehlt (`merge` entfernt nie einen lebenden Tag); fehlende Tombstones fallen weg.
+  Ein Datensatz trägt genau `minutes`, `modified_at`, `device_id`, `deleted`, unbekannte Felder entfallen
+  beim Merge; weitere Tagesdaten bekommen einen eigenen Bereich im Sync-Doc, nie ein Feld im Datensatz. Das Journal-Recovery wendet
   nur an und bekommt den Store ebenfalls. Logs nennen höchstens Anzahlen, nie Datum oder Minuten.
 
   Die Bedingung des Sweeps ist bewusst eng: Feature AUS reicht nicht, es muss
