@@ -2,7 +2,7 @@
 
 ## Warum
 
-Die App bekommt ein eigenes Erscheinungsbild: ein neues Icon, das zeigt, was
+Die App bekommt ein neues Erscheinungsbild: ein Icon, das zeigt, was
 sie tut, und Screenshots, die es zeigen. Das bisherige Icon
 (`assets/margenheld-icon.*`, ein Roboter) liegt zudem nur als 300 × 297 px
 großes Rasterbild vor; die 512er-Icons der PWA sind daraus hochskaliert und
@@ -22,7 +22,6 @@ weich (Xveyn#271).
 
 ## Nicht-Ziele
 
-- Git-Historie umschreiben: das alte Bild bleibt in früheren Commits.
 - `com.margenheld.zeiterfassung` (macOS-Bundle-ID, LaunchAgent) und die
   Copyright-Zeile in `LICENSE` bleiben, Begründung in
   `docs/project-handover.md`, Abschnitte 1 und 6.
@@ -32,7 +31,6 @@ weich (Xveyn#271).
 
 ## Anti-Ziele
 
-- Ein Motiv, das an den bisherigen Roboter anknüpft: das neue steht für sich.
 - Ein Aussehen, das vom Renderer abhängt: die SVG nutzt **keine Filter** (der
   Glanz ist eine halbtransparente breitere Linie hinter der Kontur), keine
   Schrift, nur Pfade, Formen und einen Verlauf.
@@ -63,7 +61,7 @@ Pillow:
 |---|---|---|
 | `assets/app-icon.png` | 512 × 512 | Fenster-`iconphoto`, Tray (alle drei), Linux-Menüeintrag |
 | `assets/app-icon.ico` | 16, 20, 24, 32, 40, 48, 64, 128, 256 | PyInstaller (Windows), Installer, Verknüpfungen |
-| `assets/app-icon.icns` | 16 bis 1024 | PyInstaller (macOS) |
+| `assets/app-icon.icns` | 32 bis 1024 (Retina-Typen ic07–ic14, kleinster 16@2x) | PyInstaller (macOS) |
 | `pwa/icons/icon-192.png`, `icon-512.png` | Kachel auf transparentem Grund | Manifest, Einrichtungs-Screen |
 | `pwa/icons/icon-maskable-512.png` | Kachel auf voller Fläche `#0e172b`, Motiv innerhalb der Sicherheitszone (Kreis mit 80 % Durchmesser) | Android |
 
@@ -90,7 +88,7 @@ und den Tests. Die alten Dateien werden aus dem Repo gelöscht.
   `AppPublisherURL`; reine Anzeige in „Apps & Features“, `AppId` hängt am
   `AppName` und bleibt).
 - **Linux-Menüeintrag:** nichts zu tun. `desktop_entry.ensure_icon` kopiert
-  das gebündelte PNG bei geändertem Inhalt nach `icon.png` im Datenordner,
+  das gebündelte PNG bei geänderter Dateigröße nach `icon.png` im Datenordner,
   bestehende Installationen bekommen das neue Icon beim nächsten Start.
 
 **Doku:** README (Titelbild in Zeile 2), `CONTRIBUTING.md` (Verzeichnisbaum,
@@ -139,8 +137,7 @@ Menü. Den Installer allein prüft auch der Workflow **Build** mit gesetztem
 (Homescreen-Icon, Einrichtungs-Screen) ansehen.
 
 Der PR schließt Xveyn#271 und ein eigenes Issue zum Rebranding, das vor dem
-PR angelegt wird. Issue, PR und CHANGELOG beschreiben die Änderung (neues
-Icon, neue Screenshots), nicht ihren Anlass.
+PR angelegt wird.
 
 ## Dem Umsetzer überlassen
 

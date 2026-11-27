@@ -515,7 +515,7 @@ sind von der Regel ausgenommen.
 
 ## Einrichtungs-Screen (#496)
 
-Wer noch nichts eingerichtet hat, sieht keinen Formularkopf mehr, sondern einen kleinen Einrichtungs-Screen: Roboter-Logo
+Wer noch nichts eingerichtet hat, sieht keinen Formularkopf mehr, sondern einen kleinen Einrichtungs-Screen: App-Icon
 (`icons/icon-192.png`, schon im `PRECACHE`), Titel „Zeiterfassung App“, ein Satz, nummerierte Schritte, **ein** roter
 Hauptknopf („QR-Code scannen“) und, grau hinter `<details>` „Andere Möglichkeiten“, die Nebenwege. Die Wahl liegt DOM-frei in
 `view-model.js`, `views.js::setupView` baut nur die Elemente.

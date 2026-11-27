@@ -57,6 +57,15 @@ python scripts/demo_data.py` und danach `ZEITERFASSUNG_DATA_DIR=<ordner> python 
 Für den Tab „Mobil“ ein Demo-Handy in `mobile_devices.json` des Demo-Ordners anlegen
 (`mobile_pairing.issue_device` + `MobileStore.save`, ohne den Server einzuschalten) und für
 den Abschnitt „Handy“ in `settings.json` `mobile_push_enabled` setzen — nur im Demo-Ordner.
+Was `demo_data.py` nicht anlegt, ergänzt ein kleines Skript im Demo-Ordner über die Stores:
+Notizen an Slots (`Storage.save` mit `notiz`; Kundentermine und Montage im Büro), für heute
+zwei Ist-Slots mit Notiz (Motiv des Tages-Dialogs), und für den Konfliktdialog drei Montage und
+eine Einstellung, deren Konflikte `sync._merge_one` aus einem eigenen und einem zweiten Stand
+(anderes Gerät, nur die Notiz verschieden) erzeugt und `ConflictsStore.save_all` ablegt; dazu
+`device_id`, `device_name` samt `device_name_initialized` (sonst zieht die App den Hostnamen)
+und `known_devices` mit dem zweiten Gerät. Das Kalender-Bild entsteht aus einer Kopie des
+Ordners **ohne** `conflicts.json`: sonst tragen die Konflikt-Tage den orangen Rand, und der
+Fenstertitel wird vor der Aufnahme auf „Zeiterfassung“ gesetzt (ohne Dev-Kennung).
 Dialoge lassen sich ohne Mausklicks über ein kleines Skript öffnen, das `App._open_dialog`
 bzw. `App._open_settings(initial_tab=…)` ruft und das Fenster aufnimmt (unter Wayland mit
 `spectacle -b -n -a -o <datei>`, danach den transparenten Schattenrand mit
@@ -66,13 +75,16 @@ bzw. `App._open_settings(initial_tab=…)` ruft und das Fenster aufnimmt (unter 
 `python scripts/pwa_devserver.py --reservations --api-port <frei>` startet die echte Handy-Instanz und die
 Web-App, der ausgegebene Koppel-Link koppelt einen Chrome mit **390×844 Pixeln** Fenstergröße. Alle Bilder
 sind 390 Pixel breit und zeigen den Zustand ohne Dialog-Animation (Playwright: `animations: 'disabled'`).
+Der Koppel-Link braucht eine LAN-Adresse (die Web-App lehnt `127.0.0.1` ab); sie steht in keinem Bild.
 
 Die Demo-Woche stammt nicht von `--seed-days` (das legt gleichförmige Ein-Stunden-Tage an), sondern von einem kleinen
 Skript, das `pwa_devserver.running(...)` startet und mit `dev.storage.apply_merge(...)` Einträge für Montag bis
-heute schreibt (Mo `08:00–16:30`, 30 min Pause; Di zwei Slots Projekt/Intern; Mi Support und Projekt; Do `08:00–16:00`;
-heute `08:00–12:00`); die Reservierung für heute (`13:00–17:00`, Support) kommt über den Editor der Web-App, weil der
-Reservierungs-Speicher der Handy-Instanz im Server liegt. Heute sollte ein Werktag mit Ist-Zeit am Vormittag sein,
-damit „heute“ und „Noch ausstehend“ im Bild stehen.
+heute schreibt, Notizen unter `notes` am Eintrag (Mo `08:00–16:00` Projekt; Di zwei Slots Projekt/Intern; Mi Support;
+Do `08:00–16:00`; heute `08:00–12:00` Projekt). Die Reservierung für heute (`13:00–17:00`, Support, 30 min Pause)
+legt das Skript vorher mit `ReservationStore.save` in `reservations.json` des Datenordners, den der Dev-Server beim
+Start liest. Heute sollte ein Werktag mit Ist-Zeit am Vormittag sein, damit „heute“ und „Noch ausstehend“ im Bild
+stehen. Fällt heute auf Donnerstag oder Freitag, kurze Tage nehmen (wie oben): fünf volle Tage passen nicht in
+844 Pixel, „Noch ausstehend“ läge dann hinter der Fußleiste.
 
 Was sich beim Aufnehmen ändert, ohne dass es im Bild stehen soll:
 
