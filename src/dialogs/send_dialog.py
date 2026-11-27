@@ -108,8 +108,10 @@ def resolve_send_period(settings, reservation_store, today):
     return send_reminder.default_send_period(today, marked, monthly)
 
 
-def period_has_no_content(ranged, vacation_days, date_from, date_to):
-    """True, wenn im gewählten Zeitraum weder Einträge noch Urlaub liegen.
+def period_has_no_content(ranged, vacation_days, date_from, date_to,
+                          sick_days=None):
+    """True, wenn im gewählten Zeitraum weder Einträge noch Urlaub noch
+    (mit Häkchen, `sick_days` gesetzt) Krankheit liegen.
 
     Kanalunabhängig (seit dem Multi-Kanal-Umbau, M10): Mail und PDF filtern
     `vacation_days` selbst intern (`generate_report`/`generate_pdf`) und
@@ -127,7 +129,11 @@ def period_has_no_content(ranged, vacation_days, date_from, date_to):
     vacation_in_range = (
         filter_period(date_from, date_to, vacation_days) or {}
     ) if vacation_days else {}
-    return not ranged and not any(vacation_in_range.values())
+    sick_in_range = (
+        filter_period(date_from, date_to, sick_days) or {}
+    ) if sick_days else {}
+    return (not ranged and not any(vacation_in_range.values())
+            and not any(sick_in_range.values()))
 
 
 def _show_single_failure(target, res):
@@ -180,7 +186,7 @@ def smtp_target_label(record):
 
 def open_send_dialog(parent, storage, settings, base_path, runner,
                      reservation_store=None, webhook_store=None,
-                     vacation_store=None, smtp_store=None):
+                     vacation_store=None, smtp_store=None, sick_store=None):
     credentials_path = os.path.join(base_path, "credentials.json")
     token_path = os.path.join(base_path, "token.json")
 
@@ -218,7 +224,7 @@ def open_send_dialog(parent, storage, settings, base_path, runner,
         dialog, storage, settings,
         from_default=period[0] if period else None,
         to_default=period[1] if period else None,
-        vacation_store=vacation_store,
+        vacation_store=vacation_store, sick_store=sick_store,
     )
     picker_frame.grid(row=0, column=0, sticky="w")
 
@@ -341,6 +347,12 @@ def open_send_dialog(parent, storage, settings, base_path, runner,
         if show_vacation and vacation_store is not None:
             vacation_days = workweek.filter_for_report(
                 vacation_store.day_minutes(), settings)
+        # Krankheit: None heißt „Häkchen aus“ — dann bleiben Bericht und
+        # Webhook bitgleich; mit Häkchen steht der Snapshot (auch leer).
+        sick_days = None
+        if picker.get_show_sick() and sick_store is not None:
+            sick_days = workweek.filter_for_report(
+                sick_store.day_minutes(), settings)
 
         # (a) Ziele einsammeln — zuerst, alles Weitere hängt davon ab.
         selected_hooks = []
@@ -361,7 +373,8 @@ def open_send_dialog(parent, storage, settings, base_path, runner,
         ranged = filter_period(date_from, date_to, entries)
         if ranged is not None:
             ranged = filter_categories(ranged, categories)
-        if period_has_no_content(ranged, vacation_days, date_from, date_to):
+        if period_has_no_content(
+                ranged, vacation_days, date_from, date_to, sick_days):
             themed_showinfo(
                 dialog, "Keine Einträge",
                 f"Keine Einträge für {format_date(date_from)} – "
@@ -386,7 +399,7 @@ def open_send_dialog(parent, storage, settings, base_path, runner,
                 categories=categories,
                 category_breakdown=category_breakdown,
                 note_breakdown=note_breakdown,
-                vacation_days=vacation_days,
+                vacation_days=vacation_days, sick_days=sick_days,
                 slot_order=normalize_mode(settings.get("slot_order_mode")),
             )
             if html is None:
@@ -411,7 +424,7 @@ def open_send_dialog(parent, storage, settings, base_path, runner,
                 name=settings.get("name"), categories=categories,
                 category_breakdown=category_breakdown,
                 note_breakdown=note_breakdown,
-                vacation_days=vacation_days,
+                vacation_days=vacation_days, sick_days=sick_days,
                 send_mail=send_mail,
                 mail={
                     "credentials_path": credentials_path,

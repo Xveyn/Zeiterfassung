@@ -211,3 +211,50 @@ def test_vacation_preview_without_vacation_is_zero():
 def test_note_breakdown_needs_the_category_breakdown(category_on, note_on, expected):
     from src.dialogs.period_picker import note_breakdown_active
     assert note_breakdown_active(category_on, note_on) is expected
+
+
+# ----- Krankheit: Vorschau und Leer-Prüfung -----
+
+def test_absence_preview_matches_report_numbers():
+    """Die Vorschau rechnet wie der Bericht: Krankheit gewinnt gegen Urlaub,
+    beide werden gegen die Ist-Zeit gekappt, Hinweise in Berichtsreihenfolge."""
+    from src.dialogs.period_picker import absence_preview
+    from src.report import generate_report
+    from tests.conftest import ist_slot
+
+    entries = {"2026-09-02": {"slots": [ist_slot("08:00", "10:00")]}}
+    vacation = {"2026-09-01": 480, "2026-09-02": 480, "2026-09-03": 480}
+    sick = {"2026-09-02": 480, "2026-09-03": 240}
+    df, dt = datetime.date(2026, 9, 1), datetime.date(2026, 9, 30)
+
+    vac, sck, notices = absence_preview(df, dt, entries, None, vacation, sick)
+    # 02.09.: Krankheit 480 - 120 Ist = 360, Urlaub 0; 03.09.: Krankheit 240, Urlaub 0
+    assert (vac, sck) == (480, 600)
+    assert len(notices) == 2
+    assert notices[0].startswith("An 1 Tag (02.09.2026) ist Arbeitszeit erfasst")
+    assert "lag Krankheit im Urlaub" in notices[1]
+
+    html, _ = generate_report(df, dt, entries, vacation_days=vacation,
+                              sick_days=sick)
+    for n in notices:
+        assert n in html
+
+
+def test_absence_preview_without_sick_is_the_vacation_path():
+    from src.dialogs.period_picker import absence_preview
+    vac, sck, notices = absence_preview(
+        datetime.date(2026, 9, 1), datetime.date(2026, 9, 30), {}, None,
+        {"2026-09-01": 480}, None)
+    assert (vac, sck, notices) == (480, 0, [])
+
+
+def test_period_with_only_sick_days_has_content():
+    from src.dialogs.send_dialog import period_has_no_content
+    df, dt = datetime.date(2026, 3, 1), datetime.date(2026, 3, 31)
+    assert period_has_no_content(
+        None, None, df, dt, sick_days={"2026-03-10": 480}) is False
+    assert period_has_no_content(
+        None, None, df, dt, sick_days={"2026-01-10": 480}) is True
+    assert period_has_no_content(
+        None, None, df, dt, sick_days={"2026-03-10": 0}) is True
+    assert period_has_no_content(None, None, df, dt) is True

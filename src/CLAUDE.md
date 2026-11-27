@@ -289,6 +289,15 @@ die dort erfasste Ist-Zeit kappt (Xveyn#97, Begründung in der Wurzel-CLAUDE.md
 unter „Urlaub"). Gekappt wird erst dort, weil erst dort feststeht, auf welchen
 Zeitraum und welche Kategorien der Bericht gefiltert ist.
 
+**Krankheit reist ebenso, aber als `sick_days=None | dict`.** `None` heißt
+„Häkchen aus“ (Bericht und Webhook bitgleich zu vorher), ein Dict (auch `{}`)
+„ausweisen“. Der Dialog-Thread zieht es über `SickStore.day_minutes()` durch
+denselben Wochentags-Filter wie den Urlaub und reicht es an `perform_send`,
+`perform_export_pdf` und (für die Mail-HTML) `generate_report`; die Vorschau des
+Zeitraum-Pickers (`period_picker.absence_preview`) rechnet über dieselbe
+`absence.cut_absences`. Die Leer-Prüfung `send_dialog.period_has_no_content`
+zählt Krankheitsminuten im Zeitraum als Inhalt.
+
 ## Daten- & Persistenz-Schicht
 
 - `json_store.py` — **die gemeinsame Mechanik, und der einzige Ort für zwei Regeln** (R2):

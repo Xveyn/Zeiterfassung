@@ -1127,7 +1127,7 @@ class App:
                          self._bg, reservation_store=self._active_reservation_store(),
                          webhook_store=self._webhook_store,
                          vacation_store=self.vacation_store,
-                         smtp_store=self._smtp_store)
+                         smtp_store=self._smtp_store, sick_store=self.sick_store)
 
     def _share(self):
         from src.dialogs.share_dialog import open_share_dialog
@@ -1140,7 +1140,8 @@ class App:
     def _export(self):
         from src.dialogs.export_dialog import open_export_dialog
         open_export_dialog(self.root, self.storage, self.settings, self._bg,
-                           vacation_store=self.vacation_store)
+                           vacation_store=self.vacation_store,
+                           sick_store=self.sick_store)
 
     def on_sync_pull_success(self):
         """Public-API für main.py: nach erfolgreichem Pull (UI-Thread)."""

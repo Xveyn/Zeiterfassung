@@ -939,17 +939,24 @@ Regeln:
   ist falsch erfasst, und das muss sichtbar sein. Deshalb ist die Kappung an
   **beiden** Stellen beschriftet, wortgleich aus `absence.cap_notice`:
   als Hinweiszeile in der Live-Vorschau des Zeitraum-Pickers
-  (`period_picker.vacation_preview`, im Stil der `weekend_hint` daneben) und
+  (`period_picker.absence_preview`, im Stil der `weekend_hint` daneben) und
   als Fußnote unter dem Urlaubs-Block im Bericht (`report._cap_footnote`).
   Eine stille Kappung wäre schlimmer als der Bug: der Urlaubs-Block wiche
   ohne Erklärung von dem ab, was der Verwaltungs-Dialog für dieselbe Periode
   zeigt.
 
+  Dasselbe gilt für Krankheit: mit dem Häkchen „Krankheit ausweisen“ (Vorgabe
+  aus, nur gebaut, wenn ein Krankheitstag mit Minuten > 0 existiert) läuft die
+  Rechnung über `absence.cut_absences` — „Krankheit gewinnt“ gegen Urlaub und
+  beide gegen die Ist-Zeit; ohne Häkchen bleibt es beim Urlaubs-Weg und die
+  Ausgabe bitgleich. Krankheitstage laufen durch denselben Wochentags-Filter
+  (`workweek.filter_for_report`) wie Urlaub.
+
   Gerufen wird `cap_by_worktime` an den **vier** Ausgabewegen — `report.generate_report`,
   `report.generate_pdf`, `webhook.build_json_payload` und den Auswertungen der lokalen
   API (`api_summary`, `/v1/summary/…`) — jeweils gegen den bereits zeitraum- **und**
   kategoriegefilterten Ausschnitt (die API filtert nur nach Zeitraum); dazu die Vorschau des Zeitraum-Pickers
-  (`period_picker.vacation_preview`). Das ist kein
+  (`period_picker.absence_preview`, mit Krankheit über `cut_absences`). Das ist kein
   Detail: filtert jemand auf eine Kategorie, zehrt nur die dort *sichtbare*
   Arbeitszeit den Urlaub auf, sonst gingen Ist-Zeit, Urlaub und „Zu vergüten
   gesamt" auf derselben Seite nicht auf. Die 0-Minuten-Tage bleiben auch hier
