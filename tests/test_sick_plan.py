@@ -332,3 +332,15 @@ def test_commit_tombstones_days_outside_edited_block(tmp_path):
         store, None, old_dates=["2026-03-02", "2026-03-03", "2026-03-04"],
         days={"2026-03-02": 60, "2026-03-03": 60}, delete_reservations=False)
     assert store.day_minutes() == {"2026-03-02": 60, "2026-03-03": 60}
+
+
+def test_edit_overrides_keeps_stored_and_edited_with_edited_winning():
+    r = sick_plan.edit_overrides({"a": 480, "b": 480}, {"b": 60},
+                                 basis_changed=False)
+    assert r == {"a": 480, "b": 60}
+
+
+def test_edit_overrides_drops_stored_when_basis_changed():
+    r = sick_plan.edit_overrides({"a": 480, "b": 480}, {"b": 60},
+                                 basis_changed=True)
+    assert r == {"b": 60}

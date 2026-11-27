@@ -20,7 +20,7 @@ from src.holidays_de import get_holidays
 from src.reservations import reservations_active
 from src.sick_plan import (
     BASES, BASIS_LABELS, HINT_AU, HINT_SICK_ON_VACATION, MAX_BLOCK_DAYS,
-    block_hints, commit_sick_block, normalize_basis, plan_sick_save, prefill,
+    block_hints, commit_sick_block, edit_overrides, normalize_basis, plan_sick_save, prefill,
     reservation_dates_in, sick_blocking_vacation, work_blocking_days,
 )
 from src.sick_view import block_label, manager_rows
@@ -97,7 +97,11 @@ def open_sick_dialog(parent, *, sick_store, storage, settings,
             selectcolor=CELL_BG, activebackground=BG, activeforeground=TEXT,
             highlightthickness=0, bd=0, anchor="w").pack(anchor="w")
 
-    overrides = dict(existing.days) if existing else {}
+    # stored: die gespeicherten Tage des Blocks; edited: die in dieser Sitzung
+    # von Hand geänderten. Ein Wechsel der Grundlage verwirft stored.
+    stored = dict(existing.days) if existing else {}
+    edited = {}
+    initial_basis = normalize_basis(settings.get("sick_hours_basis"))
     day_vars = {}
     expanded = {"on": False}
     current: dict = {"prefill": None}
@@ -158,13 +162,18 @@ def open_sick_dialog(parent, *, sick_store, storage, settings,
                            if vacation_store is not None else {}),
             sick_days=sick_days, settings=settings)
 
+    def _overrides():
+        return edit_overrides(
+            stored, edited,
+            basis_changed=normalize_basis(basis_var.get()) != initial_basis)
+
     def _current_plan():
         df, dt = _range()
         if df is None or dt is None:
             return {"error": "Ungültiges Datum.", "days": {}}
         pf = current["prefill"]
         return plan_sick_save(df.isoformat(), dt.isoformat(),
-                              pf.days if pf else {}, overrides)
+                              pf.days if pf else {}, _overrides())
 
     def _rebuild_day_rows(days):
         for child in day_rows_frame.winfo_children():
@@ -193,7 +202,7 @@ def open_sick_dialog(parent, *, sick_store, storage, settings,
         hours = parse_hours(day_vars[day].get())
         if hours is None:
             return
-        overrides[day] = max(0, hours_to_minutes_exact(hours))
+        edited[day] = max(0, hours_to_minutes_exact(hours))
         _update_summary()
 
     def _update_summary():
@@ -225,9 +234,10 @@ def open_sick_dialog(parent, *, sick_store, storage, settings,
         Zeitraum liegen."""
         current["prefill"] = _compute_prefill()
         plan = _current_plan()
-        kept = prune_overrides(overrides, plan)
-        overrides.clear()
-        overrides.update(kept)
+        for store in (stored, edited):
+            kept = prune_overrides(store, plan)
+            store.clear()
+            store.update(kept)
         if expanded["on"]:
             _rebuild_day_rows(plan["days"])
         _update_summary()

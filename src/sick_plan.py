@@ -286,3 +286,14 @@ def commit_sick_block(sick_store: SickStore, reservation_store: Any, *,
     for date in dates:
         reservation_store.delete(date)
     return dates
+
+
+def edit_overrides(stored: Mapping[str, int], edited: Mapping[str, int], *,
+                   basis_changed: bool) -> dict[str, int]:
+    """Überschreibungen beim Bearbeiten eines Blocks: die gespeicherten Werte,
+    solange die Grundlage unverändert ist, darüber die in diesem Dialog von
+    Hand geänderten Tage. Mit gewechselter Grundlage rechnen die gespeicherten
+    Tage neu, nur die von Hand geänderten bleiben."""
+    out = {} if basis_changed else dict(stored)
+    out.update(edited)
+    return out
