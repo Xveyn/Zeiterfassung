@@ -10,7 +10,7 @@ aktuelle Oberfläche zeigt oder eine drei Releases alte.
 | Datei | Motiv |
 |-------|-------|
 | `kalender-v1.30.0.png` | Monatsansicht (Hero-Bild) mit Urlaub, violettem Punkt (Reservierung) und bernsteinfarbenem Punkt (Sende-Erinnerung) |
-| `tagesdialog-v1.30.0.png` | Tages-Dialog: Ist-Zeit mit Notiz, Reservierung, Erinnerung |
+| `tagesdialog-v--VERSION--.png` | Tages-Dialog: Ist-Zeit mit Notiz unter dem Slot, Reservierung, Erinnerung |
 | `senden-v1.30.0.png` | Sende-Dialog mit Zeitraum- und Kategoriewahl, „Nach Kategorie“ und „Nach Notiz aufschlüsseln“ angehakt |
 | `bericht-v1.30.0.png` | Erzeugter PDF-Bericht, Seite 1 (Notizen in der Kategorie-Spalte) |
 | `bericht-summe-v1.30.0.png` | Ausschnitt der letzten Berichtsseite: „Summe je Kategorie“, aufgeschlüsselt nach Notiz (die Tabelle steht nie auf Seite 1, xhtml2pdf hält jede Woche zusammen) |
