@@ -1601,12 +1601,13 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
   kennt das Feld nicht) und wird in `share.py` bewusst aus dem Share-Doc
   projiziert, weil dessen Validator unbekannte Felder ablehnt.
 - `src/reservations_sync.py` — Abgleich der Reservierungen mit einem Google Kalender
+- `src/absence.py` — gemeinsamer Zeitraum-Kern von Urlaub und Krankheit, Tk-frei: `date_range`, `holiday_dates`, `apportion_minutes`, `CappedDay`/`cap_by_worktime`/`cap_notice(kind)` (Kappung gegen erfasste Ist-Zeit, Wortlaut je Art) und `format_day_list`. `vacations` und `vacation_plan` re-exportieren die Namen
 - `src/vacations.py` — Urlaubsperioden (eigenes Konzept neben Ist-Zeiten und
   Reservierungen). Die **Periode** ist der Record mit Identität
   (`{id: {name, from, to, days: {ISO: minutes}, gcal_event_id, modified_at,
   deleted}}`), die Tagesminuten liegen in ihr; `days` deckt jeden Kalendertag
   von `from` bis `to` lückenlos ab, Wochenenden und Feiertage mit 0. Enthält
-  auch die reinen Regeln (`expand_days`, `apportion_minutes`,
+  auch die reinen Regeln (`expand_days`,
   `periods_overlap`, `conflicting_days`). Gerätelokal — reist **nicht** per Drive-Sync und steht
   **nicht** im Share-Doc.
 - `src/vacations_sync.py` — Einwegs-Push der Urlaubsperioden als

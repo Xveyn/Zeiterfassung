@@ -8,6 +8,7 @@ Tkinter und das Theme in einen Serverthread-Pfad, der davon frei bleiben soll.
 """
 
 from src.time_utils import format_iso_date
+from src.absence import format_day_list  # noqa: F401  (Re-Export, s. absence)
 from src.vacations import apportion_minutes, conflicting_days, expand_days
 
 # Obergrenze je Urlaubstag. 24 h ist die einzige Grenze, die sich nicht
@@ -105,19 +106,6 @@ def plan_vacation_save(name, date_from, date_to, mode, value, overrides, state):
         }
 
     return {"error": None, "days": days}
-
-
-def format_day_list(days, limit=8):
-    """Die kollidierenden Tage als deutsche Datumsliste, ab `limit` gekürzt.
-
-    Ein dreiwöchiger Urlaub über einem vollen Monat Arbeitszeit ergäbe sonst
-    eine Fehlermeldung, die aus dem Bildschirm läuft.
-    """
-    shown = [format_iso_date(d) for d in days[:limit]]
-    rest = len(days) - len(shown)
-    if rest > 0:
-        shown.append(f"… und {rest} weitere")
-    return "\n".join(shown)
 
 
 def blocking_days(days, entries, reservations, settings):
