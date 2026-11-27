@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from src.api_entry_write import WriteError, load_json_body
-from src.api_vacation_write import _hours, _parse_day
+from src.api_vacation_write import parse_finite_hours, parse_iso_day
 from src.sick_plan import BASES, MAX_BLOCK_DAYS
 from src.vacation_plan import hours_to_minutes_exact
 
@@ -45,8 +45,8 @@ def parse_sick_body(body: bytes) -> SickRequest:
             400, "invalid_body",
             "Erlaubt sind from, to (Pflicht), basis und day_hours; "
             f"gefunden: {sorted(str(k)[:40] for k in data)[:10]}.")
-    first = _parse_day(data["from"], "from")
-    last = _parse_day(data["to"], "to")
+    first = parse_iso_day(data["from"], "from")
+    last = parse_iso_day(data["to"], "to")
     if last >= first and (last - first).days + 1 > MAX_BLOCK_DAYS:
         raise WriteError(422, "period_too_long",
                          f"Ein Krankheitszeitraum darf höchstens {MAX_BLOCK_DAYS} Tage umfassen.")
@@ -61,8 +61,8 @@ def parse_sick_body(body: bytes) -> SickRequest:
     if not isinstance(raw_days, dict):
         raise WriteError(422, "invalid_day_hours", 'day_hours muss {"YYYY-MM-DD": Stunden} sein.')
     for key, hours in raw_days.items():
-        day = _parse_day(key, "day_hours", "invalid_day_hours")
-        amount = _hours(hours, f"day_hours[{key}]", "invalid_day_hours")
+        day = parse_iso_day(key, "day_hours", "invalid_day_hours")
+        amount = parse_finite_hours(hours, f"day_hours[{key}]", "invalid_day_hours")
         if amount < 0 or amount > 24:
             raise WriteError(422, "invalid_day_hours",
                              f"day_hours[{key}]: 0 bis 24 Stunden.")

@@ -62,7 +62,7 @@ def _parse_name(value: Any) -> str:
     return value
 
 
-def _parse_day(value: Any, label: str, code: str = "invalid_date") -> datetime.date:
+def parse_iso_day(value: Any, label: str, code: str = "invalid_date") -> datetime.date:
     if not isinstance(value, str) or not _DATE_RE.fullmatch(value):
         raise WriteError(422, code, f"{label}: erwartet YYYY-MM-DD.")
     try:
@@ -73,7 +73,7 @@ def _parse_day(value: Any, label: str, code: str = "invalid_date") -> datetime.d
     return day
 
 
-def _hours(value: Any, label: str, code: str) -> float:
+def parse_finite_hours(value: Any, label: str, code: str) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
         raise WriteError(422, code, f"{label} muss eine endliche Zahl (Stunden) sein.")
     return float(value)
@@ -99,14 +99,14 @@ def parse_vacation_body(body: bytes) -> VacationRequest:
                          "Genau eines von hours_per_day oder total_hours angeben.")
 
     name = _parse_name(data["name"])
-    first = _parse_day(data["from"], "from")
-    last = _parse_day(data["to"], "to")
+    first = parse_iso_day(data["from"], "from")
+    last = parse_iso_day(data["to"], "to")
     if last >= first and (last - first).days + 1 > MAX_PERIOD_DAYS:
         raise WriteError(422, "period_too_long",
                          f"Ein Urlaub darf höchstens {MAX_PERIOD_DAYS} Tage umfassen.")
 
     mode = "per_day" if has_per_day else "total"
-    value = _hours(data["hours_per_day" if has_per_day else "total_hours"],
+    value = parse_finite_hours(data["hours_per_day" if has_per_day else "total_hours"],
                    "hours_per_day" if has_per_day else "total_hours", "invalid_hours")
 
     overrides: dict[str, int] = {}
@@ -114,8 +114,8 @@ def parse_vacation_body(body: bytes) -> VacationRequest:
     if not isinstance(raw_days, dict):
         raise WriteError(422, "invalid_day_hours", 'day_hours muss {"YYYY-MM-DD": Stunden} sein.')
     for key, hours in raw_days.items():
-        day = _parse_day(key, "day_hours", "invalid_day_hours")
-        amount = _hours(hours, f"day_hours[{key}]", "invalid_day_hours")
+        day = parse_iso_day(key, "day_hours", "invalid_day_hours")
+        amount = parse_finite_hours(hours, f"day_hours[{key}]", "invalid_day_hours")
         if amount < 0:
             raise WriteError(422, "invalid_day_hours", f"day_hours[{key}]: nicht negativ.")
         if last >= first and not first <= day <= last:

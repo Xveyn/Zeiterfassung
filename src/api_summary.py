@@ -2,11 +2,14 @@
 # pyright: reportOptionalMemberAccess=true
 """Auswertungen der lokalen HTTP-API (#92), Tk-frei, rein und ohne Socket.
 
-Summen, Kategorien, Wochenlimit, Pausenpflicht und Urlaub für einen Zeitraum
+Summen, Kategorien, Wochenlimit, Pausenpflicht, Urlaub und Krankheit für einen Zeitraum
 sowie Kategorienliste und Feiertage. Alles läuft über einen `get_all()`-Snapshot,
 den der Aufrufer reicht; gerechnet wird in ganzen MINUTEN je Slot (Regel
 „Summen NUR über Minuten“ in der Wurzel-`CLAUDE.md`), Dezimalstunden kommen
 nirgends vor.
+
+Urlaub und Krankheit kommen als Snapshots `{ISO: Minuten}` und werden über
+`absence.cut_absences` gegeneinander (Krankheit gewinnt) und gegen die Ist-Zeit gekappt.
 
 Gespeicherte Slots sind Fremddaten. `Storage` bereinigt sie an der Lese-Grenze
 (`storage.sanitize_slot`); was `summarize` trotzdem von einem Aufrufer mit eigenem

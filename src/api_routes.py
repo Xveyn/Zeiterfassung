@@ -546,22 +546,28 @@ def _vacation(request: ApiRequest, ctx: ApiContext, match: re.Match[str]) -> Api
     return ApiResponse(200, wire)
 
 
-def _blocked_message(blocked: list[str], kind: str = "Urlaub") -> str:
-    shown = ", ".join(blocked[:_MAX_LISTED_DAYS])
-    rest = len(blocked) - _MAX_LISTED_DAYS
-    if rest > 0:
-        shown += f" … und {rest} weitere"
+def _listed(days: list[str]) -> str:
+    """Die ersten Tage als Liste, der Rest als Zahl."""
+    shown = ", ".join(days[:_MAX_LISTED_DAYS])
+    rest = len(days) - _MAX_LISTED_DAYS
+    return f"{shown} … und {rest} weitere" if rest > 0 else shown
+
+
+def _blocked_message(blocked: list[str]) -> str:
     return ("An diesen Tagen ist bereits Arbeitszeit oder eine Reservierung erfasst: "
-            f"{shown}. {kind} und Arbeitszeit schließen sich am selben Tag aus; zuerst die "
+            f"{_listed(blocked)}. Urlaub und Arbeitszeit schließen sich am selben Tag aus; "
+            "zuerst die Einträge löschen oder einen anderen Zeitraum wählen.")
+
+
+def _sick_blocked_message(blocked: list[str]) -> str:
+    # Reservierungen sperren Krankheit nie, sie werden nur beim Vorbelegen gelesen.
+    return (f"An diesen Tagen ist bereits Arbeitszeit erfasst: {_listed(blocked)}. "
+            "Krankheit und Arbeitszeit schließen sich am selben Tag aus; zuerst die "
             "Einträge löschen oder einen anderen Zeitraum wählen.")
 
 
 def _sick_vacation_message(days: list[str]) -> str:
-    shown = ", ".join(days[:_MAX_LISTED_DAYS])
-    rest = len(days) - _MAX_LISTED_DAYS
-    if rest > 0:
-        shown += f" … und {rest} weitere"
-    return (f"An diesen Tagen bist du krank gemeldet: {shown}. Krankheit und Urlaub "
+    return (f"An diesen Tagen bist du krank gemeldet: {_listed(days)}. Krankheit und Urlaub "
             "schließen sich am selben Tag aus; zuerst die Krankheit in der App löschen "
             "oder einen anderen Zeitraum wählen.")
 
@@ -666,7 +672,7 @@ def _post_sick(request: ApiRequest, ctx: ApiContext, _match: re.Match[str]) -> A
             raise _ApiError(422, "invalid_sick", plan["error"])
         blocked = work_blocking_days(plan["days"], entries)
         if blocked:
-            raise _ApiError(409, "work_on_sick_days", _blocked_message(blocked, "Krankheit"))
+            raise _ApiError(409, "work_on_sick_days", _sick_blocked_message(blocked))
         store.save_range(plan["days"])
         block = store.block_for(parsed.date_from)
     _notify(ctx)

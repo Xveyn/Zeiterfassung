@@ -1,5 +1,6 @@
 # tests/test_api_sick.py
 """/v1/sick: Lesen, Anlegen, Löschen und die Sperren drumherum."""
+import datetime
 import json
 
 import pytest
@@ -92,6 +93,10 @@ def test_post_over_work_is_409_and_nothing_written(env):
     env.storage.save("2026-07-08", [ist_slot("08:00", "12:00")])
     response = env.call("POST", "/v1/sick", make_body())
     assert (response.status, code(response)) == (409, "work_on_sick_days")
+    message = response.body["error"]["message"]
+    assert message.startswith("An diesen Tagen ist bereits Arbeitszeit erfasst: 2026-07-08.")
+    assert "Reservierung" not in message
+    assert "Krankheit und Arbeitszeit schließen sich am selben Tag aus" in message
     assert env.sick.day_minutes() == {}
 
 
@@ -137,6 +142,9 @@ def test_put_entry_on_sick_day_is_409_but_delete_allowed(env):
     body = json.dumps({"slots": [ist_slot("08:00", "12:00")]}).encode()
     response = env.call("PUT", "/v1/entries/2026-07-07", body)
     assert (response.status, code(response)) == (409, "sick_day")
+    assert response.body["error"]["message"] == (
+        "Für diesen Tag ist Krankheit eingetragen. An einem Krankheitstag lässt sich keine "
+        "Arbeitszeit erfassen; die Krankheit zuerst in der App löschen.")
     env.storage.save("2026-07-07", [ist_slot("08:00", "12:00")])
     assert env.call("DELETE", "/v1/entries/2026-07-07").status == 200
 
@@ -154,3 +162,44 @@ def test_new_vacation_over_sick_day_is_409(env):
     assert (response.status, code(response)) == (409, "sick_on_vacation_days")
     assert "krank gemeldet" in response.body["error"]["message"]
     assert env.vacations.get_all() == {}
+
+
+def test_summary_route_uses_the_sick_store(env):
+    env.sick.save_range({"2026-07-06": 300})
+    response = env.call("GET", "/v1/summary/month/2026-07")
+    assert response.status == 200
+    assert response.body["sick_minutes"] == 300
+    assert response.body["payable_minutes"] == 300
+
+
+def _average_env(env):
+    # Referenzzeitraum davor: 4 Wochen je 4 h an Werktagen -> 4800 min über 24 Arbeitstage = 200 min
+    for week in range(4):
+        for offset in range(5):
+            day = datetime.date(2026, 6, 1) + datetime.timedelta(days=week * 7 + offset)
+            env.storage.save(day.isoformat(), [ist_slot("08:00", "12:00")])
+    env.ctx = ApiContext(**{**env.ctx.__dict__, "today": lambda: datetime.date(2026, 7, 6)})
+
+
+def test_basis_in_body_overrides_setting_and_setting_is_default(env):
+    _average_env(env)
+    env.settings["sick_hours_basis"] = "average_3m"
+    default = env.call("POST", "/v1/sick", make_body(**{"to": FIRST}))
+    assert default.body["days"][FIRST] == 200
+    env.call("DELETE", f"/v1/sick/{FIRST}")
+    override = env.call("POST", "/v1/sick", make_body(**{"to": FIRST}, basis="standard"))
+    assert override.body["days"][FIRST] == 480                 # Body gewinnt
+    env.call("DELETE", f"/v1/sick/{FIRST}")
+    env.settings["sick_hours_basis"] = "standard"
+    body = env.call("POST", "/v1/sick", make_body(**{"to": FIRST}, basis="average_3m"))
+    assert body.body["days"][FIRST] == 200
+
+
+def test_reservation_minutes_prefill_only_when_reservations_active(env):
+    env.reservations.save(FIRST, [{"start": "09:00", "end": "11:00", "kategorie": ""}])
+    on = env.call("POST", "/v1/sick", make_body(**{"to": FIRST}))
+    assert on.body["days"][FIRST] == 120
+    env.call("DELETE", f"/v1/sick/{FIRST}")
+    env.settings["reservations_enabled"] = False
+    off = env.call("POST", "/v1/sick", make_body(**{"to": FIRST}))
+    assert off.body["days"][FIRST] == 480
