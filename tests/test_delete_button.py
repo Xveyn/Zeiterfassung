@@ -41,3 +41,8 @@ def test_delete_button_hidden_without_any_unit():
 
 def test_delete_button_stays_windows_only_negative_for_vacation():
     assert _should_show_delete_button(False, False, False, True) is False
+
+
+def test_delete_button_shows_for_sick_on_macos_only():
+    assert _should_show_delete_button(True, False, False, False, True) is True
+    assert _should_show_delete_button(False, False, False, False, True) is False

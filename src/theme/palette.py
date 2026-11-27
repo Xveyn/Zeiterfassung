@@ -51,6 +51,9 @@ REMINDER_ACCENT = "#fbbf24"
 VACATION_BG = "#134e4a"
 VACATION_BG_HOVER = "#176b64"
 VACATION_ACCENT = "#2dd4bf"
+SICK_BG = "#4c1d3d"
+SICK_BG_HOVER = "#65274f"
+SICK_ACCENT = "#f472b6"
 
 # Rahmenfarbe für den heutigen Tag — blau, klar abgesetzt von rotem Eintrag,
 # grünem Feiertag, violetter Reservierung und orangem Konflikt-Rand.

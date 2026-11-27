@@ -107,6 +107,7 @@ ANNOTATED_MODULES = [
     "src/reservations.py",
     "src/absence.py",
     "src/sick_days.py",
+    "src/sick_view.py",
     "src/vacations.py",
     "src/vacations_sync.py",
     "src/conflicts_store.py",
