@@ -76,3 +76,15 @@ def test_delete_options_show_notes_and_keep_them():
     options = _delete_options(slots, "entry", "Arbeitszeit", GridRenderer._fmt_slot_line)
     assert options[0] == ("entry:0", "Arbeitszeit  08:00-12:00  Montage · Kunde Mustermann")
     assert _delete_action(slots, {"entry:1"}, "entry") == ("save", [slots[0]])
+
+
+def test_delete_day_offers_whole_sick_block(tmp_path):
+    from src.sick_days import SickStore
+    from src.ui import _sick_delete_option
+    store = SickStore(str(tmp_path / "sick.json"), device_id="d")
+    store.save_range({"2026-03-02": 480, "2026-03-03": 480, "2026-03-04": 0})
+    block = store.block_for("2026-03-03")
+    assert _sick_delete_option(block) == (
+        "sick:2026-03-02", "Krankheit 02.03.2026 – 04.03.2026")
+    store.delete_days(block.days)
+    assert store.blocks() == []

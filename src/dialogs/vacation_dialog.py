@@ -23,12 +23,26 @@ from src.time_utils import (
 )
 from src.dialogs.date_row import build_date_row
 from src.reservations import reservations_active
+from src.absence import format_day_list
+from src.sick_plan import sick_blocking_vacation
 from src.vacation_plan import (
     blocking_days, format_day_list as _format_day_list,
     hours_to_minutes_exact as _hours_to_minutes_exact, plan_vacation_save,
 )
 
 log = logging.getLogger(__name__)
+
+def sick_blocked_message(plan_days, sick_days):
+    """Fehlertext, wenn der Urlaub über Krankheitstage (Minuten > 0) läge,
+    sonst None."""
+    blocked = sick_blocking_vacation(plan_days, sick_days)
+    if not blocked:
+        return None
+    return ("An diesen Tagen bist du krank gemeldet:\n\n"
+            + format_day_list(blocked)
+            + "\n\nEinen Urlaub über Krankheitstage legt die App nicht an; "
+              "Krankheit im Urlaub trägst du als Krankheit ein.")
+
 
 def _format_hours(minutes: int) -> str:
     """Minuten → Anzeigewert der Stundenfelder, deutsches Dezimalkomma.
@@ -97,7 +111,7 @@ def _period_line(period):
 
 def open_vacation_dialog(parent, vacation_store, settings, on_change=None,
                          storage=None, reservation_store=None, runner=None,
-                         on_display_change=None):
+                         on_display_change=None, sick_store=None):
     """Übersicht aller Urlaubsperioden mit Neu / Bearbeiten / Löschen.
 
     storage/reservation_store dienen allein der Kollisionsprüfung beim
@@ -261,7 +275,7 @@ def open_vacation_dialog(parent, vacation_store, settings, on_change=None,
 
     def _new():
         _open_edit_dialog(dialog, vacation_store, settings, None, _changed,
-                          storage, reservation_store)
+                          storage, reservation_store, sick_store)
 
     def _edit():
         pid = _selected_id()
@@ -270,7 +284,7 @@ def open_vacation_dialog(parent, vacation_store, settings, on_change=None,
                              "Bitte zuerst einen Urlaubszeitraum auswählen.")
             return
         _open_edit_dialog(dialog, vacation_store, settings, pid, _changed,
-                          storage, reservation_store)
+                          storage, reservation_store, sick_store)
 
     def _delete():
         pid = _selected_id()
@@ -304,7 +318,7 @@ def open_vacation_dialog(parent, vacation_store, settings, on_change=None,
 
 
 def _open_edit_dialog(parent, vacation_store, settings, period_id, on_saved,
-                      storage=None, reservation_store=None):
+                      storage=None, reservation_store=None, sick_store=None):
     """Anlegen bzw. Bearbeiten einer Periode: Name, Von/Bis, Stunden-Modus und
     die aufklappbare Tagesliste."""
     existing = vacation_store.get(period_id) if period_id else None
@@ -533,6 +547,11 @@ def _open_edit_dialog(parent, vacation_store, settings, period_id, on_saved,
                 + "\n\nUrlaub und Arbeitszeit schließen sich am selben Tag "
                   "aus. Lösche zuerst die Einträge (Rechtsklick im Kalender) "
                   "oder wähle einen anderen Zeitraum.")
+            return
+        sick_msg = (sick_blocked_message(plan["days"], sick_store.day_minutes())
+                    if sick_store is not None else None)
+        if sick_msg:
+            themed_showerror(dialog, "Urlaub nicht gespeichert", sick_msg)
             return
         df, dt = _range()
         try:

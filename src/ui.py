@@ -43,13 +43,15 @@ from src.update_coordinator import UpdateCoordinator
 from src.reminder_scheduler import ReminderScheduler
 from src.send_reminder_scheduler import SendReminderScheduler
 from src.dialogs.entry_dialog import open_entry_dialog
+from src.dialogs.sick_dialog import open_sick_dialog
+from src import sick_view
 from src.dialogs.send_dialog import open_send_dialog
 from src.dialogs.settings_dialog import open_settings_dialog
 from src.tooltip import attach_tooltip
 from src.ui_queue import UiQueue
 from src.theme import (
     BG, ACCENT, TEXT, TEXT_MUTED,
-    FONT_HEADER, FONT_FOOTER, FONT_SMALL, apply_dark_titlebar, themed_askyesno, themed_ask_delete_choice, themed_showerror, themed_showinfo,
+    FONT_HEADER, FONT_FOOTER, FONT_SMALL, apply_dark_titlebar, themed_askyesno, themed_ask_action, themed_ask_delete_choice, themed_showerror, themed_showinfo,
     themed_showwarning,
     icon_button, secondary_button, set_toggle_active, toggle_button,
     _stray_click_suppressed,
@@ -73,6 +75,11 @@ def _delete_action(slots, selected, prefix):
     if not keep:
         return "delete", None
     return "save", keep
+
+
+def _sick_delete_option(block):
+    """Die Löscheinheit der Krankheit: immer der ganze Block."""
+    return sick_view.delete_key(block), sick_view.block_label(block)
 
 
 def _delete_options(slots, prefix, label, fmt, slot_order="chrono"):
@@ -196,7 +203,7 @@ class App:
             self.root, self.storage, self.settings, self.reservation_store,
             self.conflicts_store, self._open_dialog, self._delete_day,
             self._reservations_active,
-            vacation_store=self.vacation_store,
+            vacation_store=self.vacation_store, sick_store=self.sick_store,
         )
         self._relay_store = mobile_relay_store
         self._reminders = ReminderScheduler(
@@ -931,9 +938,11 @@ class App:
             self.vacation_store.period_for_date(date_str)
             if self.vacation_store is not None else None
         )
+        sick = (self.sick_store.block_for(date_str)
+                if self.sick_store is not None else None)
         entry_slots = entry["slots"] if entry else []
         res_slots = reservation["slots"] if reservation else []
-        if not entry_slots and not res_slots and vacation is None:
+        if not entry_slots and not res_slots and vacation is None and sick is None:
             return
 
         date_de = format_iso_date(date_str)
@@ -958,12 +967,20 @@ class App:
                 f"Urlaub „{vacation['name']}“ ({spanne})",
             ))
 
+        if sick is not None:
+            # Gelöscht wird immer der ganze Block (wie beim Urlaub).
+            options.append(_sick_delete_option(sick))
+
         if len(options) == 1:
             key = options[0][0]
             if key.startswith("entry"):
                 kind, frage = "Arbeitszeit", f"Arbeitszeit für {date_de} löschen?"
             elif key.startswith("reservation"):
                 kind, frage = "Reservierung", f"Reservierung für {date_de} löschen?"
+            elif key.startswith("sick:"):
+                assert sick is not None
+                kind = "Krankheit"
+                frage = f"{sick_view.block_label(sick)} komplett löschen?"
             else:
                 # Bei genau einer Option, die weder "entry" noch "reservation"
                 # ist, muss es die (einzige weitere Quelle von) options der
@@ -1007,6 +1024,9 @@ class App:
             vacation_touched = bool(vacation.get("gcal_event_id"))
             self.vacation_store.delete(vacation["id"])
 
+        if sick is not None and sick_view.delete_key(sick) in selected:
+            self.sick_store.delete_days(sick.days)
+
         self._refresh()
         if res_touched or vacation_touched:
             self._bg.trigger_reconcile(self._on_reconcile_done)
@@ -1042,9 +1062,29 @@ class App:
         # Urlaubstag — wer am Samstag mitten im Urlaub arbeitet, darf das
         # erfassen. Löschen bleibt über den Rechtsklick erreichbar, der
         # Urlaubstag ist damit keine Sackgasse.
+        sick = (self.sick_store.block_for(date_str)
+                if self.sick_store is not None else None)
+        if sick is not None and sick.days.get(date_str, 0):
+            # Ein Krankheitstag mit Stunden öffnet den Krankheits-Dialog seines
+            # Blocks statt des Tages-Dialogs (Ist-Zeit und Krankheit schließen
+            # sich aus); 0-Minuten-Tage bleiben normale Tage.
+            self._open_sick_dialog(date_str, sick)
+            return
         vacation = (self.vacation_store.period_for_date(date_str)
                     if self.vacation_store is not None else None)
         if vacation is not None and vacation.get("days", {}).get(date_str, 0):
+            if self.sick_store is not None:
+                if themed_ask_action(
+                        self.root, "Urlaub an diesem Tag",
+                        f"Für den {format_iso_date(date_str)} ist Urlaub eingetragen "
+                        f"(„{vacation.get('name', '')}“). An einem Urlaubstag lässt "
+                        f"sich keine Arbeitszeit erfassen.\n\nSoll hier doch "
+                        f"gearbeitet werden, lösche den Urlaub zuerst per Rechtsklick "
+                        f"auf den Tag.\n\nWar es ein Krankheitstag im Urlaub, "
+                        f"trägst du ihn als Krankheit ein.",
+                        "Krank melden…"):
+                    self._open_sick_dialog(date_str, None)
+                return
             themed_showinfo(
                 self.root, "Urlaub an diesem Tag",
                 f"Für den {format_iso_date(date_str)} ist Urlaub eingetragen "
@@ -1061,7 +1101,22 @@ class App:
             on_change=self._refresh,
             reservation_store=self._active_reservation_store(),
             trigger_reconcile=lambda: self._bg.trigger_reconcile(self._on_reconcile_done),
+            on_report_sick=((lambda: self._open_sick_dialog(date_str, None))
+                            if self.sick_store is not None else None),
         )
+
+    def _open_sick_dialog(self, date_str, block):
+        """Krankheits-Dialog: mit `block` bearbeitet er ihn, sonst legt er an
+        (Von = Bis = `date_str`). Liegt der Tag schon in einem Block, ist
+        dieser gemeint."""
+        block = block or self.sick_store.block_for(date_str)
+        open_sick_dialog(
+            self.root, sick_store=self.sick_store, storage=self.storage,
+            settings=self.settings, date_from=date_str, edit_block=block,
+            reservation_store=self._active_reservation_store(),
+            vacation_store=self.vacation_store, data_lock=self._data_lock,
+            on_change=self._refresh,
+            on_reservations_deleted=self._on_remote_calendar_data_changed)
 
     def _send(self):
         open_send_dialog(self.root, self.storage, self.settings, self.base_path,

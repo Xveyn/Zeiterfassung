@@ -19,6 +19,7 @@ from src import send_reminder, slot_notes
 from src.holidays_de import get_holidays
 from src.slot_order import normalize_mode, sorted_slots
 from src.tooltip import attach_tooltip
+from src import sick_view
 from src.vacations import period_for_day
 from src.theme import (
     BG, CELL_BG, WEEKEND_BG, ACCENT, TEXT, TEXT_MUTED,
@@ -26,6 +27,7 @@ from src.theme import (
     HOLIDAY_BG, HOLIDAY_BG_HOVER, HOLIDAY_ACCENT,
     REMINDER_ACCENT, RESERVATION_ACCENT, TODAY_ACCENT,
     VACATION_BG, VACATION_BG_HOVER, VACATION_ACCENT,
+    SICK_BG, SICK_BG_HOVER, SICK_ACCENT,
     CELL_BG_HOVER, WEEKEND_BG_HOVER, ENTRY_BG_HOVER, WEEKEND_ENTRY_BG_HOVER,
     FONT, FONT_BOLD, FONT_TINY, FONT_SMALL, FONT_HEADER, FONT_HEADER_SMALL,
     px, _should_show_delete_button,
@@ -43,7 +45,7 @@ PROBE_HEIGHT = 4
 class GridRenderer:
     def __init__(self, root, storage, settings, reservation_store, conflicts_store,
                  on_cell_click, on_cell_right_click, reservations_active,
-                 vacation_store=None):
+                 vacation_store=None, sick_store=None):
         self._root = root
         self._storage = storage
         self._settings = settings
@@ -53,6 +55,7 @@ class GridRenderer:
         self._on_cell_right_click = on_cell_right_click  # (date_str) -> None
         self._reservations_active = reservations_active  # () -> bool
         self._vacation_store = vacation_store
+        self._sick_store = sick_store
         # Rendering-State:
         self.grid_container = None
         self._grid_frames = []
@@ -368,6 +371,41 @@ class GridRenderer:
             w.bind("<Leave>", lambda e, c=cell, ls=labels, ob=bg: self._hover(c, ob, *ls))
         return cell
 
+    def _build_sick_cell(self, parent, date_str, day_text, minutes, pad,
+                         cell_size, time_font=FONT_TINY):
+        """Krankheitstag ohne erfasste Ist-Zeit: Tagnummer, „krank“ und eine
+        Stundenzeile (H:MM wie bei Urlaub), wenn der Tag Minuten trägt. Die
+        Zelle behält ihre drei Zeilen auch bei 0 Minuten, damit das Raster
+        gleich hoch bleibt."""
+        bg, hover_bg = SICK_BG, SICK_BG_HOVER
+        cell = tk.Frame(
+            parent, bg=bg, relief=tk.SOLID,
+            highlightbackground=SICK_ACCENT, highlightthickness=1,
+            cursor="hand2",
+        )
+        if cell_size is not None:
+            cell.config(width=cell_size[0], height=cell_size[1])
+            cell.pack_propagate(False)
+        day_lbl = tk.Label(cell, text=day_text, font=FONT, bg=bg, fg=TEXT,
+                           cursor="hand2")
+        day_lbl.pack(pady=(pad, 0))
+        name_lbl = tk.Label(cell, text="krank", font=time_font, bg=bg,
+                            fg=SICK_ACCENT, cursor="hand2")
+        name_lbl.pack()
+        hours_lbl = tk.Label(
+            cell,
+            text=(f"{format_hours_colon(minutes / 60)} h"
+                  if minutes else ""),
+            font=time_font, bg=bg, fg=TEXT, cursor="hand2")
+        hours_lbl.pack(pady=(0, pad))
+        labels = (day_lbl, name_lbl, hours_lbl)
+        for w in (cell, *labels):
+            w.bind("<Button-1>", lambda e, d=date_str: self._on_cell_click(d))
+            w.bind("<Button-3>", lambda e, d=date_str: self._on_cell_right_click(d))
+            w.bind("<Enter>", lambda e, c=cell, ls=labels, hb=hover_bg: self._hover(c, hb, *ls))
+            w.bind("<Leave>", lambda e, c=cell, ls=labels, ob=bg: self._hover(c, ob, *ls))
+        return cell
+
     @staticmethod
     def _fmt_slot_line(slot, with_pause=False):
         """Eine Tooltip-Zeile für einen Slot: 'HH:MM-HH:MM  Kategorie · Notiz'
@@ -576,7 +614,7 @@ class GridRenderer:
                         entry, holidays_map, pad,
                         holiday_max_len, cell_size, conflict_dates=None,
                         entry_time_font=FONT_TINY, holiday_name_font=FONT_SMALL,
-                        reservation=None, vacation=None):
+                        reservation=None, vacation=None, sick=None):
         """Dispatcht auf Vacation-, Entry-, Holiday- oder Empty-Zelle.
 
         vacation: die Urlaubsperiode dieses Tages oder None. Urlaub GEWINNT —
@@ -591,6 +629,10 @@ class GridRenderer:
         reservation: optionales {slots} für den Tag. Eine Reservierung ändert
         den Zelltyp NICHT — sie wird ausschließlich als kleiner violetter
         Eck-Punkt (plus Tooltip) auf die ohnehin gebaute Zelle gelegt.
+
+        sick: der Krankheitsblock dieses Tages oder None. Krankheit gewinnt
+        die Zellfarbe über Urlaub, Feiertag und Wochenende; Urlaub und
+        Feiertag stehen dann im Tooltip.
         """
         is_holiday = day_date in holidays_map
         # Minuten aus der Periode selbst — sie bringt ihre `days` mit, eine
@@ -599,11 +641,21 @@ class GridRenderer:
             vacation.get("days", {}).get(date_str, 0) if vacation else 0)
         has_conflict = bool(conflict_dates and date_str in conflict_dates)
         if entry:
+            if sick is not None:
+                ebg, ehover = SICK_BG, SICK_BG_HOVER
+            elif vacation is not None:
+                ebg, ehover = VACATION_BG, VACATION_BG_HOVER
+            else:
+                ebg = ehover = None
             cell = self._build_entry_cell(
                 parent, date_str, day_text, entry, is_weekend, pad,
                 cell_size=cell_size, time_font=entry_time_font,
-                bg=VACATION_BG if vacation is not None else None,
-                hover_bg=VACATION_BG_HOVER if vacation is not None else None,
+                bg=ebg, hover_bg=ehover,
+            )
+        elif sick is not None:
+            cell = self._build_sick_cell(
+                parent, date_str, day_text, sick.days.get(date_str, 0), pad,
+                cell_size=cell_size, time_font=entry_time_font,
             )
         elif vacation is not None:
             cell = self._build_vacation_cell(
@@ -649,6 +701,16 @@ class GridRenderer:
             has_conflict=has_conflict,
             vacation=vacation, vacation_minutes=vacation_minutes, reminder=reminder,
             slot_order=self._slot_order())
+        if sick is not None:
+            rest = self._build_tooltip_text(
+                entry, reservation, None, has_conflict=has_conflict,
+                reminder=reminder, slot_order=self._slot_order())
+            tip_text = sick_view.cell_tooltip(
+                date_str, sick,
+                vacation_name=vacation.get("name", "") if vacation else None,
+                holiday=holidays_map[day_date] if is_holiday else None)
+            if rest:
+                tip_text += "\n" + rest
         if tip_text:
             attach_tooltip(cell, tip_text)
 
@@ -659,7 +721,7 @@ class GridRenderer:
         # aktive Reservierung ab.
         if _should_show_delete_button(
             platform.system() == "Darwin", bool(entry), reservation is not None,
-            vacation is not None,
+            vacation is not None, sick is not None,
         ):
             self._add_delete_button(cell, date_str)
 
@@ -675,6 +737,13 @@ class GridRenderer:
             cell.configure(highlightbackground="orange", highlightthickness=2)
 
         return cell
+
+    def _sick_block(self, sick_days, date_str):
+        """Der Krankheitsblock des Tages; der Store wird nur für Krankheitstage
+        gefragt."""
+        if date_str not in sick_days:
+            return None
+        return self._sick_store.block_for(date_str)
 
     def _get_inactive_grid(self):
         """Liefert das versteckte Grid-Frame (Double-Buffer-Backbuffer).
@@ -810,6 +879,8 @@ class GridRenderer:
             self._reservation_store.get_all() if self._reservations_active() else {})
         vacation_periods = (
             self._vacation_store.get_all() if self._vacation_store else {})
+        sick_days = (
+            self._sick_store.day_minutes() if self._sick_store else {})
         total_minutes = 0
 
         state = self._settings.get("state")
@@ -860,6 +931,7 @@ class GridRenderer:
                     holiday_name_font=holiday_name_font,
                     reservation=reservations.get(date_str),
                     vacation=period_for_day(vacation_periods, date_str),
+                    sick=self._sick_block(sick_days, date_str),
                 )
                 cell.grid(row=row, column=col, sticky="nsew", padx=2, pady=2)
 
@@ -880,6 +952,8 @@ class GridRenderer:
             self._reservation_store.get_all() if self._reservations_active() else {})
         vacation_periods = (
             self._vacation_store.get_all() if self._vacation_store else {})
+        sick_days = (
+            self._sick_store.day_minutes() if self._sick_store else {})
         total_minutes = 0
         spans = week_spans_months(self._iso_year, self._current_week)
         state = self._settings.get("state")
@@ -918,6 +992,7 @@ class GridRenderer:
                 holiday_name_font=holiday_name_font,
                 reservation=reservations.get(date_str),
                 vacation=period_for_day(vacation_periods, date_str),
+                sick=self._sick_block(sick_days, date_str),
             )
             cell.grid(row=1, column=col, sticky="nsew", padx=2, pady=2)
 

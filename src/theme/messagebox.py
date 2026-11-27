@@ -99,6 +99,37 @@ def themed_askyesno(parent, title: str, message: str, lock_ms: int = 0) -> bool:
     return result["value"]
 
 
+def themed_ask_action(parent, title: str, message: str, action_label: str,
+                      close_label: str = "Schließen") -> bool:
+    """Meldung mit einem zusätzlichen Aktionsknopf. True nur, wenn der Nutzer
+    die Aktion wählt; Schließen, Escape und das Fensterkreuz geben False."""
+    dialog = create_dialog(parent, title, modal=False, escape_closes=False)
+    result = {"value": False}
+
+    tk.Label(
+        dialog, text=message, font=FONT, bg=BG, fg=TEXT,
+        wraplength=px(380), justify="left",
+    ).pack(padx=24, pady=(20, 14))
+
+    def click_action():
+        result["value"] = True
+        dialog.destroy()
+
+    btn_frame = tk.Frame(dialog, bg=BG)
+    btn_frame.pack(pady=(0, 18))
+    primary_button(btn_frame, action_label, click_action).pack(
+        side=tk.LEFT, padx=6)
+    secondary_button(btn_frame, close_label, dialog.destroy).pack(
+        side=tk.LEFT, padx=6)
+
+    dialog.bind("<Escape>", lambda e: dialog.destroy())
+    dialog.protocol("WM_DELETE_WINDOW", dialog.destroy)
+
+    center_dialog_on_parent(dialog, parent)
+    run_modal(dialog)
+    return result["value"]
+
+
 def themed_ask_delete_choice(parent, title: str, message: str, options, lock_ms: int = 0):
     """Modaler Lösch-Dialog mit Checkboxen — das Gegenstück zu `themed_askyesno`
     für Tage, an denen mehrere löschbare Objekte liegen (Ist-Zeit UND

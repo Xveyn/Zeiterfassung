@@ -1235,7 +1235,7 @@ nicht antwortet (s. „Google-Integration“).
 Die Zeile ergänzt „Berechtigungen" daneben: die sagt, **welche** Scopes
 gewährt sind, diese, **ob** der Token überhaupt noch trägt.
 Weitere Dialoge: `share_dialog`, `import_dialog`, `category_dialog`,
-`conflicts_dialog`, `scopes_dialog`, `vacation_dialog` (Urlaub verwalten, Einstieg
+`conflicts_dialog`, `scopes_dialog`, `sick_dialog` (Krankheit eintragen/verwalten; aus dem Kalender per Linksklick auf einen Krankheitstag mit Stunden, per „Krank melden…“ im Tages-Dialog und in der Urlaubs-Meldung; `vacation_dialog` lehnt Urlaub über Krankheitstagen ab, `sick_blocked_message`), `vacation_dialog` (Urlaub verwalten, Einstieg
 Einstellungen → Arbeitszeit; die Tk-freie Planung `plan_vacation_save`/`blocking_days` liegt in
 `vacation_plan.py`, der Dialog importiert sie zurück) und `mobile_pair_dialog` (Koppel-Dialog,
 Modus „lan“ oder „relay“; Verträge unter `relay_service.py` und `mobile_routes.py` oben). `period_picker` ist kein Dialog, sondern der von

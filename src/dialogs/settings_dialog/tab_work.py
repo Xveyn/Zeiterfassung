@@ -203,7 +203,8 @@ class WorkTab:
             specs.append(("Urlaub verwalten", lambda: open_vacation_dialog(
                 dialog, vacation_store, settings, on_vacation_change,
                 storage, reservation_store, runner,
-                on_display_change=on_vacation_display_change)))
+                on_display_change=on_vacation_display_change,
+                sick_store=sick_store)))
         if sick_store is not None and storage is not None:
             specs.append(("Krankheit verwalten", lambda: open_sick_manager(
                 dialog, sick_store=sick_store, storage=storage,

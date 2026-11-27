@@ -842,7 +842,7 @@ Schwellen liegen exakt auf 360/540.
 Im Kalender gilt ein striktes Modell: **Linksklick** öffnet den Tages-Dialog
 zum Anlegen/Bearbeiten (Ist-Zeit *und* Reservierung), **Rechtsklick** löscht.
 Rechtsklick löscht nie ohne Bestätigung; liegt an einem Tag mehr als eine
-löschbare Einheit (Ist-Slots, Reservierungs-Slots, ein Urlaub), fragt ein
+löschbare Einheit (Ist-Slots, Reservierungs-Slots, ein Urlaub, ein Krankheitsblock), fragt ein
 Checkbox-Dialog (`themed_ask_delete_choice`), was gelöscht wird. Gebunden an `<Button-3>` auf allen Zelltypen
 (`src/ui.py::_delete_day`, für Eintrags-, Leer- und Feiertagszellen).
 
@@ -864,7 +864,9 @@ sind die Zeiten bewusst gesetzt und bleiben unangetastet.
 Rechtsklick (`<Button-3>`) auf macOS unzuverlässig (Sekundärklick ist je nach
 Tk-Version `<Button-2>` bzw. Control-Klick). Damit Löschen auf dem Mac
 erreichbar bleibt, zeigt die Tageszelle **dort** ein kleines ✕ oben links,
-sobald der Tag löschbare Einheiten hat (Ist-Zeit, aktive Reservierung oder Urlaub).
+sobald der Tag löschbare Einheiten hat (Ist-Zeit, aktive Reservierung, Urlaub oder Krankheit).
+Krankheit löscht immer den ganzen Block (Schlüssel `sick:<Anfang>`); ein Linksklick auf
+einen Krankheitstag mit Stunden öffnet den Krankheits-Dialog seines Blocks.
 Der ✕-Button löst denselben Lösch-Pfad wie der Rechtsklick aus
 (`App._delete_day` inkl. Bestätigung/Slot-Auswahl). Gesteuert über
 `_should_show_delete_button` (`theme/geometry.py`) + `GridRenderer._add_delete_button` (`grid_renderer.py`).
@@ -886,7 +888,9 @@ Regeln:
   Feiertagsname geht nicht verloren, er wandert in den kombinierten Tooltip.
 - **Urlaub und Arbeitszeit schließen sich am selben Tag aus.** Trägt ein Tag
   Urlaubsstunden, öffnet der Tages-Dialog gar nicht erst
-  (`ui.App._open_dialog`), und ein Urlaub lässt sich nicht über Tage legen,
+  (`ui.App._open_dialog`); die Meldung dort trägt den Knopf „Krank melden…“
+  (`themed_ask_action`), der den Krankheits-Dialog für diesen Tag öffnet — sonst
+  wäre „krank im Urlaub“ vom Kalender aus nicht erreichbar. Und ein Urlaub lässt sich nicht über Tage legen,
   an denen bereits Ist-Zeit oder eine aktive Reservierung liegt
   (`vacations.conflicting_days`, geprüft in `vacation_dialog._save` über
   `vacation_dialog.blocking_days`). „Aktiv" heißt: Reservierungen sind
@@ -1430,7 +1434,7 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
 - `src/main.py` — Einstiegspunkt, **reiner Bootstrap**; baut `Tk`-Root, instanziert `Storage`/`Settings`/`App`, behandelt `--minimized`. Fachliche Sync-Flows gehören nach `sync_runtime.py` (R1, margenheld/Zeiterfassung#181 bzw. Xveyn#49)
 - `src/ui.py` — Tkinter-GUI; `App` ist schlanker Koordinator über `GridRenderer`/`BackgroundTaskRunner`/`SyncOrchestrator`/`UpdateBanner`/`UpdateCoordinator` (siehe `src/CLAUDE.md`)
 - `src/grid_renderer.py` — `GridRenderer`: Monats-/Wochenansicht, Zellen, Tooltips der Zellen, Fenstergeometrie (`repin_geometry`); `src/background_tasks.py` — `BackgroundTaskRunner`, der eine Thread-Helfer (`run`) samt Start-Tasks; `src/sync_orchestrator.py` — `SyncOrchestrator`, Bedienung des Drive-Syncs (Status, Fehler, Quit-Push); `src/update_banner.py` — `UpdateBanner` über dem Kalender. Verträge der vier: `src/CLAUDE.md`, „Die fünf App-Komponenten“
-- `src/dialogs/` — Modal-Dialoge; Beschreibung, Verträge und Reihenfolge der Settings-Tabs in `src/CLAUDE.md`, Abschnitt „Dialoge“. Module: `entry_dialog` (Tages-Dialog), `slot_rows` (Slot-Zeilenliste; jede Ist-Zeile trägt ein Notizfeld mit Vorschlägen, die Reservierung keines), `category_dialog` (Kategorien samt Standardzeiten; die Reihenfolge der Liste ordnen ▲/▼, gespeichert wird in Zeilenreihenfolge, sie gilt in der Auswahl der Dialoge und am Handy; „Speichern“ ist erst aktiv, wenn sich etwas ändern würde, `rows_changed`), `conflicts_dialog` (Sync-Konflikte; die gewählte Karte reicht ihre Notizen über `conflict_view.entry_choice` an `sync.resolve_conflict`), `date_row` (Tag/Monat/Jahr-Widget), `period_picker` (Zeitraum-Auswahl mit Vorschau; der Schalter „Nach Notiz aufschlüsseln“ erscheint nur, wenn der Bestand eine Notiz hat), `send_dialog` + `send_task` (Versand, Worker-Kern Tk-frei), `export_dialog` + `export_task` (PDF-Export), `share_dialog` + `share_task` (Teilen), `import_dialog` (Import), `mail_task` (gemeinsamer Fehler-Klassifikator der Mail-Kerne), `smtp_dialog`, `webhook_dialog`, `vacation_dialog` (Urlaub verwalten), `scopes_dialog` (gewährte OAuth-Scopes), `mobile_pair_dialog` (Koppel-Dialog Handy), `removal_dialog` (Rückfrage „Zeiterfassung entfernen“), `privacy_dialog` (Datenschutzhinweise, Einstellungen → App), `settings_dialog/` (Paket, ein Modul je Tab)
+- `src/dialogs/` — Modal-Dialoge; Beschreibung, Verträge und Reihenfolge der Settings-Tabs in `src/CLAUDE.md`, Abschnitt „Dialoge“. Module: `entry_dialog` (Tages-Dialog; der Knopf „Krank melden…“ öffnet den Krankheits-Dialog), `sick_dialog` (Krankheit eintragen und verwalten; `src/sick_view.py` trägt die Anzeigetexte), `slot_rows` (Slot-Zeilenliste; jede Ist-Zeile trägt ein Notizfeld mit Vorschlägen, die Reservierung keines), `category_dialog` (Kategorien samt Standardzeiten; die Reihenfolge der Liste ordnen ▲/▼, gespeichert wird in Zeilenreihenfolge, sie gilt in der Auswahl der Dialoge und am Handy; „Speichern“ ist erst aktiv, wenn sich etwas ändern würde, `rows_changed`), `conflicts_dialog` (Sync-Konflikte; die gewählte Karte reicht ihre Notizen über `conflict_view.entry_choice` an `sync.resolve_conflict`), `date_row` (Tag/Monat/Jahr-Widget), `period_picker` (Zeitraum-Auswahl mit Vorschau; der Schalter „Nach Notiz aufschlüsseln“ erscheint nur, wenn der Bestand eine Notiz hat), `send_dialog` + `send_task` (Versand, Worker-Kern Tk-frei), `export_dialog` + `export_task` (PDF-Export), `share_dialog` + `share_task` (Teilen), `import_dialog` (Import), `mail_task` (gemeinsamer Fehler-Klassifikator der Mail-Kerne), `smtp_dialog`, `webhook_dialog`, `vacation_dialog` (Urlaub verwalten), `scopes_dialog` (gewährte OAuth-Scopes), `mobile_pair_dialog` (Koppel-Dialog Handy), `removal_dialog` (Rückfrage „Zeiterfassung entfernen“), `privacy_dialog` (Datenschutzhinweise, Einstellungen → App), `settings_dialog/` (Paket, ein Modul je Tab)
 - `src/json_store.py` — gemeinsame Mechanik der lokalen JSON-Stores und einziger Ort der beiden Regeln N1 (`atomic_write_json`: fsync vor `os.replace`) und N4 (`load_json_or_quarantine`: korrupte Datei nach `.corrupt-<stamp>` statt stillem Verwerfen). Neue Stores nutzen die beiden Funktionen, statt die Mechanik zu kopieren
 - `src/storage.py` — JSON-Persistenz der Zeiteinträge (Schlüssel: ISO-Datum). Gelesen wird nur bereinigt (`sanitize_slot`), eine beschädigte Datei wird beim Laden mit Sicherung repariert (s. `src/CLAUDE.md`). Die Slot-Notiz (Xveyn#519) liegt auf der Platte am Eintrag (`notes`), `get`/`get_all` liefern sie als `notiz` am Slot (App-Form, s. `src/slot_notes.py`)
 - `src/settings.py` — Benutzereinstellungen mit Defaults
@@ -1622,6 +1626,11 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
   Reist additiv als Bereich `sick` im Sync-Doc (kein Schema-Bump), steht **nie**
   im Share-Doc oder im Google-Kalender. Gesundheitsdaten: Logs nennen höchstens
   Anzahlen
+- `src/sick_view.py` — Anzeigetexte der Krankheitstage, Tk-frei: Blockbeschriftung,
+  Löschschlüssel `sick:<Anfang>`, Zell-Tooltip (mit Urlaub und Feiertag), Reihenfolge und
+  Zeilen der Verwaltung. `src/dialogs/sick_dialog.py` — Krankheits-Dialog (`open_sick_dialog`,
+  bearbeitet nur mit ausdrücklich übergebenem `edit_block`) und Verwaltung
+  (`open_sick_manager`, Einstellungen → Arbeitszeit → „Krankheit verwalten“)
 - `src/sick_plan.py` — Planung der Krankheitstage, Tk-frei und ohne I/O:
   Grundlage der Stunden (`sick_hours_basis`: Standardzeit des Wochentags oder
   Durchschnitt der letzten drei Monate), Vorbelegung, Sperre gegen Ist-Zeit und gegen

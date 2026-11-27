@@ -238,3 +238,14 @@ def test_blocking_days_counts_reservations_only_when_enabled(
     settings = {"reservations_enabled": enabled, "gcal_enabled": gcal}
 
     assert blocking_days(_DAYS, None, reservations, settings) == expected
+
+
+def test_vacation_save_blocked_by_sick_days():
+    from src.dialogs.vacation_dialog import sick_blocked_message
+    assert sick_blocked_message({"2026-07-01": 480}, {"2026-07-01": 480}) == (
+        "An diesen Tagen bist du krank gemeldet:\n\n01.07.2026\n\n"
+        "Einen Urlaub über Krankheitstage legt die App nicht an; "
+        "Krankheit im Urlaub trägst du als Krankheit ein.")
+    # 0-Minuten-Tage (Wochenende) sperren nicht.
+    assert sick_blocked_message({"2026-07-01": 480}, {"2026-07-01": 0}) is None
+    assert sick_blocked_message({"2026-07-01": 0}, {"2026-07-01": 480}) is None
