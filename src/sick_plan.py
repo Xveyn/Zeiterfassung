@@ -269,12 +269,25 @@ def reservation_dates_in(days: Mapping[str, int],
     return sorted(d for d in days if (reservations.get(d) or {}).get("slots"))
 
 
+class ReservationDeleteError(Exception):
+    """Der Krankheitsblock ist geschrieben, aber nicht alle Reservierungen
+    ließen sich löschen; `deleted` nennt die bereits gelöschten Tage."""
+
+    def __init__(self, deleted: list[str]) -> None:
+        super().__init__("Reservierungen nicht vollständig gelöscht")
+        self.deleted = deleted
+
+
 def commit_sick_block(sick_store: SickStore, reservation_store: Any, *,
                       old_dates: Iterable[str], days: dict[str, int],
                       delete_reservations: bool) -> list[str]:
     """Schreibt den Block und löscht danach, nur auf Wunsch, die Reservierungen
     seiner Tage. Die Minuten wurden vorher geplant, die Reservierungen
-    dürfen erst jetzt wegfallen. Liefert die gelöschten Reservierungstage."""
+    dürfen erst jetzt wegfallen. Liefert die gelöschten Reservierungstage.
+
+    Ein Fehler beim Schreiben des Blocks wirft `OSError` unverändert; scheitert
+    danach ein Löschen, wirft `ReservationDeleteError` (der Block steht dann
+    schon)."""
     old = list(old_dates)
     if old:
         sick_store.replace_block(old, days)
@@ -283,9 +296,14 @@ def commit_sick_block(sick_store: SickStore, reservation_store: Any, *,
     if not delete_reservations or reservation_store is None:
         return []
     dates = reservation_dates_in(days, reservation_store.get_all())
+    deleted: list[str] = []
     for date in dates:
-        reservation_store.delete(date)
-    return dates
+        try:
+            reservation_store.delete(date)
+        except OSError as e:
+            raise ReservationDeleteError(deleted) from e
+        deleted.append(date)
+    return deleted
 
 
 def edit_overrides(stored: Mapping[str, int], edited: Mapping[str, int], *,

@@ -43,7 +43,13 @@ def cell_tooltip(date_str: str, block: SickBlock, *,
     return "\n".join(lines)
 
 
+def ordered_blocks(blocks: list[SickBlock]) -> list[SickBlock]:
+    """Die Reihenfolge der Verwaltung, neueste zuerst; Liste und Auswahl
+    teilen sich genau diese Ordnung."""
+    return sorted(blocks, key=lambda b: b.date_from, reverse=True)
+
+
 def manager_rows(blocks: list[SickBlock]) -> list[tuple[str, str]]:
-    """Zeilen des Verwaltungs-Dialogs, neueste zuerst: (Zeitraum, Summe)."""
-    ordered = sorted(blocks, key=lambda b: b.date_from, reverse=True)
-    return [(_span(b), format_minutes_hm(b.total_minutes)) for b in ordered]
+    """Zeilen des Verwaltungs-Dialogs in der übergebenen Reihenfolge
+    (`ordered_blocks`): (Zeitraum, Summe)."""
+    return [(_span(b), format_minutes_hm(b.total_minutes)) for b in blocks]

@@ -334,6 +334,37 @@ def test_commit_tombstones_days_outside_edited_block(tmp_path):
     assert store.day_minutes() == {"2026-03-02": 60, "2026-03-03": 60}
 
 
+class _FailingReservations(_FakeReservations):
+    def delete(self, date):
+        if self.deleted:
+            raise OSError("Platte voll")
+        super().delete(date)
+
+
+def test_commit_reports_partial_reservation_failure(tmp_path):
+    days = {"2026-03-02": 480, "2026-03-03": 480}
+    fake = _FailingReservations({d: {"slots": [_slot()]} for d in days})
+    store = _sick_store(tmp_path)
+    with pytest.raises(sick_plan.ReservationDeleteError) as info:
+        sick_plan.commit_sick_block(
+            store, fake, old_dates=[], days=days, delete_reservations=True)
+    assert info.value.deleted == ["2026-03-02"]
+    assert isinstance(info.value.__cause__, OSError)
+    assert store.day_minutes() == days
+
+
+def test_commit_sick_write_failure_is_not_a_reservation_error(tmp_path):
+    store = _sick_store(tmp_path)
+    store.save_range = lambda days: (_ for _ in ()).throw(OSError("x"))
+    fake = _FakeReservations({"2026-03-02": {"slots": [_slot()]}})
+    with pytest.raises(OSError) as info:
+        sick_plan.commit_sick_block(
+            store, fake, old_dates=[], days={"2026-03-02": 60},
+            delete_reservations=True)
+    assert not isinstance(info.value, sick_plan.ReservationDeleteError)
+    assert fake.deleted == []
+
+
 def test_edit_overrides_keeps_stored_and_edited_with_edited_winning():
     r = sick_plan.edit_overrides({"a": 480, "b": 480}, {"b": 60},
                                  basis_changed=False)

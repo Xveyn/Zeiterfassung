@@ -1,5 +1,7 @@
 from src.sick_days import SickBlock
-from src.sick_view import block_label, cell_tooltip, delete_key, manager_rows
+from src.sick_view import (
+    block_label, cell_tooltip, delete_key, manager_rows, ordered_blocks,
+)
 from src.theme import palette
 
 
@@ -35,8 +37,16 @@ def test_cell_tooltip_names_vacation_and_holiday():
 def test_manager_rows_newest_first():
     a = _block("2026-01-05", "2026-01-06", {"2026-01-05": 480, "2026-01-06": 480})
     b = _block("2026-03-02", "2026-03-02", {"2026-03-02": 450})
-    assert manager_rows([a, b]) == [("02.03.2026", "7 h 30 min"),
-                                    ("05.01.2026 – 06.01.2026", "16 h")]
+    ordered = ordered_blocks([a, b])
+    assert ordered == [b, a]
+    assert manager_rows(ordered) == [("02.03.2026", "7 h 30 min"),
+                                     ("05.01.2026 – 06.01.2026", "16 h")]
+
+
+def test_manager_rows_keeps_given_order():
+    a = _block("2026-01-05", "2026-01-05", {"2026-01-05": 480})
+    b = _block("2026-03-02", "2026-03-02", {"2026-03-02": 450})
+    assert [r[0] for r in manager_rows([a, b])] == ["05.01.2026", "02.03.2026"]
 
 
 def _lum(h):
