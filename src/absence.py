@@ -188,6 +188,23 @@ def cut_absences(entries: dict[str, Any], vacation_days: dict[str, int],
                       sick_on_vacation)
 
 
+def cut_for_output(entries: dict[str, Any], vacation_days: dict[str, int],
+                   sick_days: dict[str, int] | None) -> AbsenceCut:
+    """Urlaub und Krankheit für eine Ausgabe (Bericht, Webhook, Vorschau,
+    Leer-Prüfung); die Eingaben sind schon auf Zeitraum und Kategorien
+    gefiltert.
+
+    `sick_days=None` heißt Häkchen „Krankheit ausweisen“ aus: dann nur die
+    Kappung des Urlaubs (`cap_by_worktime`), ohne jeden Krankheitstag, damit
+    die Ausgabe bitgleich bleibt und Krankheit nirgends durchscheint. Mit
+    Dict (auch leer) `cut_absences`.
+    """
+    if sick_days is None:
+        vacation, vacation_capped = cap_by_worktime(vacation_days, entries)
+        return AbsenceCut(vacation, {}, vacation_capped, [], [])
+    return cut_absences(entries, vacation_days, sick_days)
+
+
 def sick_on_vacation_notice(dates: list[str]) -> str:
     """Ein Satz über Krankheitstage, die im Urlaub lagen, oder ""."""
     if not dates:

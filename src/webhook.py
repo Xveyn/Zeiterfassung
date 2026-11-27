@@ -22,13 +22,12 @@ from http.client import HTTPMessage
 from typing import IO, Any, NoReturn
 from urllib.parse import unquote, urlsplit
 
-from src.absence import cut_absences
+from src.absence import cut_for_output
 from src.mail import is_offline_error
 from src.report import filter_categories, filter_period
 from src.slot_notes import clean_note
 from src.slot_order import sorted_slots
 from src.time_utils import calculate_hours, hours_to_minutes, utc_now_iso
-from src.vacations import cap_by_worktime
 from src.version import VERSION
 
 log = logging.getLogger(__name__)
@@ -259,7 +258,7 @@ def build_json_payload(*, date_from: datetime.date, date_to: datetime.date,
     Krankheit; mit einem Dict (auch leer) stehen beide immer drin: `sick`
     (`{ISO: minutes}` im Zeitraum, auch 0-Minuten-Tage, `{}` ohne Tage) und
     `sick_minutes` (Summe, 0 ohne). „Fehlt" heißt für einen Empfänger also
-    „nicht ausgewiesen oder ältere App". Über `absence.cut_absences` gegen
+    „nicht ausgewiesen oder ältere App". Über `absence.cut_for_output` gegen
     `ranged` gekappt, und Krankheit gewinnt: `vacation` (nur wenn nicht
     None) trägt an Krankheitstagen 0.
 
@@ -276,23 +275,21 @@ def build_json_payload(*, date_from: datetime.date, date_to: datetime.date,
         filter_period(date_from, date_to, vacation_days) or {}
         if vacation_days is not None else None
     )
-    # Trifft Urlaub auf erfasste Ist-Zeit, wird der Urlaub des Tages um sie
+    sick_ranged = (
+        filter_period(date_from, date_to, sick_days) or {}
+        if sick_days is not None else None
+    )
+    # Trifft Urlaub oder Krankheit auf erfasste Ist-Zeit, wird der Tag um sie
     # gekappt — dieselbe Rechnung wie in Mail-HTML und PDF, sonst summierte
     # ein Empfänger für einen Kalendertag mehr Stunden, als er hat
     # (Xveyn#97). Gegen `ranged`, also den bereits zeitraum- und
     # kategoriegefilterten, projizierten Ausschnitt, auf dem auch
     # `total_minutes` rechnet.
-    sick_ranged = (
-        filter_period(date_from, date_to, sick_days) or {}
-        if sick_days is not None else None
-    )
+    cut = cut_for_output(ranged, vacation_ranged or {}, sick_ranged)
+    if vacation_ranged is not None:
+        vacation_ranged = cut.vacation
     if sick_ranged is not None:
-        cut = cut_absences(ranged, vacation_ranged or {}, sick_ranged)
         sick_ranged = cut.sick
-        if vacation_ranged is not None:
-            vacation_ranged = cut.vacation
-    elif vacation_ranged:
-        vacation_ranged, _ = cap_by_worktime(vacation_ranged, ranged)
     payload = {
         "schema_version": PAYLOAD_SCHEMA_VERSION,
         "kind": PAYLOAD_KIND,

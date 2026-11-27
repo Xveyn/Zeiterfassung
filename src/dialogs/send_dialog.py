@@ -6,7 +6,8 @@ import traceback
 from tkinter import messagebox
 
 from src import workweek
-from src.dialogs.period_picker import build_period_picker
+from src.absence import cut_for_output
+from src.dialogs.period_picker import build_period_picker, report_sick_days
 from src.dialogs.send_task import format_result_summary, perform_send
 from src.platform_open import open_folder
 from src.slot_order import normalize_mode
@@ -122,18 +123,20 @@ def period_has_no_content(ranged, vacation_days, date_from, date_to,
     bevor irgendein Kanal feuert.
 
     `ranged` ist bereits zeitraum- **und** kategoriegefiltert; `vacation_days`
-    dagegen ist der rohe (nur workweek-gefilterte) {ISO: minutes}-Snapshot —
-    er läuft hier durch denselben `filter_period` wie die Entries, damit
-    diese Prüfung exakt denselben Ausschnitt beurteilt wie der Report.
+    und `sick_days` dagegen sind die rohen (nur workweek-gefilterten)
+    {ISO: minutes}-Snapshots — sie laufen hier durch denselben `filter_period`
+    und dieselbe `absence.cut_for_output` wie im Report. Entschieden wird über
+    das Ergebnis des Schnitts: ein Urlaubstag unter einem Krankheitstag ohne
+    Minuten ist dort 0 und damit kein Inhalt.
     """
     vacation_in_range = (
         filter_period(date_from, date_to, vacation_days) or {}
     ) if vacation_days else {}
-    sick_in_range = (
-        filter_period(date_from, date_to, sick_days) or {}
-    ) if sick_days else {}
-    return (not ranged and not any(vacation_in_range.values())
-            and not any(sick_in_range.values()))
+    sick_in_range = (None if sick_days is None
+                     else filter_period(date_from, date_to, sick_days) or {})
+    cut = cut_for_output(ranged or {}, vacation_in_range, sick_in_range)
+    return (not ranged and not any(cut.vacation.values())
+            and not any(cut.sick.values()))
 
 
 def _show_single_failure(target, res):
@@ -347,12 +350,8 @@ def open_send_dialog(parent, storage, settings, base_path, runner,
         if show_vacation and vacation_store is not None:
             vacation_days = workweek.filter_for_report(
                 vacation_store.day_minutes(), settings)
-        # Krankheit: None heißt „Häkchen aus“ — dann bleiben Bericht und
-        # Webhook bitgleich; mit Häkchen steht der Snapshot (auch leer).
-        sick_days = None
-        if picker.get_show_sick() and sick_store is not None:
-            sick_days = workweek.filter_for_report(
-                sick_store.day_minutes(), settings)
+        sick_days = report_sick_days(picker.get_show_sick(), sick_store,
+                                     settings)
 
         # (a) Ziele einsammeln — zuerst, alles Weitere hängt davon ab.
         selected_hooks = []

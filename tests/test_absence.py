@@ -113,3 +113,36 @@ def test_sick_on_vacation_notice_wording():
     days = [f"2026-06-0{i}" for i in range(1, 5)]
     assert absence.sick_on_vacation_notice(days) == (
         "An 4 Tagen lag Krankheit im Urlaub; diese Tage zählen als Krankheit.")
+
+
+# ----- cut_for_output: die eine Entscheidung „Häkchen aus oder Schnitt“ -----
+
+@pytest.mark.parametrize("work", [0, 120, 600])
+@pytest.mark.parametrize("vacation", [{}, {"2026-06-03": 480, "2026-06-04": 0},
+                                      {"2026-06-03": 60, "2026-06-05": 480}])
+def test_cut_for_output_without_sick_is_cap_by_worktime(work, vacation):
+    entries = _entries(work)
+    capped, hits = absence.cap_by_worktime(vacation, entries)
+    cut = absence.cut_for_output(entries, vacation, None)
+    assert cut.vacation == capped
+    assert list(cut.vacation) == list(capped)
+    assert cut.vacation_capped == hits
+    assert (cut.sick, cut.sick_capped, cut.sick_on_vacation) == ({}, [], [])
+
+
+def test_cut_for_output_with_sick_is_cut_absences():
+    entries = _entries(120)
+    vacation = {"2026-06-03": 480, "2026-06-04": 480}
+    sick = {"2026-06-03": 450, "2026-06-05": 0}
+    assert absence.cut_for_output(entries, vacation, sick) == (
+        absence.cut_absences(entries, vacation, sick))
+    assert absence.cut_for_output(entries, vacation, {}) == (
+        absence.cut_absences(entries, vacation, {}))
+
+
+def test_cut_for_output_leaves_inputs_alone():
+    vacation = {"2026-06-03": 480}
+    sick = {"2026-06-03": 480}
+    absence.cut_for_output(_entries(120), vacation, sick)
+    absence.cut_for_output(_entries(120), vacation, None)
+    assert vacation == {"2026-06-03": 480} and sick == {"2026-06-03": 480}

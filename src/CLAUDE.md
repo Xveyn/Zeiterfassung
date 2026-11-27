@@ -291,12 +291,16 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
 
 **Krankheit reist ebenso, aber als `sick_days=None | dict`.** `None` heißt
 „Häkchen aus“ (Bericht und Webhook bitgleich zu vorher), ein Dict (auch `{}`)
-„ausweisen“. Der Dialog-Thread zieht es über `SickStore.day_minutes()` durch
-denselben Wochentags-Filter wie den Urlaub und reicht es an `perform_send`,
-`perform_export_pdf` und (für die Mail-HTML) `generate_report`; die Vorschau des
-Zeitraum-Pickers (`period_picker.absence_preview`) rechnet über dieselbe
-`absence.cut_absences`. Die Leer-Prüfung `send_dialog.period_has_no_content`
-zählt Krankheitsminuten im Zeitraum als Inhalt.
+„ausweisen“. Der Dialog-Thread zieht es über `period_picker.report_sick_days`
+(`SickStore.day_minutes()` durch denselben Wochentags-Filter wie den Urlaub,
+ohne Häkchen gar nicht) und reicht es an `perform_send`,
+`perform_export_pdf` und (für die Mail-HTML) `generate_report`. Ob `None` den
+reinen Urlaubs-Weg nimmt oder der Schnitt gilt, entscheidet überall
+`absence.cut_for_output`: in Bericht, Webhook, der Vorschau des Zeitraum-Pickers
+(`period_picker.absence_preview`) und der Leer-Prüfung
+`send_dialog.period_has_no_content`. Die Leer-Prüfung urteilt wie der Bericht
+über das Ergebnis des Schnitts (ein Urlaubstag unter einem Krankheitstag ohne
+Minuten ist kein Inhalt).
 
 ## Daten- & Persistenz-Schicht
 
@@ -1255,6 +1259,7 @@ Modus „lan“ oder „relay“; Verträge unter `relay_service.py` und `mobile
 „Nach Notiz aufschlüsseln“ nur, wenn der Bestand mindestens eine Notiz hat (`slot_notes.has_notes`);
 er steht unter „Nach Kategorie aufschlüsseln“ und ist ausgegraut, solange dieses aus ist, weil die
 Unterzeilen an der Kategorie-Tabelle hängen. Senden und Export reichen ihn als `note_breakdown` durch.
+Den Schalter „Krankheit ausweisen“ baut er nur mit einem Krankheitstag mit Minuten > 0 im Bestand.
 
 `conflicts_dialog` wählt über `conflict_view.entry_choice(cand)` und gibt dabei die Notizen der
 gewählten Karte ausdrücklich an `sync.resolve_conflict`: zwei Stände, die sich nur in der Notiz

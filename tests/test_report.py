@@ -1002,3 +1002,61 @@ def test_report_with_only_sick_days_is_not_empty():
     assert "Zu vergüten gesamt" in html and "8.0h" in html
     assert generate_report(d1, d2, {}, sick_days={"2026-03-04": 0})[0] is None
     assert _pdf_html(d1, d2, {}, sick_days={"2026-03-04": 480})
+
+
+def test_sick_days_comes_after_the_existing_parameters():
+    """Ein neuer Parameter hängt hinten an: ein positionaler Aufruf von
+    `generate_report`/`generate_pdf` trifft weiter dieselben Parameter."""
+    import inspect
+
+    from src import report as report_mod
+    before = {
+        "generate_report": ["date_from", "date_to", "all_entries", "greeting",
+                            "content", "closing", "categories",
+                            "category_breakdown", "vacation_days",
+                            "slot_order", "note_breakdown"],
+        "generate_pdf": ["date_from", "date_to", "all_entries", "name",
+                         "categories", "category_breakdown", "vacation_days",
+                         "slot_order", "note_breakdown"],
+    }
+    for name, params in before.items():
+        names = list(inspect.signature(getattr(report_mod, name)).parameters)
+        assert names == [*params, "sick_days"], name
+
+
+def _fully_capped_notice():
+    from src.absence import CappedDay, cap_notice
+    return cap_notice([CappedDay("2026-03-02", 480, 480, 0)], kind="sick")
+
+
+def test_fully_capped_sick_keeps_its_footnote():
+    """Bleibt nach der Kappung keine Krankheitsminute, entfällt der Block —
+    der Satz zur Kappung nicht: die Vorschau nennt ihn auch."""
+    from src.dialogs.period_picker import absence_preview
+    d1, d2 = datetime.date(2026, 3, 1), datetime.date(2026, 3, 31)
+    entries, sick = _sick_entries(), {"2026-03-02": 480}
+    notice = _fully_capped_notice()
+
+    html, _ = generate_report(d1, d2, entries, sick_days=sick)
+    pdf = _pdf_html(d1, d2, entries, sick_days=sick)
+    assert ">Krankheit</th>" not in html
+    assert notice in html and notice in pdf
+
+    _, sick_minutes, notices = absence_preview(d1, d2, entries, None, {}, sick)
+    assert sick_minutes == 0 and notices == [notice]
+
+
+def test_fully_capped_sick_footnote_follows_the_vacation_block():
+    from src.dialogs.period_picker import absence_preview
+    d1, d2 = datetime.date(2026, 3, 1), datetime.date(2026, 3, 31)
+    entries, vacation = _sick_entries(), {"2026-03-03": 480}
+    sick = {"2026-03-02": 480}
+    notice = _fully_capped_notice()
+
+    html, _ = generate_report(d1, d2, entries, vacation_days=vacation,
+                              sick_days=sick)
+    assert html.count("Zu vergüten gesamt") == 1
+    assert ">Urlaub</th>" in html and ">Krankheit</th>" not in html
+    assert html.index("Zu vergüten gesamt") < html.index(notice)
+    _, _, notices = absence_preview(d1, d2, entries, None, vacation, sick)
+    assert notices == [notice]

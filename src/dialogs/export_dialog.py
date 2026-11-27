@@ -5,7 +5,7 @@ from src import workweek
 from src.report import default_pdf_filename
 from src.slot_order import normalize_mode
 from src.time_utils import format_date, validate_period
-from src.dialogs.period_picker import build_period_picker
+from src.dialogs.period_picker import build_period_picker, report_sick_days
 from src.dialogs.export_task import perform_export_pdf
 from src.theme import (
     BG,
@@ -64,11 +64,8 @@ def open_export_dialog(parent, storage, settings, runner, vacation_store=None,
         if show_vacation and vacation_store is not None:
             vacation_days = workweek.filter_for_report(
                 vacation_store.day_minutes(), settings)
-        # None = Häkchen aus (Ausgabe bitgleich), sonst der Snapshot.
-        sick_days = None
-        if picker.get_show_sick() and sick_store is not None:
-            sick_days = workweek.filter_for_report(
-                sick_store.day_minutes(), settings)
+        sick_days = report_sick_days(picker.get_show_sick(), sick_store,
+                                     settings)
 
         busy["running"] = True
         set_primary_button_enabled(export_btn, False)

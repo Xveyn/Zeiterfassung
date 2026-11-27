@@ -5,35 +5,20 @@ import tkinter as tk
 from src import slot_notes, workweek
 from src.dialogs.date_row import build_date_row
 from src.report import filter_categories, filter_period, total_hours
-from src.absence import cap_notice, cut_absences, sick_on_vacation_notice
-from src.vacations import cap_by_worktime
+from src.absence import cap_notice, cut_for_output, sick_on_vacation_notice
 from src.theme import (BG, CELL_BG, FONT, FONT_SMALL, TEXT, TEXT_MUTED,
                        px, set_enabled)
-
-
-def vacation_preview(date_from, date_to, all_entries, categories,
-                     vacation_days):
-    """Urlaubsminuten im Zeitraum für die Live-Vorschau, plus Hinweistext.
-
-    Rechnet exakt wie der erzeugte Bericht: derselbe Zeitraum- und
-    Kategorien-Ausschnitt, dieselbe Kappung gegen erfasste Ist-Zeit
-    (`absence.cap_by_worktime`). Ohne sie behauptete die Vorschau
-    „+ 8.0h Urlaub", während der Bericht für denselben Tag 4.0h ausweist.
-
-    Returns (Minuten, Hinweistext) — der Text ist "" ohne Kollision.
-    """
-    minutes, _, notices = absence_preview(
-        date_from, date_to, all_entries, categories, vacation_days, None)
-    return minutes, "".join(notices)
 
 
 def absence_preview(date_from, date_to, all_entries, categories,
                     vacation_days, sick_days):
     """Urlaubs- und Krankheitsminuten im Zeitraum samt Hinweistexten.
 
-    Rechnet exakt wie der Bericht (`report._resolve_absences`): derselbe
-    Zeitraum- und Kategorien-Ausschnitt; `sick_days=None` (Häkchen aus) nimmt
-    den reinen Urlaubs-Weg, sonst gilt „Krankheit gewinnt“ samt Kappung.
+    Rechnet exakt wie der Bericht: derselbe Zeitraum- und
+    Kategorien-Ausschnitt, dieselbe `absence.cut_for_output`; `sick_days=None`
+    (Häkchen aus) nimmt den reinen Urlaubs-Weg, sonst gilt „Krankheit
+    gewinnt“ samt Kappung. Ohne die Kappung behauptete die Vorschau
+    „+ 8.0h Urlaub“, während der Bericht für denselben Tag 4.0h ausweist.
 
     Returns (Urlaubsminuten, Krankheitsminuten, Hinweise) — die Hinweise in
     der Reihenfolge der Berichts-Fußnoten: Urlaub gekappt, Krankheit gekappt,
@@ -43,17 +28,28 @@ def absence_preview(date_from, date_to, all_entries, categories,
     if ranged:
         ranged = filter_categories(ranged, categories)
     vacation_in_range = filter_period(date_from, date_to, vacation_days) or {}
-    if sick_days is None:
-        capped, hits = cap_by_worktime(vacation_in_range, ranged)
-        notice = cap_notice(hits)
-        return sum(capped.values()), 0, [notice] if notice else []
-    sick_in_range = filter_period(date_from, date_to, sick_days) or {}
-    cut = cut_absences(ranged, vacation_in_range, sick_in_range)
+    sick_in_range = (None if sick_days is None
+                     else filter_period(date_from, date_to, sick_days) or {})
+    cut = cut_for_output(ranged, vacation_in_range, sick_in_range)
     notices = [cap_notice(cut.vacation_capped),
                cap_notice(cut.sick_capped, kind="sick"),
                sick_on_vacation_notice(cut.sick_on_vacation)]
     return (sum(cut.vacation.values()), sum(cut.sick.values()),
             [n for n in notices if n])
+
+
+def report_sick_days(show: bool, sick_store,
+                     settings) -> dict[str, int] | None:
+    """Krankheitstage für Bericht und Webhook, oder None.
+
+    None heißt Häkchen „Krankheit ausweisen“ aus (oder kein Store): dann wird
+    der Store gar nicht gelesen, und Bericht und Webhook bleiben bitgleich.
+    Sonst der Snapshot durch denselben Wochentags-Filter wie die Einträge,
+    auch leer. Senden und Export entscheiden darüber nur hier.
+    """
+    if not show or sick_store is None:
+        return None
+    return workweek.filter_for_report(sick_store.day_minutes(), settings)
 
 
 def note_breakdown_active(category_on, note_on):
