@@ -18,7 +18,7 @@ Desktop-App zur Erfassung von Arbeitszeiten: im Kern Kalenderansicht und PDF-Ber
 
 [![Release](https://img.shields.io/github/v/release/Xveyn/Zeiterfassung?label=Release&color=success&logo=github)](https://github.com/Xveyn/Zeiterfassung/releases/latest) ![Python](https://img.shields.io/badge/Python-3.12+-blue) ![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
 
-![Monatsansicht der Zeiterfassung mit erfassten Arbeitszeiten, Urlaub und den Punkten für Reservierung und Sende-Erinnerung](docs/screenshots/kalender-v--VERSION--.png)
+![Monatsansicht der Zeiterfassung mit erfassten Arbeitszeiten, Urlaub und den Punkten für Reservierung und Sende-Erinnerung](docs/screenshots/kalender-v1.30.0.png)
 
 <sub>Aus welcher Version ein Screenshot stammt, steht in seinem Dateinamen (`…-v<version>.png`), siehe [`docs/screenshots/`](docs/screenshots/).</sub>
 
@@ -42,7 +42,7 @@ Desktop-App zur Erfassung von Arbeitszeiten: im Kern Kalenderansicht und PDF-Ber
 - **Reservierungen & Google-Kalender** — Zukünftige Arbeitszeiten pro Tag reservieren (in den Einstellungen einschaltbar, auch ohne Google, eigenes Konzept neben den Ist-Zeiten, im Kalender als violetter Eck-Punkt markiert, mit Sende-Erinnerung zusätzlich ein bernsteinfarbener; Reservierungen tragen eine Pause, die der Tages-Dialog zeigt und die im Kalender-Termin nicht abgezogen wird *(ab 1.27.0)*); optionaler Abgleich mit einem wählbaren Google Kalender
 - **Reservierungs-Erinnerungen** — Optionale Toast-Benachrichtigung, wenn ein für heute reservierter Slot fällig wird und noch keine Ist-Zeit erfasst ist (konfigurierbare Vorlaufzeit); auf Wunsch zusätzlich als Push aufs Handy, auch wenn der Rechner aus ist, siehe [Handy-Erfassung](#handy-erfassung-optional)
 - **Urlaub** — Urlaubszeiträume als Einheit eintragen (Name, Von/Bis, Stunden pro Tag oder Gesamtstunden auf die Arbeitstage verteilt); im Kalender ein durchgehender türkiser Block über Wochenenden und Feiertage hinweg, einzelne Tage nachträglich anpassbar (halbe Urlaubstage). Urlaub und Arbeitszeit schließen sich am selben Tag aus — ein Urlaubstag nimmt keine Arbeitszeit an, und ein Urlaub lässt sich nicht über bereits erfasste Tage legen. Die Stundenzeile in der Kalenderzelle („4:00 h") lässt sich im Dialog „Urlaub verwalten" abschalten — der Zeitraum bleibt dann als Block mit „Urlaub" stehen, die Stunden stehen weiterhin im Tooltip. Optional als Ganztags-Termine im Google Kalender — im Dialog „Urlaub verwalten" ein- und ausschaltbar; beim Ausschalten räumt die App ihre Termine auf Wunsch wieder weg. Gerätelokal — Urlaub reist **nicht** über den Drive-Sync mit
-- **Krankheitstage** *(ab --VERSION--)* — Krankheit als Zeitraum eintragen (Einstellungen → Arbeitszeit → „Krankheit verwalten“ oder „Krank melden“ im Tages-Dialog); die Stunden je Tag schlägt die App aus der Standardzeit des Wochentags oder dem Durchschnitt der letzten drei Monate vor. Im Kalender eigene Farbe, die über Urlaub, Feiertag und Wochenende gewinnt; ein Urlaub lässt sich nicht über Krankheitstage legen. Rechtsklick löscht den ganzen Zeitraum. Auch am Handy (Web-App) lässt sich Krankheit melden, anzeigen und entfernen; zwischen den Geräten gleicht sie sich ab.
+- **Krankheitstage** *(ab 1.30.0)* — Krankheit als Zeitraum eintragen (Einstellungen → Arbeitszeit → „Krankheit verwalten“ oder „Krank melden“ im Tages-Dialog); die Stunden je Tag schlägt die App aus der Standardzeit des Wochentags oder dem Durchschnitt der letzten drei Monate vor. Im Kalender eigene Farbe, die über Urlaub, Feiertag und Wochenende gewinnt; ein Urlaub lässt sich nicht über Krankheitstage legen. Rechtsklick löscht den ganzen Zeitraum. Auch am Handy (Web-App) lässt sich Krankheit melden, anzeigen und entfernen; zwischen den Geräten gleicht sie sich ab.
 - **Feiertage** — Feiertage des gewählten Bundeslands sind im Kalender markiert und werden beim Anlegen eines Eintrags nachgefragt
 - **Nur Werktage** — Optional lässt sich das Wochenende komplett deaktivieren: Sa/So verschwinden aus Kalender, Standardzeiten, Bericht, Mailversand und PDF-Export. Vorhandene Wochenend-Einträge bleiben gespeichert und sind sofort wieder da, wenn die Einstellung zurückgenommen wird
 - **Notiz am Slot** *(ab 1.29.0)* — Optionale, einzeilige Notiz je Zeitblock, die eine Kategorie verfeinert (Kategorie „Montage“, Notiz „Kunde Mustermann“), mit Vorschlägen aus bereits benutzten Notizen. Erscheint in Tooltip, Bericht und Webhook; der Bericht kann die Summe je Kategorie zusätzlich je Notiz aufschlüsseln. Reist mit Drive-Sync und Handy-Abgleich, beim Teilen bleibt sie zurück
@@ -50,7 +50,7 @@ Desktop-App zur Erfassung von Arbeitszeiten: im Kern Kalenderansicht und PDF-Ber
 - **Wochenstunden-Limit** — Optionales Werkstudenten-Limit über einen konfigurierbaren Zeitraum mit Warnung beim Überschreiten
 - **Pausenpflicht-Warnung** — Hinweis beim Speichern, wenn die eingetragene Pause die gesetzliche Mindestpause nach § 4 ArbZG unterschreitet (30 Min ab >6 h, 45 Min ab >9 h); standardmäßig aktiv, abschaltbar. Grobe Näherung, keine rechtliche Bewertung
 
-![Tages-Dialog mit Arbeitszeit samt Notiz, Reservierung und Erinnerung](docs/screenshots/tagesdialog-v--VERSION--.png)
+![Tages-Dialog mit Arbeitszeit samt Notiz, Reservierung und Erinnerung](docs/screenshots/tagesdialog-v1.30.0.png)
 
 *Ein Tag im Detail: erfasste Ist-Zeit, geplante Reservierung und die Erinnerung ans Verschicken. Linksklick auf einen Kalendertag öffnet den Dialog; gelöscht wird im Kalender selbst (Rechtsklick, unter macOS über das ✕ in der Tageszelle).*
 
@@ -62,18 +62,18 @@ Desktop-App zur Erfassung von Arbeitszeiten: im Kern Kalenderansicht und PDF-Ber
 - **Webhook-Versand** — Der Bericht lässt sich zusätzlich zur E-Mail an konfigurierbare HTTP-Endpunkte senden (JSON und/oder PDF, optional mit Token oder HMAC-Signatur); gerätelokal konfiguriert
 - **PDF-Export** — Bericht für einen frei gewählten Zeitraum direkt als PDF lokal speichern (ohne Mail-Versand)
 - **Urlaub im Bericht** — Optionales Häkchen „Urlaub ausweisen“: der Bericht bekommt einen eigenen Urlaubs-Block je Zeitraum und die Zeile „Zu vergüten gesamt“. „Gesamt“ bleibt die reine Ist-Zeit. Liegt an einem Tag ausnahmsweise doch beides — Urlaub *und* erfasste Arbeitszeit, etwa nach einem Import oder einem Sync vom Zweitgerät —, zählt der Tag nicht doppelt: der Urlaub wird dort um die erfassten Stunden gekürzt, und eine Zeile im Sende-/Export-Dialog sowie eine Fußnote im Bericht sagen, an welchem Tag das passiert ist
-- **Krankheit im Bericht** *(ab --VERSION--)* — Optionales Häkchen „Krankheit ausweisen“ für Bericht, PDF und Webhook (es erscheint, sobald ein Krankheitstag mit Stunden eingetragen ist): der Bericht bekommt einen eigenen Krankheits-Block, „Zu vergüten gesamt“ zählt die Krankheitsstunden mit, und das Webhook-Dokument trägt sie zusätzlich (`sick`, `sick_minutes`). Liegt Urlaub auf einem Krankheitstag, zählt dort nur die Krankheit. Ohne das Häkchen bleiben Bericht, PDF und Webhook unverändert
+- **Krankheit im Bericht** *(ab 1.30.0)* — Optionales Häkchen „Krankheit ausweisen“ für Bericht, PDF und Webhook (es erscheint, sobald ein Krankheitstag mit Stunden eingetragen ist): der Bericht bekommt einen eigenen Krankheits-Block, „Zu vergüten gesamt“ zählt die Krankheitsstunden mit, und das Webhook-Dokument trägt sie zusätzlich (`sick`, `sick_minutes`). Liegt Urlaub auf einem Krankheitstag, zählt dort nur die Krankheit. Ohne das Häkchen bleiben Bericht, PDF und Webhook unverändert
 - **Zeitraumwahl** — Flexibler Datumsbereich für Reports, mit Filter auf einzelne Kategorien
 - **Sende-Erinnerung** — Optionale Toast-Erinnerung, die Arbeitszeiten zu verschicken: monatlich an einem frei wählbaren Tag (auf Wunsch von Wochenenden und Feiertagen weg verschoben) und/oder tagesbezogen, wenn ein dafür markierter Reservierungs-Slot ausläuft. Der Sende-Dialog schlägt den Zeitraum seit der letzten Erinnerung vor
 - **Teilen & Importieren** — Eigene Arbeitszeiten als JSON-Anhang per Mail an eine zweite Person teilen — wahlweise über Gmail oder ein SMTP-Konto, dessen hinterlegter Empfänger dann vorbelegt und überschreibbar ist; der Empfänger importiert sie mit Zeitraum-Filter und drei Konflikt-Modi (alles importieren / alles lokal / pro Tag entscheiden)
 
-![Sende-Dialog mit Zeitraum- und Kategorieauswahl, Aufschlüsselung nach Kategorie und Notiz](docs/screenshots/senden-v--VERSION--.png)
+![Sende-Dialog mit Zeitraum- und Kategorieauswahl, Aufschlüsselung nach Kategorie und Notiz](docs/screenshots/senden-v1.30.0.png)
 
 *Der Sende-Dialog: Zeitraum, Kategorie-Filter und die Gesamtstunden vor dem Absenden.*
 
-![Erzeugter PDF-Bericht, Notizen in der Kategorie-Spalte](docs/screenshots/bericht-v--VERSION--.png)
+![Erzeugter PDF-Bericht, Notizen in der Kategorie-Spalte](docs/screenshots/bericht-v1.30.0.png)
 
-![Summe je Kategorie im PDF-Bericht, aufgeschlüsselt nach Notiz](docs/screenshots/bericht-summe-v--VERSION--.png)
+![Summe je Kategorie im PDF-Bericht, aufgeschlüsselt nach Notiz](docs/screenshots/bericht-summe-v1.30.0.png)
 
 *Der erzeugte PDF-Bericht — pro ISO-Kalenderwoche gruppiert, mit Tages- und Wochensummen.*
 
@@ -93,11 +93,11 @@ Desktop-App zur Erfassung von Arbeitszeiten: im Kern Kalenderansicht und PDF-Ber
 - **UI-Skalierung** — Stufenloser Skalierungsfaktor für die Oberfläche (gerätelokal). Unter Windows und Linux folgt die App zusätzlich der Anzeigeskalierung des Systems — unter Windows bleibt sie dabei scharf, unter Linux ist sie auf skalierten X11-Desktops nicht mehr winzig; der Faktor gilt dann obendrauf. Wechselst du unter Linux den Monitor und ändert sich dabei die Skalierung des Desktops, weist ein Banner „Skalierung passt nicht zum Monitor“ mit „Neu starten“ darauf hin; auf Wunsch startet die App selbst neu *(ab 1.28.0)*
 - **Cross-Platform-Installer** — Per PyInstaller gebaut, als Setup-Exe (Windows), DMG (macOS) und AppImage (Linux) paketierbar
 
-![Einstellungs-Dialog, Tab Arbeitszeit mit der Reihenfolge der Slots](docs/screenshots/einstellungen-v--VERSION--.png)
+![Einstellungs-Dialog, Tab Arbeitszeit mit der Reihenfolge der Slots](docs/screenshots/einstellungen-v1.30.0.png)
 
 *Die Einstellungen, hier der Tab „Arbeitszeit" mit Standardzeiten, Pausenpflicht und Werkstudenten-Limit.*
 
-![Einstellungs-Dialog, Tab Erinnerungen mit dem Abschnitt Handy](docs/screenshots/einstellungen-erinnerungen-v--VERSION--.png)
+![Einstellungs-Dialog, Tab Erinnerungen mit dem Abschnitt Handy](docs/screenshots/einstellungen-erinnerungen-v1.30.0.png)
 
 *Tab „Erinnerungen“: Toast am Rechner, Erinnerung ans Verschicken und, mit eingeschalteter Handy-Erfassung, der Abschnitt „Handy“ für Push-Erinnerungen aufs Handy. Screenshots stammen aus Demo-Daten.*
 
@@ -291,7 +291,7 @@ Wiederhole Schritte 3-4 auf jedem weiteren Gerät mit demselben Google-Konto.
 - **Manueller Sync** — der `⟳`-Button im Header triggert sofortigen Push
 - **Konflikte** — wird ein Tag offline auf zwei Geräten unterschiedlich bearbeitet, erscheint nach dem Sync ein Warn-Icon auf dem Tag und ein „⚠ N Konflikte"-Status. Klick auf **Konflikte ansehen** in den Einstellungen öffnet einen Dialog, der beide Stände als zwei Karten nebeneinander zeigt *(ab 1.26.0)* — „Dieses Gerät“ und das andere Gerät mit seinem Namen, Unterschiede gelb markiert, der jüngere Stand mit „● neuer“ —; du behältst einen der beiden Stände
 
-![Konfliktdialog mit zwei Karten: Dieses Gerät und ein anderes Gerät, die unterschiedliche Notiz gelb markiert](docs/screenshots/konflikte-v--VERSION--.png)
+![Konfliktdialog mit zwei Karten: Dieses Gerät und ein anderes Gerät, die unterschiedliche Notiz gelb markiert](docs/screenshots/konflikte-v1.30.0.png)
 
 *Der Konfliktdialog — beide Stände nebeneinander, Unterschiede gelb, der jüngere mit „● neuer“.*
 
@@ -299,7 +299,7 @@ Wiederhole Schritte 3-4 auf jedem weiteren Gerät mit demselben Google-Konto.
 
 - **Geräte-ID** — jede Installation bekommt beim ersten Start eine eindeutige ID. Installierte Builds leiten sie aus einer stabilen System-ID des Rechners ab (gehasht, siehe `src/device_id.py`) — sie übersteht damit eine Neuinstallation der App; im Repo-/Skript-Modus bleibt es bei einer in `settings.json` gespeicherten Zufalls-UUID. Im Konflikt-Dialog siehst du, von welchem Gerät die jeweilige Version kommt.
 - **Gerätename** — weil die Geräte-ID nur ein Hex-Wert ist, trägt jedes Gerät zusätzlich einen lesbaren Namen (Einstellungen → Google, beim ersten Start aus dem Hostnamen vorbelegt). Er reist über die Sync-Datei mit, sodass der Konflikt-Dialog „Laptop Arbeit · 6800a51a…" statt nur der ID zeigt. Das Feld darf leer bleiben — dann steht dort weiter nur die gekürzte ID; dasselbe gilt für Geräte, die seit dem Update noch nicht gesynct haben.
-- **Was synchronisiert wird:** Zeiteinträge; die Mail-Vorlagen-Settings (Empfänger, Name, Stundensatz, Betreff, Anrede, Inhalt, Gruß); die Kategorien samt ihren Standardzeiten; der gewählte Google-Kalender; das Werkstudenten-Limit (an/aus, Zeitraum, Höchststunden); die Pausenpflicht-Warnung; „Nur Werktage“; die Reihenfolge der Slots eines Tages; die Krankheitstage und die Einstellung „Grundlage der Krankheitsstunden“ *(ab --VERSION--)*. Gerätespezifisches (Autostart, die globalen Standardzeiten, Urlaub, Update-Einstellungen/-Status) bleibt lokal.
+- **Was synchronisiert wird:** Zeiteinträge; die Mail-Vorlagen-Settings (Empfänger, Name, Stundensatz, Betreff, Anrede, Inhalt, Gruß); die Kategorien samt ihren Standardzeiten; der gewählte Google-Kalender; das Werkstudenten-Limit (an/aus, Zeitraum, Höchststunden); die Pausenpflicht-Warnung; „Nur Werktage“; die Reihenfolge der Slots eines Tages; die Krankheitstage und die Einstellung „Grundlage der Krankheitsstunden“ *(ab 1.30.0)*. Gerätespezifisches (Autostart, die globalen Standardzeiten, Urlaub, Update-Einstellungen/-Status) bleibt lokal.
 - **Wo die Sync-Datei liegt:** Im versteckten `appDataFolder` deines Google Drives — nicht über `drive.google.com` einsehbar, nur diese App kommt dran.
 - **Test-Modus:** Solange dein Cloud-Projekt im Test-Modus bleibt, müssen alle Nutzer (deine eigenen Geräte zählen mit deiner E-Mail) als Testnutzer eingetragen sein. Verifizierung durch Google ist für rein private Nutzung nicht nötig.
 - **Tombstones wachsen bei aktivem Sync** — gelöschte Einträge bleiben als Marker im Sync-File, damit Löschungen sich gegen veraltete Speicherungen anderer Geräte durchsetzen. Aufgeräumt werden sie erst durch die Aktion **„Sync-Daten kompaktieren"** (Einstellungen → Google); bei normalem Gebrauch ist das über Jahre unproblematisch. Auf Geräten, die **nie** gesynct haben, räumt die App diese Marker seit 1.19.1 beim Start automatisch weg. Details: [`docs/known-limitations.md`](docs/known-limitations.md).
@@ -363,9 +363,9 @@ curl -H "Authorization: Bearer <Token>" http://127.0.0.1:17653/v1/summary/month/
 | `GET /v1/vacations/{id}` | eine Periode (404, wenn es sie nicht gibt) |
 | `POST /v1/vacations` | Urlaub anlegen (`201`), Body siehe unten; stößt wie die App den Kalender-Abgleich an |
 | `DELETE /v1/vacations/{id}` | die **ganze** Periode löschen (404, wenn es sie nicht gibt) |
-| `GET /v1/sick?from=…&to=…` *(ab --VERSION--)* | Krankheitsblöcke dieses Geräts, die den Zeitraum berühren: `{from, to, days, total_minutes}` (ungekappt) |
-| `POST /v1/sick` *(ab --VERSION--)* | Krankheit eintragen (`201`), Body siehe unten |
-| `DELETE /v1/sick/{YYYY-MM-DD}` *(ab --VERSION--)* | den **ganzen** Block löschen, in dem der Tag liegt (404, wenn es keinen gibt) |
+| `GET /v1/sick?from=…&to=…` *(ab 1.30.0)* | Krankheitsblöcke dieses Geräts, die den Zeitraum berühren: `{from, to, days, total_minutes}` (ungekappt) |
+| `POST /v1/sick` *(ab 1.30.0)* | Krankheit eintragen (`201`), Body siehe unten |
+| `DELETE /v1/sick/{YYYY-MM-DD}` *(ab 1.30.0)* | den **ganzen** Block löschen, in dem der Tag liegt (404, wenn es keinen gibt) |
 | `GET /v1/summary/week/{YYYY-Www}` | Auswertung einer ISO-Woche (z. B. `2026-W41`) |
 | `GET /v1/summary/month/{YYYY-MM}` | Auswertung eines Monats (z. B. `2026-10`) |
 | `GET /v1/categories` | die in den Einstellungen konfigurierten Kategorien |
@@ -395,9 +395,9 @@ curl -X POST -H "Authorization: Bearer <Token>" -H "Content-Type: application/js
 
 Fehler: `422 invalid_vacation` mit der Meldung der App (mehr als 24 h je Tag, Bis vor Von, kein Arbeitstag im Zeitraum …), `409 vacation_overlap` (der Zeitraum schneidet einen anderen Urlaub), `409 work_on_vacation_days` (an Tagen mit Urlaubsstunden liegt schon Ist-Zeit oder eine eingeschaltete Reservierung — Urlaub und Arbeitszeit schließen sich aus; Wochenenden und Feiertage mit 0 Minuten zählen nicht), `422 period_too_long` (höchstens 366 Tage). Ist **kein Bundesland** eingestellt, kennt die App keine Feiertage: die Antwort trägt dann `warnings: [{"code": "no_state", …}]`, und ein Weihnachtsurlaub bekommt für den 25./26.12. volle Stunden. Löschen entfernt immer die ganze Periode; zum Ändern löschen und neu anlegen. Urlaub ist **gerätelokal** (reist nicht per Drive-Sync) — die Antwort gilt nur für dieses Gerät.
 
-**Krankheit** *(ab --VERSION--)* — Body von `POST /v1/sick`: `from`, `to`, optional `basis` (`standard` oder `average_3m`, sonst gilt die Einstellung) und `day_hours` (`{"2026-07-08": 4}`). Die App belegt die Stunden wie im Dialog vor; bereits eingetragene Tage behalten ihre Minuten, außer `day_hours` nennt sie. Reservierungen bleiben bestehen. Die Antwort ist der **ganze entstandene Block** (er kann vor `from` beginnen, wenn der Zeitraum einen Block berührt) mit `changed`, `basis_used` und `warnings` (`no_state`, `sick_on_vacation`, `average_fallback`; zusätzlich wird ein neuer Urlaub über einem Krankheitstag ohne Stunden mit `vacation_on_sick_day` gewarnt). Fehler: `409 work_on_sick_days` (am Tag liegt Ist-Zeit), `422 invalid_sick`, `invalid_basis`, `invalid_day_hours`, `period_too_long` (höchstens 366 Tage), `409 sick_unavailable`. `PUT /v1/entries/{date}` an einem Krankheitstag mit Stunden ist `409 sick_day`, `POST /v1/vacations` über einem solchen Tag `409 sick_on_vacation_days`. Krankheit reist per Drive-Sync zu anderen Geräten.
+**Krankheit** *(ab 1.30.0)* — Body von `POST /v1/sick`: `from`, `to`, optional `basis` (`standard` oder `average_3m`, sonst gilt die Einstellung) und `day_hours` (`{"2026-07-08": 4}`). Die App belegt die Stunden wie im Dialog vor; bereits eingetragene Tage behalten ihre Minuten, außer `day_hours` nennt sie. Reservierungen bleiben bestehen. Die Antwort ist der **ganze entstandene Block** (er kann vor `from` beginnen, wenn der Zeitraum einen Block berührt) mit `changed`, `basis_used` und `warnings` (`no_state`, `sick_on_vacation`, `average_fallback`; zusätzlich wird ein neuer Urlaub über einem Krankheitstag ohne Stunden mit `vacation_on_sick_day` gewarnt). Fehler: `409 work_on_sick_days` (am Tag liegt Ist-Zeit), `422 invalid_sick`, `invalid_basis`, `invalid_day_hours`, `period_too_long` (höchstens 366 Tage), `409 sick_unavailable`. `PUT /v1/entries/{date}` an einem Krankheitstag mit Stunden ist `409 sick_day`, `POST /v1/vacations` über einem solchen Tag `409 sick_on_vacation_days`. Krankheit reist per Drive-Sync zu anderen Geräten.
 
-Die Auswertungen rechnen wie die App in **ganzen Minuten**: `total_minutes` (Ist-Zeit), `days[]` (je Tag mit Ist-Zeit), `by_category[]` (absteigend; `""` heißt „ohne Kategorie“), `weeks[]` (jede ISO-Woche, die der Zeitraum berührt, mit der Summe der **ganzen** Woche und `limit_minutes` (`null` ohne aktives Werkstudenten-Limit) und `exceeded`) und `pause_warnings[]`. Dazu der **Urlaub dieses Geräts**: `vacation_minutes` (um die am selben Tag erfasste Ist-Zeit gekappt, die betroffenen Tage stehen in `vacation_capped_days`) und `payable_minutes` („Zu vergüten gesamt“, Ist-Zeit plus Urlaub plus Krankheit *(ab --VERSION--)*). Krankheit *(ab --VERSION--)*: `sick_minutes`, `sick_capped_days` (um die Ist-Zeit gekappt) und `sick_on_vacation_days` (Urlaubsminuten, die an einem Krankheitstag entfallen: Krankheit gewinnt, Urlaub zählt dort 0). Anders als der Bericht kennt die API keinen Kategorie-Filter, wendet `workweek_only` nicht an und weist Krankheit immer aus. Es gelten die Jahre 2000–2100: Jahre außerhalb davon sind `422`, ungültige Pfade `400` (bei Wochen und Monaten gehören Jahr `0000` und `9999` dazu; `/v1/holidays/0000` und `/9999` sind `422`). Bei einem Monat kann `weeks[]` eine Woche des Vorjahres enthalten (KW 52/1999 bei `2000-01`), die `/v1/summary/week/…` selbst ablehnt.
+Die Auswertungen rechnen wie die App in **ganzen Minuten**: `total_minutes` (Ist-Zeit), `days[]` (je Tag mit Ist-Zeit), `by_category[]` (absteigend; `""` heißt „ohne Kategorie“), `weeks[]` (jede ISO-Woche, die der Zeitraum berührt, mit der Summe der **ganzen** Woche und `limit_minutes` (`null` ohne aktives Werkstudenten-Limit) und `exceeded`) und `pause_warnings[]`. Dazu der **Urlaub dieses Geräts**: `vacation_minutes` (um die am selben Tag erfasste Ist-Zeit gekappt, die betroffenen Tage stehen in `vacation_capped_days`) und `payable_minutes` („Zu vergüten gesamt“, Ist-Zeit plus Urlaub plus Krankheit *(ab 1.30.0)*). Krankheit *(ab 1.30.0)*: `sick_minutes`, `sick_capped_days` (um die Ist-Zeit gekappt) und `sick_on_vacation_days` (Urlaubsminuten, die an einem Krankheitstag entfallen: Krankheit gewinnt, Urlaub zählt dort 0). Anders als der Bericht kennt die API keinen Kategorie-Filter, wendet `workweek_only` nicht an und weist Krankheit immer aus. Es gelten die Jahre 2000–2100: Jahre außerhalb davon sind `422`, ungültige Pfade `400` (bei Wochen und Monaten gehören Jahr `0000` und `9999` dazu; `/v1/holidays/0000` und `/9999` sind `422`). Bei einem Monat kann `weeks[]` eine Woche des Vorjahres enthalten (KW 52/1999 bei `2000-01`), die `/v1/summary/week/…` selbst ablehnt.
 
 Unter Windows PowerShell heißt der Aufruf `curl.exe` statt `curl`: dort ist `curl` ein Alias für `Invoke-WebRequest`, und `-H` funktioniert nicht. In Windows PowerShell 5.1 den JSON-Body am besten aus einer Datei übergeben (`-d @tag.json`), die Anführungszeichen in `-d '…'` gehen dort verloren, und den Aufruf in eine Zeile schreiben (`\` ist dort kein Zeilenumbruch).
 
@@ -440,20 +440,20 @@ Im WLAN scheitert der Abgleich in Safari (in Firefox aus demselben Grund erwarte
 
 **Achtung:** Wer den QR-Code fotografiert, kann sich von überall im Internet koppeln, solange der Code gilt (fünf Minuten); zeige ihn nur dem eigenen Handy. Ist der Rechner aus oder im Ruhezustand, meldet die Web-App nach kurzer Zeit „Desktop hat nicht geantwortet“; die Änderungen bleiben auf dem Handy erhalten und gehen beim nächsten Abgleich hinaus. Wird das Handy am Rechner widerrufen, löscht die App auch die Box am Relay; das Handy meldet danach dasselbe und braucht eine neue Kopplung.
 
-**Was abgeglichen wird:** Ist-Zeiten (samt Notiz *(ab 1.29.0)*), Reservierungen und die Kategorien samt Standardzeiten, jeweils in beide Richtungen; dazu vom Rechner zum Handy die Reihenfolge der Slots *(ab 1.29.0)*. Krankheitstage *(ab --VERSION--)* reisen ebenfalls in beide Richtungen: das Handy meldet Krankheit und entfernt sie, die Stunden je Tag rechnet der Rechner. Reservierungen erscheinen am Handy nur, wenn „Reservierungen verwenden“ am Rechner an ist (heute bis 365 Tage voraus, vergangene entfallen). Urlaub, Zugangsdaten und die übrigen Einstellungen (auch die Grundlage der Krankheitsstunden) bleiben auf dem Rechner. Das Handy sieht standardmäßig die letzten 90 Tage; ältere Zeiten lädt es auf Antippen nach („Ältere Zeiten laden“), bis zur Obergrenze, die du unter Einstellungen → Mobil einstellst (höchstens 365 Tage). Dasselbe Zusammenführen wie beim Drive-Sync: hat nur eine Seite einen Tag geändert, gilt ihr Stand; haben beide ihn geändert, entsteht ein Konflikt in der Konfliktliste der App (Einstellungen → Google → „Konflikte ansehen (n)“, erscheint nur bei offenen Konflikten), bis zur Auflösung gilt der neuere Stand. Die Web-App zeigt Konflikte nur an.
+**Was abgeglichen wird:** Ist-Zeiten (samt Notiz *(ab 1.29.0)*), Reservierungen und die Kategorien samt Standardzeiten, jeweils in beide Richtungen; dazu vom Rechner zum Handy die Reihenfolge der Slots *(ab 1.29.0)*. Krankheitstage *(ab 1.30.0)* reisen ebenfalls in beide Richtungen: das Handy meldet Krankheit und entfernt sie, die Stunden je Tag rechnet der Rechner. Reservierungen erscheinen am Handy nur, wenn „Reservierungen verwenden“ am Rechner an ist (heute bis 365 Tage voraus, vergangene entfallen). Urlaub, Zugangsdaten und die übrigen Einstellungen (auch die Grundlage der Krankheitsstunden) bleiben auf dem Rechner. Das Handy sieht standardmäßig die letzten 90 Tage; ältere Zeiten lädt es auf Antippen nach („Ältere Zeiten laden“), bis zur Obergrenze, die du unter Einstellungen → Mobil einstellst (höchstens 365 Tage). Dasselbe Zusammenführen wie beim Drive-Sync: hat nur eine Seite einen Tag geändert, gilt ihr Stand; haben beide ihn geändert, entsteht ein Konflikt in der Konfliktliste der App (Einstellungen → Google → „Konflikte ansehen (n)“, erscheint nur bei offenen Konflikten), bis zur Auflösung gilt der neuere Stand. Die Web-App zeigt Konflikte nur an.
 
 <table>
 <tr>
-<td><img src="docs/screenshots/handy-woche-v--VERSION--.png" alt="Wochenansicht der Web-App mit Notizen unter den Slots, heutigem Tag, einer Reservierung und der Zeile Noch ausstehend" width="200"></td>
-<td><img src="docs/screenshots/handy-editor-v--VERSION--.png" alt="Tages-Editor der Web-App, Reiter Arbeitszeit mit Notizfeld und aufgeklappter Liste der bisherigen Notizen" width="200"></td>
-<td><img src="docs/screenshots/handy-verbindung-v--VERSION--.png" alt="Einstellungen der Web-App, Reiter Verbindung mit Zustandskarte, Benachrichtigungen, App-Sperre, Zeiten verschieben, Notizen und Trennen" width="200"></td>
-<td><img src="docs/screenshots/handy-kategorien-v--VERSION--.png" alt="Einstellungen der Web-App, Reiter Kategorien" width="200"></td>
+<td><img src="docs/screenshots/handy-woche-v1.30.0.png" alt="Wochenansicht der Web-App mit Notizen unter den Slots, heutigem Tag, einer Reservierung und der Zeile Noch ausstehend" width="200"></td>
+<td><img src="docs/screenshots/handy-editor-v1.30.0.png" alt="Tages-Editor der Web-App, Reiter Arbeitszeit mit Notizfeld und aufgeklappter Liste der bisherigen Notizen" width="200"></td>
+<td><img src="docs/screenshots/handy-verbindung-v1.30.0.png" alt="Einstellungen der Web-App, Reiter Verbindung mit Zustandskarte, Benachrichtigungen, App-Sperre, Zeiten verschieben, Notizen und Trennen" width="200"></td>
+<td><img src="docs/screenshots/handy-kategorien-v1.30.0.png" alt="Einstellungen der Web-App, Reiter Kategorien" width="200"></td>
 </tr>
 </table>
 
 *Die Web-App im Browser (von links): Woche mit Notizen unter den Slots, dem heutigen Tag, einer Reservierung und „Noch ausstehend“, Tages-Editor (Reiter „Arbeitszeit“ mit Notizfeld und aufgeklappter Liste der bisherigen Notizen), Einstellungen → Verbindung (mit Benachrichtigungen, App-Sperre, „Zeiten verschieben“, „Notizen“ und „Trennen“), Einstellungen → Kategorien. Aufgenommen in Chrome am Rechner mit Demo-Daten.*
 
-![Einstellungen am Rechner, Tab Mobil mit einem gekoppelten Demo-Handy](docs/screenshots/einstellungen-mobil-v--VERSION--.png)
+![Einstellungen am Rechner, Tab Mobil mit einem gekoppelten Demo-Handy](docs/screenshots/einstellungen-mobil-v1.30.0.png)
 
 *Der Tab „Mobil“ am Rechner: Handy-Erfassung ein- und ausschalten, Port und Adresse, gekoppelte Geräte, Koppeln und Widerrufen.*
 
@@ -463,7 +463,7 @@ Im WLAN scheitert der Abgleich in Safari (in Firefox aus demselben Grund erwarte
 
 **Einrichtung** *(ab 1.28.0)* — Solange das Handy nicht gekoppelt ist, zeigt die Web-App einen kleinen Einrichtungs-Screen mit den Schritten für das jeweilige Gerät: Chrome mit „QR-Code scannen“ und, hinter „Andere Möglichkeiten“, der Eingabe von Adresse und Code im WLAN; Firefox und Safari mit dem Relay-Weg (dort sperrt der Browser das WLAN); auf dem iPhone zuerst die Installation als Web-App.
 
-<img src="docs/screenshots/handy-einrichtung-v--VERSION--.png" alt="Einrichtungs-Screen der Web-App mit App-Icon und drei Schritten" width="200">
+<img src="docs/screenshots/handy-einrichtung-v1.30.0.png" alt="Einrichtungs-Screen der Web-App mit App-Icon und drei Schritten" width="200">
 
 **App-Sperre** *(ab 1.28.0)* — Optional (Einstellungen → Verbindung → „App mit Geräte-Entsperrung sperren“): Die Web-App verlangt nach einer wählbaren Frist (sofort, nach 1 oder 5 Minuten) die Entsperrung mit der Bildschirmsperre des Handys (Fingerabdruck, Gesicht oder PIN). Ein Neuladen innerhalb der Frist fragt nicht noch einmal. Das ist eine Komfort-Sperre für die Oberfläche; sie verschlüsselt die gespeicherten Daten nicht. Sie braucht eine sichere Verbindung (https) und eine eingerichtete Bildschirmsperre.
 
@@ -546,7 +546,7 @@ Das meiste sind JSON-Dateien — `instance-secret`, `api-token` und das Protokol
 - **zeiterfassung.json** — Zeiteinträge (Schlüssel: ISO-Datum `YYYY-MM-DD`)
 - **reservations.json** — Reservierungen, also zukünftige Soll-Zeiten (eigenes Konzept neben den Ist-Zeiten)
 - **vacations.json** — Urlaubszeiträume. Gerätelokal: reist bewusst **nicht** über den Drive-Sync mit
-- **sick.json** *(ab --VERSION--)* — Krankheitstage mit den Stunden je Tag (Gesundheitsdaten). Reist über den Drive-Sync und zum gekoppelten Handy, nie in eine Teilen-Datei oder den Google Kalender
+- **sick.json** *(ab 1.30.0)* — Krankheitstage mit den Stunden je Tag (Gesundheitsdaten). Reist über den Drive-Sync und zum gekoppelten Handy, nie in eine Teilen-Datei oder den Google Kalender
 - **settings.json** — Benutzereinstellungen
 - **conflicts.json** — Lokaler Spiegel der Sync-Konflikte (nur vorhanden bei mindestens einem registrierten Konflikt — aus dem Drive-Sync oder der Handy-Erfassung)
 - **sync_history.json** — Marker „wurde auf diesem Gerät je synchronisiert/abgeglichen"; schützt gelöschte Tage davor, nach einer beschädigten `settings.json` zurückzukehren
