@@ -192,7 +192,8 @@ export function weekModel({ getDay, anchor, today, conflictDates = [], windowDay
       addHint: (!day || cleared) && !reservation && !sickRecord
         && !(date > addDays(today, aheadDays) || (windowDays > 0 && date < addDays(today, -windowDays)))
         ? (visible ? 'Eintragen oder planen' : 'Eintragen') : '',
-      // Krankheit zählt nicht in `minutes`/`totalMinutes` (die Woche ist reine Ist-Zeit).
+      // Krankheit zählt nicht in `minutes`/`totalMinutes` („Woche gesamt“ ist reine Ist-Zeit, wie „Gesamt“ im Bericht);
+      // die Woche zeigt sie als eigene Zeile (`sickMinutes`).
       sick: sickRecord && {
         minutes: sickMinutes,
         label: sickLabel(sickMinutes),
@@ -209,6 +210,8 @@ export function weekModel({ getDay, anchor, today, conflictDates = [], windowDay
   });
   const total = week.reduce((sum, day) => sum + day.minutes, 0);
   const pending = week.reduce((sum, day) => sum + day.pendingMinutes, 0);
+  // Nur Minuten, die der Desktop schon gerechnet hat: vor dem Abgleich kennt das Handy sie nicht.
+  const sick = week.reduce((sum, day) => sum + (day.sick?.minutes ?? 0), 0);
   return {
     title: `KW ${isoWeek(anchor).week}`,
     range: `${formatDateDe(dates[0]).slice(0, 6)}–${formatDateDe(dates[6])}`,
@@ -219,6 +222,8 @@ export function weekModel({ getDay, anchor, today, conflictDates = [], windowDay
     totalLabel: formatMinutes(total),
     pendingMinutes: pending,
     pendingLabel: formatMinutes(pending),
+    sickMinutes: sick,
+    sickLabel: formatMinutes(sick),
   };
 }
 

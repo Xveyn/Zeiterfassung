@@ -536,3 +536,11 @@ test('on a sick day the reservation tab is locked in the editor and re-checked w
   assert.ok(save);
   assert.match(save, /const resLock = reservationLock\(\{ date, meta: this\.store\.getMeta\(\) \}\);\s*if \(resLock\) return resLock\.text;/);
 });
+
+test('the week shows sick hours as an own line under the worked time, only when there are any', () => {
+  assert.match(views, /model\.sickMinutes > 0 && h\('div', \{ class: 'total sick' \},\s*h\('span', \{\}, 'Krankheit'\), h\('span', \{\}, model\.sickLabel\)\)/);
+  const total = views.indexOf("'Woche gesamt'");
+  const sick = views.indexOf("'Krankheit'), h('span', {}, model.sickLabel)");
+  assert.ok(total > 0 && sick > total);
+  assert.match(css, /\.total\.pending, \.total\.sick \{/);
+});

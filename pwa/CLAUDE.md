@@ -364,8 +364,10 @@ nichts davon (Woche, Sperre, Knopf), sendet nichts und löscht nichts (`markSick
 - **Woche.** `weekModel(…, sickDays, sickEnabled)` gibt je Tag `sick: {minutes, label, dirty, error} | null`; nur
   lebende Tage. Zeile in `--sick` (`#4c1d3d`, wie `SICK_BG` am Desktop) mit Streifen links, darin „krank“ in
   `--sick-text` (`sickLabel`: mit Stunden erst, wenn der Desktop sie gerechnet hat und der Tag welche trägt). Krankheit
-  gewinnt die Farbe der Zeile und zählt nicht in „Woche gesamt“; ein Krankheitstag trägt keine Einladung „Eintragen“, und
-  seine Reservierung bleibt zu sehen, zählt aber nicht in „Noch ausstehend“.
+  gewinnt die Farbe der Zeile und zählt nicht in „Woche gesamt“, das wie „Gesamt“ im Bericht reine Ist-Zeit bleibt;
+  darunter steht eine eigene Zeile **„Krankheit“** (`sickMinutes`/`sickLabel`, nur mit Stunden > 0 und nur mit Minuten,
+  die der Desktop schon gerechnet hat). Ein Krankheitstag trägt keine Einladung „Eintragen“, und seine Reservierung
+  bleibt zu sehen, zählt aber nicht in „Noch ausstehend“.
   `test/contrast.test.js` misst die Fläche.
 - **Sperre.** `editLock` sperrt die Arbeitszeit an einem Krankheitstag vor allen anderen Regeln (auch mit gehaltenem Tag
   und außerhalb des Fensters): „An diesem Tag bist du krank gemeldet.“ mit dem Knopf „Krankheit entfernen“. Der fragt
