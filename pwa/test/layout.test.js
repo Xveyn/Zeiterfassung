@@ -465,3 +465,39 @@ test('the app wires the note display: week model option, settings section only w
   assert.match(app, /notes: meta\.slot_notes \? \{ display: normalizeNoteDisplay\(meta\.note_display\), options: NOTE_DISPLAY_OPTIONS \} : null/);
   assert.match(app, /setNoteDisplay: async[\s\S]*?this\.store\.setMeta\(\{ note_display: display \}\);\s*this\.render\(\);/);   // die Woche folgt sofort
 });
+
+// --- Krankheitstage ----------------------------------------------------------------------------------
+
+test('a checkbox row that is hidden really disappears (label.check is display: flex)', () => {
+  assert.match(rule('label.check[hidden]'), /display: none/);
+});
+
+test('the week row shows a sick day with its label, the hours from the model and its flags', () => {
+  assert.match(views, /day\.sick && 'sick'/);
+  assert.match(views, /day\.sick && h\('div', \{ class: 'sick-line' \}, h\('span', \{ class: 'sick-label' \}, day\.sick\.label\)\)/);
+  assert.match(views, /day\.sick\?\.dirty && h\('span', \{ class: 'mark-dirty', title: 'Krankheit nicht übertragen' \}/);
+  assert.match(views, /day\.sick\?\.error && h\('span', \{ class: 'err' \}, day\.sick\.error\)/);
+});
+
+test('the editor offers „Krank melden“ only when told so and removes the sickness from the lock hint', () => {
+  assert.match(views, /reportSick && button\('Krank melden', \(\) => handlers\.reportSick\(dialog\)/);
+  // Unter beiden Reitern: an Tagen nach heute öffnet der Editor bei der Reservierung.
+  assert.doesNotMatch(views, /sickButton\.hidden/);
+  assert.match(views, /lock\.action === 'remove-sick' && button\(lock\.buttonText, \(\) => handlers\.removeSick\(dialog\), 'remove-sick'/);
+  // Auf der Hinweiskarte (--cell) braucht der Knopf einen Rahmen, sonst läse er sich als Text.
+  assert.match(rule('.hint button.remove-sick'), /border: 1px solid var\(--line\)/);
+});
+
+test('app.js wires sick days: week model only with the capability, report and removal through the store', () => {
+  assert.match(app, /sickDays: meta\.sick, sickEnabled: meta\.sick_capable/);
+  assert.match(app, /reportSick: canReportSick\(\{ date, today, meta \}\)/);
+  assert.match(app, /await this\.store\.markSick\(date, to\)/);
+  assert.match(app, /for \(const day of current\.reservations\.dates\)[\s\S]*?await this\.store\.clearReservation\(day\)/);
+  assert.match(app, /confirmDialog\(\{ title: 'Krankheit entfernen\?', text: sickRemovalText\(block\)[\s\S]*?await this\.store\.clearSick\(block\.dates\)/);
+  // Nach dem Melden und Entfernen läuft ein Abgleich, wie nach dem Speichern eines Tages.
+  const sickCode = /\n {2}reportSick\(date, editor\) \{[\s\S]*?\n {2}\}\n[\s\S]*?\n {2}removeSick\(date, editor\) \{[\s\S]*?\n {2}\}\n/.exec(app)?.[0];
+  assert.ok(sickCode, 'reportSick/removeSick fehlen');
+  assert.equal((sickCode.match(/this\.scheduleSyncAfterSave\(\)/g) || []).length, 2);
+  // Krankheitstage gehen nie ins Debug-Protokoll: weder Daten noch Minuten.
+  assert.doesNotMatch(sickCode, /logFailure|debugLog|console\./);
+});

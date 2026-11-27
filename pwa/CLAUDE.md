@@ -324,6 +324,35 @@ bietet sie nur an, wenn „Reservierungen verwenden“ an ist.
   Empfangszeitpunkt (`ReservationStore.merge_phone`); die Antwort kann daher
   einen neueren `modified_at` tragen als gesendet.
 
+## Krankheitstage: Oberfläche
+
+Logik und Abgleich: `sick.js` und `store.js` (Meta `sick`, `sick_capable`). Die Anzeige- und Entscheidungslogik
+liegt DOM-frei in `view-model.js`, `views.js` und `app.js` verdrahten nur. Ohne Fähigkeit `sick_days` zeigt die PWA
+nichts davon (Woche, Sperre, Knopf), sendet nichts und löscht nichts (`markSick` und `clearSick` werfen).
+
+- **Woche.** `weekModel(…, sickDays, sickEnabled)` gibt je Tag `sick: {minutes, label, dirty, error} | null`; nur
+  lebende Tage. Zeile in `--sick` (`#4c1d3d`, wie `SICK_BG` am Desktop) mit Streifen links, darin „krank“ in
+  `--sick-text` (`sickLabel`: mit Stunden erst, wenn der Desktop sie gerechnet hat und der Tag welche trägt). Krankheit
+  gewinnt die Farbe der Zeile und zählt nicht in „Woche gesamt“; ein Krankheitstag trägt keine Einladung „Eintragen“.
+  `test/contrast.test.js` misst die Fläche.
+- **Sperre.** `editLock` sperrt die Arbeitszeit an einem Krankheitstag vor allen anderen Regeln (auch mit gehaltenem Tag
+  und außerhalb des Fensters): „An diesem Tag bist du krank gemeldet.“ mit dem Knopf „Krankheit entfernen“. Der fragt
+  nach (`sickRemovalText`) und ruft `clearSick` für den ganzen Block (`blockOf`).
+- **Krank melden.** Der Knopf steht unter beiden Reitern des Tages-Editors, nur wenn `canReportSick` es erlaubt: mit
+  Fähigkeit, nicht an einem Krankheitstag und nur im Fenster. Außerhalb ist Krankheit gesperrt wie die Arbeitszeit
+  (#273), auch wenn das Handy den Ist-Tag hält. Der Dialog (`sickDialogModel`) fragt nur das Bis-Datum ab, höchstens
+  bis zum Fensterende und höchstens 366 Tage. Ein Tag mit Ist-Zeit sperrt das Melden (`workBlockedDates`), die Meldung
+  nennt die Tage.
+- **Reservierungen löschen.** Das Häkchen erscheint (Vorgabe an) nur mit `reservations_enabled` und nur, wenn im
+  Zeitraum an heute oder später Tage Reservierungen tragen, die vorher kein Krankheitstag waren (R10b, wie
+  `sick_plan.reservation_dates_to_offer`). War ein Tag im Zeitraum schon krank, heißt es „Reservierungen an den neu krank
+  gemeldeten Tagen löschen“, sonst „Reservierungen in diesem Zeitraum löschen“. Gemeldet wird erst die Krankheit
+  (`markSick`), dann `clearReservation` je Tag; beides geht im nächsten Abgleich hinaus.
+- **Datenschutz.** Kein Datum und keine Minuten eines Krankheitstags gehen ins Debug-Protokoll; die Wege in `app.js`
+  rufen weder `logFailure` noch das Protokoll (`test/layout.test.js` hält das am Quelltext fest).
+- **Geprüft** in Node und im Browser (Chromium, 390 und 280 px) gegen den Dev-Server, mit und ohne `--no-sick`.
+  **Auf iOS ungeprüft:** das Datumsfeld (`<input type="date">`) des Dialogs.
+
 ## Wochenansicht: Hinweise und leere Tage (#461)
 
 - **Der Speicher-Hinweis ist schließbar** (`dismissible`, ✕-Knopf) und bleibt danach 7 Tage weg

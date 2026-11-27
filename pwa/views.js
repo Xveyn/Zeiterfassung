@@ -157,14 +157,16 @@ function slotItem({ text, note }) {
 }
 
 function dayRow(day, handlers) {
-  const classes = ['day', day.state, day.isWeekend && 'weekend', day.isToday && 'today', day.beyondWindow && 'future'];
+  const classes = ['day', day.state, day.isWeekend && 'weekend', day.isToday && 'today', day.beyondWindow && 'future', day.sick && 'sick'];
   return h('li', {}, h('button', { type: 'button', class: classes.filter(Boolean).join(' '),
-    'aria-label': `${day.weekday} ${day.label}${day.isToday ? ', heute' : ''}${day.minutesLabel ? `, ${day.minutesLabel} Stunden` : ''}`,
+    'aria-label': `${day.weekday} ${day.label}${day.isToday ? ', heute' : ''}${day.sick ? `, ${day.sick.label}` : ''}`
+      + `${day.minutesLabel ? `, ${day.minutesLabel} Stunden` : ''}`,
     'data-focus': `day-${day.date}`, onclick: () => handlers.openDay(day.date) },
     h('span', {}, h('div', { class: 'wd' }, day.weekday), h('div', { class: 'date' }, day.label.slice(0, 6)),
       day.isToday && h('div', { class: 'tag' }, 'heute')),
     h('div', { class: 'content' },
       day.addHint && h('div', { class: 'add muted' }, day.addHint),
+      day.sick && h('div', { class: 'sick-line' }, h('span', { class: 'sick-label' }, day.sick.label)),
       h('ul', { class: 'slots' }, day.slots.map(slotItem)),
       day.reservation?.slots.length > 0 && h('ul', { class: 'slots reserved' },
         day.reservation.slots.map((text) => h('li', {}, `geplant ${text}`)))),
@@ -172,9 +174,11 @@ function dayRow(day, handlers) {
     h('span', { class: 'marks' },
       day.dirty && h('span', { class: 'mark-dirty', title: 'nicht übertragen' }, '● '),
       day.reservation?.dirty && h('span', { class: 'mark-dirty', title: 'Reservierung nicht übertragen' }, '○ '),
+      day.sick?.dirty && h('span', { class: 'mark-dirty', title: 'Krankheit nicht übertragen' }, '● '),
       day.conflict && h('span', { class: 'mark-conflict', title: 'Konflikt' }, '⚠')),
     day.error && h('span', { class: 'err' }, day.error),
-    day.reservation?.error && h('span', { class: 'err' }, day.reservation.error)));
+    day.reservation?.error && h('span', { class: 'err' }, day.reservation.error),
+    day.sick?.error && h('span', { class: 'err' }, day.sick.error)));
 }
 
 export function weekView(model, handlers) {
@@ -492,9 +496,11 @@ function slotSection({ rows, categories, defaults, weekday, withPause, pauseEnab
  *  hält seinen eigenen Zustand, „Speichern“ und „Tag leeren“ wirken auf den aktiven. `notes`
  *  (`{suggest(kategorie) → {own, other}, available}`, nur wenn der Desktop Notizen versteht) zeigt das Notizfeld der Arbeitszeit.
  *  `handlers.save(kind, rows)` liefert `null` bei Erfolg oder eine Fehlermeldung; `kind` ist
- *  `'work'` oder `'reservation'`. */
+ *  `'work'` oder `'reservation'`. `reportSick` zeigt unter beiden Reitern den Knopf „Krank melden“
+ *  (`handlers.reportSick(dialog)`); eine Sperre mit `action: 'remove-sick'` trägt „Krankheit entfernen“
+ *  (`handlers.removeSick(dialog)`). */
 export function editorDialog({ title, rows, categories, defaults = null, weekday = '', errors = {}, lock = null, canClear, validate,
-  reservation = null, startWith = 'work', pauseEnabled = false, shiftStep = 0, notes = null }, handlers) {
+  reservation = null, startWith = 'work', pauseEnabled = false, shiftStep = 0, notes = null, reportSick = false }, handlers) {
   const message = h('div', { class: 'error-text', role: 'alert' }, '');
   const save = h('button', { type: 'submit', class: 'primary' }, 'Speichern');
   const dialog = h('dialog', { 'aria-labelledby': 'editor-title' });
@@ -520,9 +526,13 @@ export function editorDialog({ title, rows, categories, defaults = null, weekday
   const heading = h('h2', { id: 'editor-title' }, title);
   const clearButton = button('Tag leeren', () => handlers.clear(active, dialog), 'link destructive');
   // Gesperrte Arbeitszeit (#273): statt der Zeilen ein Hinweis, mit dem Ausweg „Ältere Zeiten laden“, wo es ihn gibt.
+  // An einem Krankheitstag ist der Ausweg „Krankheit entfernen“ (fragt nach; kein Hauptknopf, es wird gelöscht).
   const windowHint = lock && h('div', { class: 'hint warn', 'data-focus': 'edit-lock' },
     h('p', {}, lock.text),
-    lock.action === 'older' && button(lock.buttonText, () => handlers.loadOlder(), 'primary', { 'data-focus': 'load-older' }));
+    lock.action === 'older' && button(lock.buttonText, () => handlers.loadOlder(), 'primary', { 'data-focus': 'load-older' }),
+    lock.action === 'remove-sick' && button(lock.buttonText, () => handlers.removeSick(dialog), 'remove-sick', { 'data-focus': 'remove-sick' }));
+  // Gilt für den ganzen Tag, nicht für einen Reiter: an Tagen nach heute öffnet der Editor bei der Reservierung.
+  const sickButton = reportSick && button('Krank melden', () => handlers.reportSick(dialog), 'link', { 'data-focus': 'report-sick' });
   const tabs = reservation && {
     work: h('button', { type: 'button', role: 'tab', 'data-focus': 'tab-work', onclick: () => show('work') }, 'Arbeitszeit'),
     reservation: h('button', { type: 'button', role: 'tab', 'data-focus': 'tab-reservation', onclick: () => show('reservation') }, 'Reservierung'),
@@ -559,6 +569,7 @@ export function editorDialog({ title, rows, categories, defaults = null, weekday
       windowHint,
       work.element,
       res && res.element,
+      sickButton,
       message,
       footerButtons(
         clearButton,
@@ -599,6 +610,56 @@ export function confirmDialog({ title, text, confirmLabel }, onConfirm) {
     h('div', { class: 'buttons' },
       button('Abbrechen', () => dialog.close()),
       button(confirmLabel, () => { dialog.close(); onConfirm(); }, 'primary')));
+  return openDialog(dialog);
+}
+
+/** „Krank melden“ ab dem Tag des Editors (Modell aus `sickDialogModel`). Das Bis-Datum reicht höchstens bis `maxTo`;
+ *  jede Eingabe holt über `handlers.update(to)` ein neues Modell (Sperre durch Ist-Zeit, Häkchen und seine Beschriftung).
+ *  Das Häkchen „Reservierungen … löschen“ steht standardmäßig an und gilt nur, solange es zu sehen ist.
+ *  `handlers.save({to, deleteReservations})` liefert `null` oder eine Meldung; nach dem Erfolg schließt der Dialog und
+ *  ruft `handlers.done()`. */
+export function sickDialog({ title, model }, handlers) {
+  const dialog = h('dialog', { 'aria-labelledby': 'sick-title', class: 'sick-dialog' });
+  const toInput = h('input', { id: 'sick-to', type: 'date', min: model.from, max: model.maxTo, value: model.to, required: true,
+    'data-focus': 'sick-to' });
+  const check = h('input', { id: 'sick-reservations', type: 'checkbox', checked: true, 'data-focus': 'sick-reservations' });
+  const checkText = h('span', {}, model.reservations.label);
+  const checkRow = h('label', { class: 'check', for: 'sick-reservations' }, check, checkText);
+  const range = h('p', { class: 'muted' }, '');
+  const message = h('div', { class: 'error-text', role: 'alert' }, '');
+  const save = h('button', { type: 'submit', class: 'primary', 'data-focus': 'sick-save' }, 'Krank melden');
+  const show = (next) => {
+    checkRow.hidden = !next.reservations.visible;
+    checkText.textContent = next.reservations.label;
+    range.textContent = `Höchstens bis ${next.maxLabel}. Die Stunden je Tag rechnet der Desktop beim nächsten Abgleich.`;
+    message.textContent = next.error;
+  };
+  toInput.addEventListener('input', () => show(handlers.update(toInput.value)));
+  dialog.append(
+    h('form', { method: 'dialog', onsubmit: async (event) => {
+      event.preventDefault();
+      const latest = handlers.update(toInput.value);
+      show(latest);
+      if (!latest.canSave) return;
+      save.disabled = true;
+      const failure = await handlers.save({ to: toInput.value, deleteReservations: latest.reservations.visible && check.checked });
+      save.disabled = false;
+      if (failure) {
+        show(handlers.update(toInput.value));
+        message.textContent = failure;
+        return;
+      }
+      dialog.close();
+      handlers.done();
+    } },
+      h('h2', { id: 'sick-title' }, 'Krank melden'),
+      h('p', {}, `Ab ${title}`),
+      h('label', { for: 'sick-to' }, 'Bis'), toInput,
+      range,
+      checkRow,
+      message,
+      h('div', { class: 'buttons' }, button('Abbrechen', () => dialog.close()), save)));
+  show(model);
   return openDialog(dialog);
 }
 

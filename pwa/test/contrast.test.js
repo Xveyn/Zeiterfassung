@@ -33,7 +33,7 @@ function noteListBackground() {
 // Flächen, auf denen Text steht: die Tokens plus die festen Farben aus dem Stylesheet.
 const surfaces = () => ({
   bg: token('bg'), cell: token('cell'), 'cell-hover': token('cell-hover'), weekend: token('weekend'), entry: token('entry'),
-  statusbar: '#101a30', 'dirty-bar': '#3a2f10', 'pill-ok': '#14351f', 'note-list': noteListBackground(),
+  statusbar: '#101a30', 'dirty-bar': '#3a2f10', 'pill-ok': '#14351f', 'note-list': noteListBackground(), sick: token('sick'),
 });
 
 const atLeast = (label, a, b, min) => assert.ok(ratio(a, b) >= min, `${label}: ${ratio(a, b).toFixed(2)}:1 (mindestens ${min}:1)`);
@@ -56,7 +56,7 @@ test('white text on the accent fill and its hover reaches 4.5:1; the fill is sti
 });
 
 test('status colours stay readable on the surfaces they use', () => {
-  for (const name of ['bg', 'cell', 'entry', 'dirty-bar', 'pill-ok']) {
+  for (const name of ['bg', 'cell', 'entry', 'dirty-bar', 'pill-ok', 'sick']) {
     atLeast(`ok auf ${name}`, token('ok'), surfaces()[name], 4.5);
     atLeast(`warn auf ${name}`, token('warn'), surfaces()[name], 4.5);
   }
@@ -98,4 +98,15 @@ test('the note under a slot is muted text on --entry, --weekend, --cell (conflic
   const rule = (selector) => (css.match(new RegExp(`${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} \\{([^}]*)\\}`)) || [])[1] || '';
   assert.match(rule('.day .slots .slot-note, .version .slot-note'), /color: var\(--muted\)/);
   for (const name of ['entry', 'weekend', 'cell', 'bg']) atLeast(`muted auf ${name}`, token('muted'), surfaces()[name], 4.5);
+});
+
+test('a sick day sits on its own surface; its label „krank“ uses the sick colour and reaches 4.5:1 there', () => {
+  const rule = (selector) => (css.match(new RegExp(`${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} \\{([^}]*)\\}`)) || [])[1] || '';
+  assert.match(rule('.day.sick'), /background: var\(--sick\)/);
+  assert.match(rule('.day .sick-label'), /color: var\(--sick-text\)/);
+  assert.doesNotMatch(rule('.day.sick') + rule('.day .sick-label'), /opacity/);
+  atLeast('sick-text auf sick', token('sick-text'), token('sick'), 4.5);
+  // `.day.sick` steht nach `.day.filled` und `.day.weekend`: Krankheit gewinnt die Farbe der Zeile (wie am Desktop)
+  assert.ok(css.indexOf('.day.sick {') > css.indexOf('.day.filled {'));
+  assert.ok(css.indexOf('.day.sick {') > css.indexOf('.day.weekend {'));
 });

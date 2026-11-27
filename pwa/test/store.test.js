@@ -1721,6 +1721,36 @@ test('an unreadable sick block keeps the capability, but confirms and deletes no
   assert.deepEqual(store.sickDays(), before);
 });
 
+test('a rejected sick day before the window is cleaned up; an unsent one there and a rejected one inside stay', async () => {
+  const { store } = await makeSick();
+  await store.markSick('2026-05-01', '2026-05-01');                 // vor dem Fenster (heute − 90 = 2026-07-10)
+  await store.markSickError('2026-05-01', 'Krankheit 2026-05-01: abgelehnt');
+  await store.markSick('2026-05-04', '2026-05-04');                 // vor dem Fenster, nicht übertragen
+  await store.markSick('2026-07-09', '2026-07-09');                 // Randtag: gehört noch dem Desktop
+  await store.markSickError('2026-07-09', 'Krankheit 2026-07-09: abgelehnt');
+  await store.markSick('2026-10-03', '2026-10-03');                 // im Fenster
+  await store.markSickError('2026-10-03', 'Krankheit 2026-10-03: abgelehnt');
+  assert.equal(store.errorCount(), 3);
+
+  await store.applyResponse(sickResponse({}), { entries: {}, versions: {} }, SICK_TODAY);
+
+  assert.deepEqual(Object.keys(store.sickDays()).sort(), ['2026-05-04', '2026-07-09', '2026-10-03']);
+  assert.equal(store.errorCount(), 2);
+  assert.equal(store.pendingCount(), 3);
+});
+
+test('without the capability clearing sick days is refused and deletes nothing locally', async () => {
+  const { store } = await makeSick();
+  await store.markSick('2026-10-01', '2026-10-02');                 // nie bestätigt: würde lokal verworfen
+  await store.applyResponse(sickResponse({ '2026-09-20': desktopSick(480) }), { entries: {}, versions: {} }, SICK_TODAY);
+  await store.setMeta({ sick_capable: false });
+  const before = store.sickDays();
+
+  await assert.rejects(() => store.clearSick(['2026-10-01', '2026-09-20']), /Desktop/);
+
+  assert.deepEqual(store.sickDays(), before);
+});
+
 test('a rejected sick day is marked only in the version that was sent and is not sent again', async () => {
   const { store } = await makeSick();
   await store.markSick('2026-10-01', '2026-10-02');

@@ -5,6 +5,7 @@
 import { addDays, formatDateDe, isIsoDate, localIsoDate } from './minutes.js';
 import { weekdayKey } from './defaults.js';
 import { reservationEditable } from './reservations.js';
+import { blockOf } from './sick.js';
 import { testResultText } from './push-message.js';
 import { idbKeyStore } from './push-blob.js';
 import { permissionState } from './push-policy.js';
@@ -30,6 +31,7 @@ import { blockSignature, rowsToBlock } from './categories.js';
 import {
   categoriesModel, conflictsModel, connectionLabel, dayChanged, dayTitle, desktopHint, NOTE_DISPLAY_OPTIONS, normalizeNoteDisplay, editLock, editorRows, focusKeyToRestore, hintsModel, olderModel, pushModel, reservationRows,
   iosInstallHint, isSetupPhase, localDateDe, pairingAfterBack, reservationRowsToSlots, daySave, noteChoices, setupModel, statusModel, reachedAfterSyncError, unpairDialogModel, validateReservationRows, validateRows, weekModel,
+  canReportSick, sickDialogModel, sickRemovalText,
 } from './view-model.js';
 import { BUILD, CACHE_PREFIX } from './sw-core.js';
 import { describeRepair, repairServiceWorker } from './sw-repair.js';
@@ -37,7 +39,7 @@ import { createUnpairRunner } from './unpair.js';
 import { clear, focusByKey, focusState, h } from './dom.js';
 import {
   conflictsDialog, confirmDialog, editorDialog, fatalView, hintsHost, pairView,
-  lockDialog, patchHints, scanDialog, settingsDialog, statusBar, unpairDialog, vaultView, weekView,
+  lockDialog, patchHints, scanDialog, settingsDialog, sickDialog, statusBar, unpairDialog, vaultView, weekView,
 } from './views.js';
 import { canScan, scanForPairLink } from './scanner.js';
 import { browserKind, isStandalone } from './browser-policy.js';
@@ -606,6 +608,7 @@ class App {
       conflictDates: conflicts.map((conflict) => conflict.date), windowDays: meta.window_days, aheadDays: aheadDays(meta.window_ahead),
       getReservation: (date) => this.store.getReservation(date), reservationsEnabled: meta.reservations_enabled,
       slotOrder: meta.slot_order, noteDisplay: meta.note_display,
+      sickDays: meta.sick, sickEnabled: meta.sick_capable,
     });
     model.older = olderModel(olderState({
       firstDay: model.days[0].date, today: localIsoDate(new Date()), windowDays: meta.window_days,
@@ -955,8 +958,12 @@ class App {
       pauseEnabled,
       shiftStep: normalizeShiftStep(meta.shift_step_minutes),
       notes: notes ? { available: this.hasNotes(), suggest: (kategorie) => noteChoices(this.storedDays(), kategorie) } : null,
+      // „Krank melden“ nur mit Fähigkeit des Desktops, im Fenster und nicht an einem Krankheitstag (dort sperrt `lock`).
+      reportSick: canReportSick({ date, today, meta }),
     }, {
       loadOlder: () => { dialog.close(); void this.loadOlder(lock.wish); },
+      reportSick: (editor) => this.reportSick(date, editor),
+      removeSick: (editor) => this.removeSick(date, editor),
       save: async (kind, rows) => {
         if (kind === 'reservation') {
           const current = this.store.getReservation(date);
@@ -1011,6 +1018,70 @@ class App {
     });
     // Der Opener wird bei jedem Render ersetzt; der Browser kann den Fokus nach dem Schließen nicht zurückgeben.
     dialog.addEventListener('close', () => { focusByKey(this.root, returnKey); });
+  }
+
+  /** „Krank melden“ ab `date`, über dem Tages-Editor. Gemeldet wird erst die Krankheit, dann werden mit Häkchen die
+   *  Reservierungen der neu kranken Tage gelöscht (Tombstones, die mit den Krankheitstagen im selben Abgleich hinausgehen).
+   *  Nach dem Erfolg schließt auch der Editor: seine Arbeitszeit ist jetzt gesperrt. Kein Krankheitstag, kein Datum und
+   *  keine Minuten gehen ins Debug-Protokoll. */
+  reportSick(date, editor) {
+    const modelFor = (to) => sickDialogModel({ date, to, today: localIsoDate(new Date()), meta: this.store.getMeta(),
+      getDay: (day) => this.store.getDay(day), getReservation: (day) => this.store.getReservation(day) });
+    sickDialog({ title: dayTitle(date), model: modelFor(date) }, {
+      update: modelFor,
+      save: async ({ to, deleteReservations }) => {
+        const today = localIsoDate(new Date());
+        const meta = this.store.getMeta();
+        // Zweite Sicherung: ein Abgleich kann seit dem Öffnen die Fähigkeit, das Fenster oder den Tag geändert haben.
+        if (!canReportSick({ date, today, meta })) {
+          return editLock({ date, today, meta })?.text ?? 'Der Desktop kennt keine Krankheitstage. Bitte die Desktop-App aktualisieren.';
+        }
+        const current = modelFor(to);
+        if (!current.canSave) return current.error;
+        try {
+          await this.store.markSick(date, to);
+        } catch (error) {
+          return String(error?.message ?? error);
+        }
+        let failed = null;
+        if (deleteReservations) {
+          for (const day of current.reservations.dates) {
+            try {
+              await this.store.clearReservation(day);
+            } catch (error) {
+              failed ??= error;      // die übrigen trotzdem versuchen; gemeldet wird unten
+            }
+          }
+        }
+        this.render();
+        this.scheduleSyncAfterSave();
+        if (!failed) return null;
+        editor.close();                                     // die Krankheit steht: der Editor zeigte einen veralteten Tag
+        return withDetail('Krankheit gespeichert, aber nicht alle Reservierungen ließen sich löschen. Bitte die Reservierungen prüfen.', failed);
+      },
+      done: () => editor.close(),
+    });
+  }
+
+  /** „Krankheit entfernen“ aus dem gesperrten Reiter „Arbeitszeit“: nach der Rückfrage der ganze Block (`blockOf`). */
+  removeSick(date, editor) {
+    const block = blockOf(this.store.sickDays(), date);
+    if (!block) {                                           // inzwischen entfernt (Abgleich): nichts mehr zu tun
+      editor.close();
+      this.render();
+      return;
+    }
+    confirmDialog({ title: 'Krankheit entfernen?', text: sickRemovalText(block), confirmLabel: 'Krankheit entfernen' }, async () => {
+      try {
+        await this.store.clearSick(block.dates);
+      } catch (error) {
+        editor.querySelector('.error-text').textContent = String(error?.message ?? error);
+        return;
+      }
+      editor.close();
+      this.render();
+      this.scheduleSyncAfterSave();
+    });
   }
 
   // --- Service Worker ----------------------------------------------------------------------------

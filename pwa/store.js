@@ -659,8 +659,12 @@ export class Store {
   }
 
   /** „Krankheit entfernen“: ein Tombstone je lebendem Tag aus `dates`, den der nächste Abgleich überträgt. Einen
-   *  Tag, den der Desktop nie bestätigt hat (`synced_version` 0), verwirft das Handy nur lokal. */
+   *  Tag, den der Desktop nie bestätigt hat (`synced_version` 0), verwirft das Handy nur lokal. Wirft ohne Fähigkeit
+   *  des Desktops: lokal Gespeichertes wird dann nie gelöscht. */
   async clearSick(dates) {
+    if (!this._meta.sick_capable) {
+      throw new Error('Der Desktop kennt keine Krankheitstage. Bitte die Desktop-App aktualisieren.');
+    }
     const sick = { ...this._meta.sick };
     let changed = false;
     for (const date of dates) {
@@ -723,7 +727,8 @@ export class Store {
       if (record && isDirty(record) && sent !== record.dirty_version) continue;
       if (!record && sent !== undefined && !entry.deleted) {
         // Während der Anfrage lokal verworfen (`clearSick`, nie bestätigt), der Desktop hat ihn aber angenommen:
-        // ohne Tombstone käme der Tag als lebend zurück.
+        // ohne Tombstone käme der Tag als lebend zurück. Das greift auch, wenn der Desktop den Tag schon vorher lebend
+        // hatte: das Verwerfen ist die letzte Handlung des Nutzers und gilt als seine Absicht.
         next[date] = { minutes: 0, modified_at: this._sickStamp(entry.modified_at), deleted: true,
           dirty_version: sent + 1, synced_version: sent, error: null };
         continue;
@@ -733,6 +738,12 @@ export class Store {
         dirty_version: version, synced_version: version, error: null };
     }
     for (const [date, record] of Object.entries(next)) {
+      // Ein abgelehnter Tag geht nicht wieder hinaus, und vor dem Fenster lässt er sich nicht erneut melden: ohne Aufräumen
+      // stünde er für immer als „abgelehnt“ und „nicht übertragen“ (wie die vergangenen Reservierungen).
+      if (record.error && date < pruneBefore) {
+        delete next[date];
+        continue;
+      }
       const outside = date < pruneBefore || date > pruneAfter;
       if (Object.hasOwn(remote, date)) {
         if (!isDirty(record) && outside) delete next[date];
