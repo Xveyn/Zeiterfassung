@@ -10,6 +10,7 @@ useDefault = true
 
 [[allowlists]]
 description = "Testvektoren und Beispielantworten der Handy-PWA: erfundene Tokens und Schlüssel"
+targetRules = ["generic-api-key"]
 condition = "OR"
 regexTarget = "match"
 paths = [
@@ -18,13 +19,35 @@ paths = [
 
 [[allowlists]]
 description = "Pläne zitieren dieselben erfundenen Fixture-Tokens"
+targetRules = ["generic-api-key"]
 paths = [
   '''^docs/superpowers/plans/''',
 ]
 
 [[allowlists]]
 description = "Öffentlicher VAPID-Schlüssel des Relays (steht bewusst in PWA und wrangler.toml)"
+targetRules = ["generic-api-key"]
 regexTarget = "match"
 regexes = [
   '''VAPID_PUBLIC\s*=\s*["']BMZUZQIW3QNwt2vJp3q47zAAx4lLADWA0_r3kQQeyMT3d_GXsyyTjNlgBd1fOMtuZvlJhsLu1QRbHsT0hQHzC20["']''',
+]
+
+# Kein Geheimnis, aber ein Link auf eine Claude-Code-Session gehört weder in Dateien noch in
+# Commit-Nachrichten oder PR-Texte. Der Job prüft mit derselben Regel auch Nachrichten und
+# PR-Text (`gitleaks stdin --enable-rule claude-session-link`, s. gitleaks.yml).
+[[rules]]
+id = "claude-session-link"
+description = "Link auf eine Claude-Code-Session"
+regex = '''claude\.ai/code/session_[0-9A-Za-z]+'''
+keywords = ["claude.ai/code/session_"]
+
+# Ältere Pläne haben solche Links eingeführt, bevor die Regel galt. Die Commits bleiben in der
+# Historie; ausgenommen sind genau sie, nicht die Pfade.
+[[rules.allowlists]]
+description = "Session-Links aus der Zeit vor der Regel"
+commits = [
+  "b8fb853c132aa9225444c4d7e77341dde0508ea8",
+  "966ada9a81a703167b8bcb2127bc833ee7e45196",
+  "d78423fefd04a6412054c561d04bf11e253bcc38",
+  "5c093fddf01e2cd2a457f7463ddc28ade14a777c",
 ]

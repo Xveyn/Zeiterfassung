@@ -23,10 +23,9 @@
 - **Fehlerdialoge folgen der N14-Zweiteilung:** kuratierte, erwartete Fehler → themed Drop-ins aus `src/theme`; nur die Catch-all-Zweige mit echtem Traceback → rohes `tkinter.messagebox.showerror`. Ein themed Dialog mit dem Text „None" ist beides falsch.
 - **Dialoge über `theme.create_dialog`**, keine dialogspezifischen Stil-Extras, `center_dialog_on_parent` nach dem Aufbau.
 - **Blockierendes gehört in den `BackgroundTaskRunner`**, nie in einen Tk-Callback: `store.save`/`delete` starten einen icacls-Subprozess (timeout 15 s), SMTP-Verbindungen gehen ins Netz, und der Schlüsselbund kann auf Linux blockieren. **Und der Worker muss garantiert zurückkehren** — kehrt `fn()` nie zurück, ruft der Runner `on_done` nie, und der Dialog steht dauerhaft auf „Sende…".
-- **Commit-Messages** enden mit den beiden Trailern:
+- **Commit-Messages** enden mit dem Trailer:
   ```
   Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
-  Claude-Session: https://claude.ai/code/session_01VJux6qnwTncwi1qbmHBHet
   ```
   Mehrzeilige Messages über eine Datei (`git commit -F <datei>`) — Heredoc und PowerShell-Here-String scheitern in dieser Umgebung.
 - **Nach jeder Task:** `ruff check .`, `npx pyright`, `pytest` — alle drei grün, bevor committet wird.
