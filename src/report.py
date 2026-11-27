@@ -5,12 +5,18 @@ import datetime
 import html
 import io
 from collections import OrderedDict
-from typing import Any, Collection
+from typing import Any, Collection, Literal
 
 from src import slot_notes
 from src.slot_order import sorted_slots
 from src.time_utils import DAYS_DE, calculate_hours, format_date, get_week_label, hours_to_minutes
-from src.vacations import CappedDay, cap_by_worktime, cap_notice
+from src.absence import (
+    CappedDay,
+    cap_by_worktime,
+    cap_notice,
+    cut_absences,
+    sick_on_vacation_notice,
+)
 
 
 def _esc(text: str | None) -> str:
@@ -424,7 +430,8 @@ def _build_category_summary(range_entries: dict[str, Any],
 
 
 def _vacation_runs(vacation_days: dict[str, int]) -> list[tuple[str, str, int]]:
-    """Zerlegt die Urlaubstage in zusammenhängende Blöcke.
+    """Zerlegt die Urlaubs- oder Krankheitstage ({ISO: minutes}) in
+    zusammenhängende Blöcke.
 
     Liefert [(von, bis, minuten)] je Block, chronologisch. Ein Block bricht
     nur bei einer echten Kalenderlücke ab — die 0-Minuten-Tage einer Periode
@@ -458,13 +465,51 @@ def _vacation_runs(vacation_days: dict[str, int]) -> list[tuple[str, str, int]]:
     return runs
 
 
+def _absence_table(runs: list[tuple[str, str, int]], heading: str,
+                   total_minutes: int | None, style: dict[str, Any]) -> str:
+    """Tabelle „Urlaub“ bzw. „Krankheit“ mit einer Zeile je Block; mit
+    `total_minutes` schließt „Zu vergüten gesamt“ sie ab."""
+    s = style
+    td = s["td_base"]
+    rows = []
+    for idx, (start, end, minutes) in enumerate(runs):
+        label = (f"{format_date(datetime.date.fromisoformat(start))} – "
+                 f"{format_date(datetime.date.fromisoformat(end))}")
+        row_bg = s["row_a"] if idx % 2 == 0 else s["row_b"]
+        rows.append(
+            f"<tr style='{row_bg}'>"
+            f"<td style='{td}{s['c_day']}'>{_esc(label)}</td>"
+            f"<td style='{td}{s['c_hours']}'>{_minutes_as_hours(minutes)}h</td>"
+            f"</tr>"
+        )
+    total_row = (
+        f'<tr style="{s["total_row"]}">'
+        f'<td style="{s["total_lbl"]}">Zu vergüten gesamt</td>'
+        f'<td style="{s["total_hrs"]}">'
+        f'{_minutes_as_hours(total_minutes)}h</td>'
+        f'</tr>'
+    ) if total_minutes is not None else ""
+    return _keep_together(
+        f'<table style="border-collapse:collapse;width:100%;margin-top:16px;{s["table_extra"]}">'
+        f'<tr style="{s["th_row"]}">'
+        f'<th style="{s["th_cell"]}">{heading}</th>'
+        f'<th style="{s["th_cell"]}">Stunden</th>'
+        f'</tr>'
+        f'{"".join(rows)}'
+        f'{total_row}'
+        f'</table>',
+        s,
+    )
+
+
 def _build_vacation_summary(vacation_days: dict[str, int],
                             work_minutes: int,
                             style: dict[str, Any],
-                            capped_days: list[CappedDay] | None = None
+                            capped_days: list[CappedDay] | None = None,
+                            with_total: bool = True
                             ) -> str:
     """„Urlaub"-Block unter der Stundentabelle, plus die Zeile „Zu vergüten
-    gesamt".
+    gesamt" (nur mit `with_total`).
 
     `vacation_days` ist bereits auf den Berichtszeitraum gefiltert
     ({ISO: minutes}). Je zusammenhängendem Block eine Zeile; liegt im Zeitraum
@@ -485,49 +530,83 @@ def _build_vacation_summary(vacation_days: dict[str, int],
     runs = _vacation_runs(vacation_days)
     if not runs:
         return ""
+    total = work_minutes + sum(m for _, _, m in runs) if with_total else None
+    return (_absence_table(runs, "Urlaub", total, style)
+            + _cap_footnote(capped_days, style))
 
-    s = style
-    td = s["td_base"]
-    vacation_minutes = sum(m for _, _, m in runs)
 
-    rows = []
-    for idx, (start, end, minutes) in enumerate(runs):
-        label = (f"{format_date(datetime.date.fromisoformat(start))} – "
-                 f"{format_date(datetime.date.fromisoformat(end))}")
-        row_bg = s["row_a"] if idx % 2 == 0 else s["row_b"]
-        rows.append(
-            f"<tr style='{row_bg}'>"
-            f"<td style='{td}{s['c_day']}'>{_esc(label)}</td>"
-            f"<td style='{td}{s['c_hours']}'>{_minutes_as_hours(minutes)}h</td>"
-            f"</tr>"
-        )
+def _build_sick_summary(sick_days: dict[str, int], total_minutes: int,
+                        style: dict[str, Any],
+                        capped_days: list[CappedDay] | None = None) -> str:
+    """„Krankheit“-Block mit „Zu vergüten gesamt“ als letzter Zeile.
 
-    return _keep_together(
-        f'<table style="border-collapse:collapse;width:100%;margin-top:16px;{s["table_extra"]}">'
-        f'<tr style="{s["th_row"]}">'
-        f'<th style="{s["th_cell"]}">Urlaub</th>'
-        f'<th style="{s["th_cell"]}">Stunden</th>'
-        f'</tr>'
-        f'{"".join(rows)}'
-        f'<tr style="{s["total_row"]}">'
-        f'<td style="{s["total_lbl"]}">Zu vergüten gesamt</td>'
-        f'<td style="{s["total_hrs"]}">'
-        f'{_minutes_as_hours(work_minutes + vacation_minutes)}h</td>'
-        f'</tr>'
-        f'</table>',
-        s,
-    ) + _cap_footnote(capped_days, s)
+    `total_minutes` ist Ist-Zeit + Urlaub + Krankheit nach `cut_absences`, alles
+    in Minuten. Ohne bezahlte Krankheitsminute entsteht kein Block.
+    """
+    runs = _vacation_runs(sick_days)
+    if not runs:
+        return ""
+    return (_absence_table(runs, "Krankheit", total_minutes, style)
+            + _cap_footnote(capped_days, style, "sick"))
+
+
+def _absence_section(vacation: dict[str, int], vacation_capped: list[CappedDay],
+                     sick: dict[str, int], sick_capped: list[CappedDay],
+                     sick_on_vacation: list[str], work_minutes: int,
+                     style: dict[str, Any]) -> str:
+    """Urlaubs- und Krankheits-Block samt Fußnoten für Mail-HTML und PDF.
+
+    Das Total „Zu vergüten gesamt“ steht im Block, der den Abschnitt schließt:
+    im Krankheits-Block, wenn es bezahlte Krankheitsminuten gibt, sonst im
+    Urlaubs-Block. Ohne Krankheitsdaten bitgleich zum reinen Urlaubs-Block.
+    """
+    has_sick = bool(_vacation_runs(sick))
+    vacation_minutes = sum(vacation.values())
+    html_out = _build_vacation_summary(
+        vacation, work_minutes, style, vacation_capped, with_total=not has_sick)
+    if has_sick:
+        html_out += _build_sick_summary(
+            sick, work_minutes + vacation_minutes + sum(sick.values()),
+            style, sick_capped)
+    notice = sick_on_vacation_notice(sick_on_vacation)
+    if notice:
+        html_out += f'<p style="{style["footnote"]}">{_esc(notice)}</p>'
+    return html_out
+
+
+def _resolve_absences(date_from: datetime.date, date_to: datetime.date,
+                      range_entries: dict[str, Any],
+                      vacation_days: dict[str, int] | None,
+                      sick_days: dict[str, int] | None
+                      ) -> tuple[dict[str, int], list[CappedDay], dict[str, int],
+                                 list[CappedDay], list[str]]:
+    """Schneidet Urlaub (und mit `sick_days` auch Krankheit) auf den Zeitraum
+    und kappt sie gegen die bereits kategoriegefilterte Ist-Zeit.
+
+    `sick_days=None` (Häkchen aus) nimmt den reinen Urlaubs-Weg, damit die
+    Ausgabe bitgleich bleibt und Krankheit nirgends durchscheint.
+    """
+    vacation_in_range = filter_period(date_from, date_to, vacation_days or {}) or {}
+    if sick_days is None:
+        vacation, vacation_capped = cap_by_worktime(vacation_in_range, range_entries)
+        return vacation, vacation_capped, {}, [], []
+    sick_in_range = filter_period(date_from, date_to, sick_days) or {}
+    cut = cut_absences(range_entries, vacation_in_range, sick_in_range)
+    return (cut.vacation, cut.vacation_capped, cut.sick, cut.sick_capped,
+            cut.sick_on_vacation)
 
 
 def _cap_footnote(capped_days: list[CappedDay] | None,
-                  style: dict[str, Any]) -> str:
-    """Fußnote unter dem Urlaubs-Block, wenn Tage gekappt wurden.
+                  style: dict[str, Any],
+                  kind: Literal["vacation", "sick"] = "vacation") -> str:
+    """Fußnote unter dem Urlaubs- bzw. Krankheits-Block, wenn Tage gekappt
+    wurden.
 
     Wortlaut aus `absence.cap_notice` — dieselbe Formulierung wie die
     Hinweiszeile im Zeitraum-Picker, damit Vorschau und Bericht nicht
     verschieden über denselben Sachverhalt reden.
     """
-    text = cap_notice(capped_days or [])
+    text = cap_notice(capped_days or [], kind)
     if not text:
         return ""
     return (f'<p style="{style["footnote"]}">{_esc(text)}</p>')
@@ -539,6 +618,7 @@ def generate_report(date_from: datetime.date, date_to: datetime.date,
                     categories: Collection[str] | None = None,
                     category_breakdown: bool = True,
                     vacation_days: dict[str, int] | None = None,
+                    sick_days: dict[str, int] | None = None,
                     slot_order: str = "chrono",
                     note_breakdown: bool = False
                     ) -> tuple[str | None, float]:
@@ -553,24 +633,29 @@ def generate_report(date_from: datetime.date, date_to: datetime.date,
     vacation_days: {ISO: minutes} der Urlaubstage (bereits Snapshot des
     Stores, ungefiltert) oder None. Liegt im Zeitraum kein Urlaubstag mit
     Minuten, ist die Ausgabe bitgleich zur Variante ohne den Parameter.
+    sick_days: {ISO: minutes} der Krankheitstage oder None (Häkchen „Krankheit
+    ausweisen“ aus). Mit Dict gewinnt Krankheit über Urlaub, beide werden um
+    die Ist-Zeit gekappt, und „Zu vergüten gesamt“ steht am Ende. Ohne
+    Krankheitsminute im Zeitraum bitgleich zu `None`.
     Der zurückgegebene `total` bleibt in JEDEM Fall die reine Ist-Zeit.
     Returns (html, total) tuple, or (None, 0) if no entries.
     """
     range_entries = filter_period(date_from, date_to, all_entries)
     if range_entries:
         range_entries = filter_categories(range_entries, categories)
-    vacation_in_range = filter_period(date_from, date_to, vacation_days or {}) or {}
-    # Trifft Urlaub auf erfasste Ist-Zeit, wird der Urlaub des Tages um sie
-    # gekappt — sonst käme ein Kalendertag in „Zu vergüten gesamt" auf mehr
-    # Stunden, als er hat (Xveyn#97). Gegen den bereits kategoriegefilterten
-    # Ausschnitt, damit die drei Zahlen auf der Seite aufgehen.
-    vacation_in_range, capped_days = cap_by_worktime(
-        vacation_in_range, range_entries or {})
+    # Urlaub und Krankheit werden um erfasste Ist-Zeit gekappt — sonst käme ein
+    # Kalendertag in „Zu vergüten gesamt" auf mehr Stunden, als er hat
+    # (Xveyn#97). Gegen den bereits kategoriegefilterten Ausschnitt, damit die
+    # Zahlen auf der Seite aufgehen.
+    vacation, vacation_capped, sick, sick_capped, sick_on_vacation = (
+        _resolve_absences(date_from, date_to, range_entries or {},
+                          vacation_days, sick_days))
 
-    # Leer ist der Bericht nur ohne Ist-Zeit UND ohne bezahlte Urlaubsminute.
-    # Ein voller Urlaubsmonat ohne erfasste Arbeitszeit ist für den
-    # Stundenlohn-Fall genau die Abrechnung, um die es geht.
-    if not range_entries and not any(vacation_in_range.values()):
+    # Leer ist der Bericht nur ohne Ist-Zeit UND ohne bezahlte Urlaubs- oder
+    # Krankheitsminute: ein voller Abwesenheitsmonat ohne erfasste Arbeitszeit
+    # ist für den Stundenlohn-Fall genau die Abrechnung, um die es geht.
+    if (not range_entries and not any(vacation.values())
+            and not any(sick.values())):
         return None, 0
 
     label = f"{format_date(date_from)} – {format_date(date_to)}"
@@ -586,8 +671,9 @@ def generate_report(date_from: datetime.date, date_to: datetime.date,
         # Kopfzeile und „Gesamt 0h" und sagte nichts aus.
         table, total_minutes, category_summary = "", 0, ""
     total = _minutes_as_hours(total_minutes)
-    vacation_summary = _build_vacation_summary(
-        vacation_in_range, total_minutes, HTML_STYLE, capped_days)
+    vacation_summary = _absence_section(
+        vacation, vacation_capped, sick, sick_capped, sick_on_vacation,
+        total_minutes, HTML_STYLE)
 
     greeting_filled = _apply_placeholders(_esc_multiline(greeting), label, total)
     content_filled = _apply_placeholders(_esc_multiline(content), label, total)
@@ -618,6 +704,7 @@ def generate_pdf(date_from: datetime.date, date_to: datetime.date,
                  categories: Collection[str] | None = None,
                  category_breakdown: bool = True,
                  vacation_days: dict[str, int] | None = None,
+                 sick_days: dict[str, int] | None = None,
                  slot_order: str = "chrono",
                  note_breakdown: bool = False) -> bytes | None:
     """Generate a PDF of the time tracking table. Returns PDF bytes, or None if no entries.
@@ -628,24 +715,29 @@ def generate_pdf(date_from: datetime.date, date_to: datetime.date,
     vacation_days: {ISO: minutes} der Urlaubstage (bereits Snapshot des
     Stores, ungefiltert) oder None. Liegt im Zeitraum kein Urlaubstag mit
     Minuten, ist die Ausgabe bitgleich zur Variante ohne den Parameter.
+    sick_days: {ISO: minutes} der Krankheitstage oder None (Häkchen „Krankheit
+    ausweisen“ aus). Mit Dict gewinnt Krankheit über Urlaub, beide werden um
+    die Ist-Zeit gekappt, und „Zu vergüten gesamt“ steht am Ende. Ohne
+    Krankheitsminute im Zeitraum bitgleich zu `None`.
     """
     from xhtml2pdf import pisa  # pyright: ignore[reportMissingImports]  # lazy, nicht in CI-Test-Deps
 
     range_entries = filter_period(date_from, date_to, all_entries)
     if range_entries:
         range_entries = filter_categories(range_entries, categories)
-    vacation_in_range = filter_period(date_from, date_to, vacation_days or {}) or {}
-    # Trifft Urlaub auf erfasste Ist-Zeit, wird der Urlaub des Tages um sie
-    # gekappt — sonst käme ein Kalendertag in „Zu vergüten gesamt" auf mehr
-    # Stunden, als er hat (Xveyn#97). Gegen den bereits kategoriegefilterten
-    # Ausschnitt, damit die drei Zahlen auf der Seite aufgehen.
-    vacation_in_range, capped_days = cap_by_worktime(
-        vacation_in_range, range_entries or {})
+    # Urlaub und Krankheit werden um erfasste Ist-Zeit gekappt — sonst käme ein
+    # Kalendertag in „Zu vergüten gesamt" auf mehr Stunden, als er hat
+    # (Xveyn#97). Gegen den bereits kategoriegefilterten Ausschnitt, damit die
+    # Zahlen auf der Seite aufgehen.
+    vacation, vacation_capped, sick, sick_capped, sick_on_vacation = (
+        _resolve_absences(date_from, date_to, range_entries or {},
+                          vacation_days, sick_days))
 
-    # Leer ist der Bericht nur ohne Ist-Zeit UND ohne bezahlte Urlaubsminute.
-    # Ein voller Urlaubsmonat ohne erfasste Arbeitszeit ist für den
-    # Stundenlohn-Fall genau die Abrechnung, um die es geht.
-    if not range_entries and not any(vacation_in_range.values()):
+    # Leer ist der Bericht nur ohne Ist-Zeit UND ohne bezahlte Urlaubs- oder
+    # Krankheitsminute: ein voller Abwesenheitsmonat ohne erfasste Arbeitszeit
+    # ist für den Stundenlohn-Fall genau die Abrechnung, um die es geht.
+    if (not range_entries and not any(vacation.values())
+            and not any(sick.values())):
         return None
 
     label = f"{format_date(date_from)} – {format_date(date_to)}"
@@ -660,8 +752,9 @@ def generate_pdf(date_from: datetime.date, date_to: datetime.date,
         # Kein Ist-Zeit-Block: die leere Stundentabelle bestünde nur aus
         # Kopfzeile und „Gesamt 0h" und sagte nichts aus.
         table, total_minutes, category_summary = "", 0, ""
-    vacation_summary = _build_vacation_summary(
-        vacation_in_range, total_minutes, PDF_STYLE, capped_days)
+    vacation_summary = _absence_section(
+        vacation, vacation_capped, sick, sick_capped, sick_on_vacation,
+        total_minutes, PDF_STYLE)
 
     name_html = (
         f"<p style='color:#111827;font-size:13px;margin:0 0 2px 0;font-weight:600;'>{_esc(name)}</p>"
