@@ -213,7 +213,9 @@ Desktop) ist seltener, kommt aber vor. Sieben Regeln:
    „steht das Feld in der Antwort“. Dazu der Stand vor den Slot-Notizen (Xveyn#519): `compat/sync-response-pre-notes.json`
    (ohne `slot_notes` und ohne `notiz` an Slots; die PWA muss die Antwort verstehen) und
    `compat/sync-request-pre-notes.json` (die Anfrage ohne `notiz`, die der Desktop weiter annehmen muss); das
-   Live-Beispiel `sync-request.json` trägt `notiz` an einem Tag.
+   Live-Beispiel `sync-request.json` trägt `notiz` an einem Tag. Dazu der Stand vor den Krankheitstagen
+   (`compat/sync-request-pre-sick.json`, `compat/sync-response-pre-sick.json`, ohne `sick` und `sick_days`); das
+   Live-Beispiel trägt `sick`, die PWA sendet es noch nicht (`test/sync.test.js` nimmt den Schlüssel beim Vergleich aus).
 5. **Neue PWA, alter Desktop.** Ein Desktop vor #311 ignoriert `settings` in der
    Anfrage und kennt `writable_settings` nicht. Die PWA bietet das Bearbeiten
    der Kategorien deshalb nur an, wenn die Antwort `writable_settings` mit

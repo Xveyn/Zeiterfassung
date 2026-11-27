@@ -5,6 +5,7 @@ Die Beispiele unter `pwa/test/fixtures/` lesen **beide** Seiten: die JS-Tests
 (`pwa/test/*.test.js`) und dieser Test. Wer eine Regel auf einer Seite ändert, ohne die
 andere nachzuziehen, macht eine der beiden Seiten rot — das ist der Zweck.
 """
+import dataclasses
 import datetime
 import json
 import pathlib
@@ -92,6 +93,7 @@ import re  # noqa: E402
 
 from src import mobile_crypto as mc  # noqa: E402
 from src import mobile_reservations, mobile_routes, mobile_sync  # noqa: E402
+from src.sick_days import SickStore  # noqa: E402
 from src.api_auth import ANONYMOUS  # noqa: E402
 from src.api_routes import ApiRequest  # noqa: E402
 from tests import test_mobile_routes as mr  # noqa: E402
@@ -146,9 +148,12 @@ def test_the_response_example_has_the_shape_the_server_really_sends(tmp_path):
     reservations = {"2026-10-15": mr.RES_DAY}
     env.ctx.settings.set("mobile_push_enabled", True)       # sonst bliebe `reminders.send.at` leer
     env.ctx.settings.set("send_reminder_enabled", True)
+    env.ctx = dataclasses.replace(env.ctx, sick_store=SickStore(str(tmp_path / "sick.json"),
+                                                                device_id="DESK"))
+    sick = {"2026-10-01": {"modified_at": "2026-10-07T18:50:00Z", "deleted": False}}
 
     raw = mr.call(env, "POST", "/v1/sync",
-                  body=mr.sync_body(env, entries, reservations=reservations), token=token)
+                  body=mr.sync_body(env, entries, reservations=reservations, sick=sick), token=token)
     response = mr.opened(env, raw)
 
     assert raw.status == 200
@@ -195,9 +200,11 @@ def test_the_sync_request_example_has_the_shape_the_phone_sends(tmp_path):
     sent = mr.sync_doc(env, {"2026-10-07": mr.day(), "2026-10-06": mr.day(slots=(), deleted=True)})
     sent["last_pull_at"] = example["last_pull_at"]
 
-    # `reservations`/`settings` sendet die PWA nur mit nicht übertragenen Reservierungen bzw. geändertem Kategorien-Block; die Form prüft der JS-Test
-    # (`sync.test.js`), und dass der Desktop sie liest, `test_the_live_request_example_carries_…`.
-    assert set(sent) == set(example) - {"reservations", "settings"} and sent["protocol"] == example["protocol"] == 2
+    # `reservations`/`settings`/`sick` sendet die PWA nur mit nicht übertragenen Reservierungen, geändertem
+    # Kategorien-Block bzw. geänderten Krankheitstagen; die Form prüft der JS-Test (`sync.test.js`), und dass
+    # der Desktop sie liest, `test_the_live_request_example_carries_…`.
+    assert (set(sent) == set(example) - {"reservations", "settings", "sick"}
+            and sent["protocol"] == example["protocol"] == 2)
 
 
 def test_the_live_request_example_carries_settings_the_server_reads():
@@ -429,6 +436,48 @@ def test_the_live_request_example_carries_reservations_the_server_reads():
         today=datetime.date.fromisoformat(example["client_time"][:10]))
 
     assert sorted(parsed.reservations) == sorted(example["reservations"])
+
+
+def test_request_without_sick_is_accepted():
+    # Eingefrorener Stand vor den Krankheitstagen: nie ändern.
+    example = load("compat/sync-request-pre-sick.json")
+    assert "sick" not in example
+
+    parsed = mobile_sync.parse_request(
+        json.dumps(example).encode(), now=example["client_time"],
+        today=datetime.date.fromisoformat(example["client_time"][:10]))
+
+    assert parsed.sick == {}
+    assert sorted(parsed.entries) == sorted(example["entries"])
+    assert sorted(parsed.reservations) == sorted(example["reservations"])
+
+
+def test_pre_sick_response_is_really_pre_sick():
+    response = load("compat/sync-response-pre-sick.json")
+    assert "sick_days" not in response and "sick" not in response
+
+
+def test_the_live_response_example_carries_the_sick_capability_and_days():
+    response = load("sync-response.json")
+
+    assert response["sick_days"] is True
+    assert response["sick"] and all(DATE_KEY.match(date) for date in response["sick"])
+    assert all(set(day) == {"minutes", "modified_at", "deleted"} for day in response["sick"].values())
+    assert any(day["deleted"] for day in response["sick"].values())
+    assert any(not day["deleted"] and day["minutes"] > 0 for day in response["sick"].values())
+
+
+def test_the_live_request_example_carries_sick_days_the_server_reads():
+    example = load("sync-request.json")
+    assert example["sick"]
+    assert all("minutes" not in day for day in example["sick"].values())      # die Minuten rechnet der Desktop
+
+    parsed = mobile_sync.parse_request(
+        json.dumps(example).encode(), now=example["client_time"],
+        today=datetime.date.fromisoformat(example["client_time"][:10]))
+
+    assert parsed.sick == {date: {"modified_at": day["modified_at"], "deleted": day["deleted"]}
+                           for date, day in example["sick"].items()}
 
 
 def test_the_desktop_still_accepts_the_request_of_a_phone_without_settings():

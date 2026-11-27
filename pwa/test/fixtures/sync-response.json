@@ -137,5 +137,10 @@
   "reminders": {
     "reservation": {"enabled": true, "minutes_before": 15},
     "send": {"enabled": true, "at": ["2026-11-02T07:00:00Z", "2026-12-01T07:00:00Z"]}
+  },
+  "sick_days": true,
+  "sick": {
+    "2026-10-01": {"minutes": 450, "modified_at": "2026-10-07T18:50:00Z", "deleted": false},
+    "2026-10-02": {"minutes": 0, "modified_at": "2026-10-07T18:51:00Z", "deleted": true}
   }
 }

@@ -232,6 +232,7 @@ class App:
                     desktop_name=lambda: self.settings.get("device_name") or default_device_name(),
                     data_lock=self._data_lock, sync_guard=self._sync_guard,
                     reservation_store=self.reservation_store,
+                    sick_store=self.sick_store, vacation_store=self.vacation_store,
                     relay_store=mobile_relay_store,
                     on_change=self._api_refresh.request,
                     on_reservations_change=self._on_remote_calendar_data_changed,

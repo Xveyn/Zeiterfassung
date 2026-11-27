@@ -1,0 +1,200 @@
+# tests/test_mobile_sick.py
+import datetime
+
+import pytest
+
+from src import mobile_sick
+from src.mobile_sick import MAX_SICK_DAYS, SickError
+from src.mobile_sync import CLOCK_SKEW_LIMIT, _parse_utc
+
+NOW_DT = datetime.datetime(2026, 10, 8, 12, 0, 0)
+STAMP = "2026-10-07T18:30:00Z"
+
+
+def parse(raw):
+    return mobile_sick.parse_sick(raw, now_dt=NOW_DT, parse_utc=_parse_utc,
+                                  skew_limit=CLOCK_SKEW_LIMIT)
+
+
+def rejected(raw):
+    with pytest.raises(SickError) as excinfo:
+        parse(raw)
+    return excinfo.value.message
+
+
+def live(minutes=None, modified_at=STAMP):
+    day = {"modified_at": modified_at, "deleted": False}
+    if minutes is not None:
+        day["minutes"] = minutes
+    return day
+
+
+def tomb(modified_at=STAMP):
+    return {"modified_at": modified_at, "deleted": True}
+
+
+# --- parse_sick ------------------------------------------------------------------------------------
+
+def test_a_live_day_without_minutes_and_a_tombstone_are_parsed():
+    parsed = parse({"2026-10-05": live(), "2026-10-04": tomb()})
+
+    assert parsed == {"2026-10-05": {"modified_at": STAMP, "deleted": False},
+                      "2026-10-04": {"modified_at": STAMP, "deleted": True}}
+
+
+def test_minutes_are_kept_when_the_phone_sends_them():
+    assert parse({"2026-10-05": live(0)})["2026-10-05"]["minutes"] == 0
+    assert parse({"2026-10-05": live(1440)})["2026-10-05"]["minutes"] == 1440
+
+
+def test_an_empty_section_is_fine():
+    assert parse({}) == {}
+
+
+@pytest.mark.parametrize("raw", [None, [], "x", 5])
+def test_a_section_that_is_no_object_is_rejected(raw):
+    assert "sick" in rejected(raw)
+
+
+def test_more_than_the_limit_is_rejected():
+    days = {(datetime.date(2026, 1, 1) + datetime.timedelta(days=i)).isoformat(): live()
+            for i in range(MAX_SICK_DAYS + 1)}
+    assert str(MAX_SICK_DAYS) in rejected(days)
+    days.popitem()
+    assert len(parse(days)) == MAX_SICK_DAYS
+
+
+@pytest.mark.parametrize("minutes", [-1, 1441, 480.0, "480", True, None, [480]])
+def test_bad_minutes_are_rejected_with_the_day_in_front(minutes):
+    message = rejected({"2026-10-05": {"modified_at": STAMP, "deleted": False, "minutes": minutes}})
+    assert message.startswith("Krankheit 2026-10-05: ")
+
+
+@pytest.mark.parametrize("day", [
+    {"modified_at": STAMP},                                             # deleted fehlt
+    {"modified_at": STAMP, "deleted": "nein"},
+    {"modified_at": STAMP, "deleted": 1},
+    {"deleted": False},                                                 # modified_at fehlt
+    {"modified_at": "2026-10-07 18:30:00", "deleted": False},
+    {"modified_at": "٢026-10-07T18:30:00Z", "deleted": False},
+    {"modified_at": STAMP, "deleted": False, "device_id": "evil"},     # unbekanntes Feld
+    {"modified_at": STAMP, "deleted": False, "slots": []},
+    5, None, [], "x",
+])
+def test_a_malformed_day_is_rejected_with_the_day_in_front(day):
+    assert rejected({"2026-10-05": day}).startswith("Krankheit 2026-10-05: ")
+
+
+@pytest.mark.parametrize("modified_at,ok", [
+    ("2026-10-08T12:15:00Z", True), ("2026-10-08T12:15:01Z", False),
+])
+def test_a_stamp_more_than_fifteen_minutes_ahead_is_rejected(modified_at, ok):
+    raw = {"2026-10-05": live(modified_at=modified_at)}
+    if ok:
+        assert parse(raw)["2026-10-05"]["modified_at"] == modified_at
+    else:
+        assert rejected(raw).startswith("Krankheit 2026-10-05: ")
+
+
+@pytest.mark.parametrize("key", [
+    "2026-02-30", "20261005", "2026-10-5", "٢٠٢٦-١٠-٠٥", "1999-12-31", "2101-01-01", "", "\ud800",
+    "x" * 5000,
+])
+def test_a_bad_date_is_rejected_and_the_message_stays_short_and_writable(key):
+    message = rejected({key: live()})
+    assert message.startswith("Krankheit ")
+    message.encode("utf-8")                              # nie ein Surrogat in der Antwort
+    assert len(message) < 200
+
+
+def test_an_unknown_field_is_named_without_echoing_long_text():
+    message = rejected({"2026-10-05": {**live(), "x" * 500: 1}})
+    assert message.startswith("Krankheit 2026-10-05: ") and len(message) < 200
+
+
+# --- days_to_compute -------------------------------------------------------------------------------
+
+def _rec(minutes, *, deleted=False, modified_at="2026-10-01T10:00:00Z", device="DESK"):
+    return {"minutes": minutes, "modified_at": modified_at, "device_id": device, "deleted": deleted}
+
+
+def test_only_live_days_without_minutes_and_without_a_live_desktop_day_are_computed():
+    parsed = parse({"2026-10-05": live(), "2026-10-06": live(), "2026-10-07": live(300),
+                    "2026-10-02": tomb(), "2026-10-01": live()})
+    desktop = {"2026-10-06": _rec(420), "2026-10-01": _rec(0, deleted=True)}
+
+    assert mobile_sick.days_to_compute(parsed, desktop) == ["2026-10-01", "2026-10-05"]
+
+
+# --- phone_records ---------------------------------------------------------------------------------
+
+def test_phone_records_follow_the_rules_for_minutes_stamps_and_device():
+    parsed = parse({"2026-10-05": live(), "2026-10-06": live(), "2026-10-07": live(300),
+                    "2026-10-02": tomb(), "2026-10-01": live(modified_at="2026-10-08T12:10:00Z")})
+    desktop = {"2026-10-06": _rec(420), "2026-10-07": _rec(480), "2026-10-02": _rec(480)}
+
+    records = mobile_sick.phone_records(
+        parsed, desktop_raw=desktop, computed={"2026-10-05": 450, "2026-10-01": 0},
+        device_id="phone-0001", floor="2026-10-08T09:00:01Z")
+
+    assert records == {
+        # ohne Minuten, kein Desktop-Tag: die Vorbelegung
+        "2026-10-05": _rec(450, modified_at="2026-10-08T09:00:01Z", device="phone-0001"),
+        # ohne Minuten, lebender Desktop-Tag: dessen Minuten
+        "2026-10-06": _rec(420, modified_at="2026-10-08T09:00:01Z", device="phone-0001"),
+        # Minuten vom Handy gewinnen
+        "2026-10-07": _rec(300, modified_at="2026-10-08T09:00:01Z", device="phone-0001"),
+        # Tombstone: 0 Minuten
+        "2026-10-02": _rec(0, deleted=True, modified_at="2026-10-08T09:00:01Z", device="phone-0001"),
+        # ein Stempel über dem Boden bleibt
+        "2026-10-01": _rec(0, modified_at="2026-10-08T12:10:00Z", device="phone-0001"),
+    }
+
+
+def test_a_tombstone_from_the_phone_carries_zero_minutes_even_if_it_sent_some():
+    parsed = parse({"2026-10-02": {"modified_at": STAMP, "deleted": True, "minutes": 300}})
+
+    records = mobile_sick.phone_records(parsed, desktop_raw={}, computed={},
+                                        device_id="phone-0001", floor="")
+
+    assert records["2026-10-02"]["minutes"] == 0 and records["2026-10-02"]["deleted"] is True
+    assert records["2026-10-02"]["modified_at"] == STAMP
+
+
+def test_a_desktop_tombstone_does_not_lend_its_minutes():
+    parsed = parse({"2026-10-05": live()})
+    records = mobile_sick.phone_records(
+        parsed, desktop_raw={"2026-10-05": _rec(0, deleted=True)}, computed={"2026-10-05": 450},
+        device_id="phone-0001", floor="")
+    assert records["2026-10-05"]["minutes"] == 450
+
+
+# --- build_sick ------------------------------------------------------------------------------------
+
+def test_build_sick_carries_live_days_and_tombstones_in_the_window_plus_sent_days():
+    raw = {"2026-07-01": _rec(480),                          # vor dem Fenster
+           "2026-07-10": _rec(300),                          # vor dem Fenster, aber gesendet
+           "2026-09-01": _rec(480),
+           "2026-10-02": _rec(0, deleted=True),
+           "2026-10-22": _rec(480),                          # letzter Tag des Fensters
+           "2026-10-23": _rec(480)}                          # dahinter
+
+    built = mobile_sick.build_sick(raw, first="2026-07-11",
+                                   last="2026-10-22", sent=["2026-07-10", "2026-12-24"])
+
+    assert built == {
+        "2026-07-10": {"minutes": 300, "modified_at": "2026-10-01T10:00:00Z", "deleted": False},
+        "2026-09-01": {"minutes": 480, "modified_at": "2026-10-01T10:00:00Z", "deleted": False},
+        "2026-10-02": {"minutes": 0, "modified_at": "2026-10-01T10:00:00Z", "deleted": True},
+        "2026-10-22": {"minutes": 480, "modified_at": "2026-10-01T10:00:00Z", "deleted": False},
+    }
+    assert list(built) == sorted(built)
+
+
+def test_build_sick_skips_records_it_cannot_read():
+    raw = {"2026-10-01": {"minutes": "viel", "modified_at": "x", "device_id": "D", "deleted": False},
+           "kaputt": _rec(480), "2026-10-02": _rec(60)}
+
+    built = mobile_sick.build_sick(raw, first="2026-09-01", last="2026-10-22", sent=())
+
+    assert list(built) == ["2026-10-02"]
