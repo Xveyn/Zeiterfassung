@@ -1246,7 +1246,7 @@
      "url": null
     },
     {
-     "text": ". Bei eingeschaltetem Drive-Sync zusätzlich im App-Ordner des eigenen Google Drive, bei gekoppeltem Handy zusätzlich auf dem Handy.",
+     "text": ". Bei eingeschaltetem Drive-Sync zusätzlich im App-Ordner des eigenen Google Drive, bei gekoppeltem Handy zusätzlich auf dem Handy. Die Kopie in Google Drive verschlüsselt die App nicht selbst: Google kann sie lesen wie die übrigen synchronisierten Daten.",
      "style": "plain",
      "url": null
     }
@@ -1278,7 +1278,7 @@
      "url": null
     },
     {
-     "text": " In Bericht (Mail und PDF) und Webhook landen Krankheitstage nur mit dem Häkchen „Krankheit ausweisen“. Ohne das Häkchen sind diese Ausgaben unverändert.",
+     "text": " In Bericht (Mail und PDF) und Webhook landen Krankheitstage nur mit dem Häkchen „Krankheit ausweisen“. Ohne das Häkchen sind diese Ausgaben unverändert. Die lokale API (standardmäßig aus) liefert Krankheitstage und Minuten ohne Häkchen; sie ist, wenn eingeschaltet, nur von diesem Computer und nur mit dem Token erreichbar.",
      "style": "plain",
      "url": null
     }
@@ -1320,7 +1320,7 @@
      "url": null
     },
     {
-     "text": " mit den übrigen Nutzerdaten.",
+     "text": " nur, wenn du das Löschen der Nutzerdaten wählst. Kopien in Google Drive und auf dem Handy werden dadurch nicht gelöscht.",
      "style": "plain",
      "url": null
     }

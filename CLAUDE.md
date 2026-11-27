@@ -958,7 +958,9 @@ Regeln:
   `report.generate_pdf`, `webhook.build_json_payload` (diese drei über
   `absence.cut_for_output`) und den Auswertungen der lokalen
   API (`api_summary`, `/v1/summary/…`) — jeweils gegen den bereits zeitraum- **und**
-  kategoriegefilterten Ausschnitt (die API filtert nur nach Zeitraum); dazu die Vorschau des Zeitraum-Pickers
+  kategoriegefilterten Ausschnitt (die API filtert nur nach Zeitraum; sie wendet
+  „Krankheit gewinnt“ immer an und liefert Krankheitstage ohne Häkchen, anders als
+  Bericht und Webhook); dazu die Vorschau des Zeitraum-Pickers
   (`period_picker.absence_preview`) und die Leer-Prüfung
   (`send_dialog.period_has_no_content`), beide ebenfalls über `cut_for_output`. Das ist kein
   Detail: filtert jemand auf eine Kategorie, zehrt nur die dort *sichtbare*
@@ -1729,7 +1731,7 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
   Server im Daemon-Thread (die lokale Instanz nur Loopback, `authorize` vor dem Routing,
   nie ein CORS-Header; die Handy-Instanz über eine eigene `Surface`) und Lebenszyklus über `api_enabled`/`api_port` (gerätelokal,
   Default aus) mit Statusgrund. Beschreibung und Verträge: `src/CLAUDE.md`.
-- `src/api_entry_write.py` — Schreibpfad der Ist-Zeiten-Routen der lokalen API (#92): nimmt Fremddaten und bildet die Regeln nach, die die UI an ihren Eingängen durchsetzt (Slot-Validierung über `time_utils.validate_slots`, Sperren bei ungelöstem Sync-Konflikt und Urlaubsminuten > 0, Warnungen zu Wochenlimit und Pausenpflicht); Verträge in `src/CLAUDE.md`.
+- `src/api_entry_write.py` — Schreibpfad der Ist-Zeiten-Routen der lokalen API (#92): nimmt Fremddaten und bildet die Regeln nach, die die UI an ihren Eingängen durchsetzt (Slot-Validierung über `time_utils.validate_slots`, Sperren bei ungelöstem Sync-Konflikt, Urlaubsminuten > 0 und Krankheitsminuten > 0 (`409 sick_day`, zuerst geprüft), Warnungen zu Wochenlimit und Pausenpflicht); Verträge in `src/CLAUDE.md`.
 - `src/api_reservation_write.py` — Schreibpfad der Reservierungs-Routen der lokalen API (#239): Body-Parser und Datumsregeln, optionales `pause` je Slot (fehlt es, erbt der Slot es bei gleichem Index und gleichem `start`/`end`, sonst 0); Verträge in `src/CLAUDE.md`.
 - `src/api_sick_write.py` — Krankheits-Routen der lokalen API: Body-Parser von `POST /v1/sick` (gerechnet wird in `sick_plan`); Verträge in `src/CLAUDE.md`.
 - `src/api_vacation_write.py`, `src/vacation_plan.py` — Urlaubs-Routen der lokalen API (#239): Body-Parser bzw. die aus dem Dialog gezogene Tk-freie Planung (`plan_vacation_save`, `blocking_days`); Verträge in `src/CLAUDE.md`.

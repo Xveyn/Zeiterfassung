@@ -221,18 +221,23 @@ def _clean_days(days: Mapping[str, int], first: str, last: str) -> dict[str, int
 
 def _absence_part(vacation_days: Mapping[str, int], sick_days: Mapping[str, int],
                   first: str, last: str, work: dict[str, Any]
-                  ) -> tuple[int, list[dict[str, Any]], int, list[dict[str, Any]]]:
+                  ) -> tuple[int, list[dict[str, Any]], int, list[dict[str, Any]],
+                             list[dict[str, Any]]]:
     """(Urlaubsminuten, gekappte Urlaubstage, Krankheitsminuten, gekappte
-    Krankheitstage). Krankheit gewinnt gegen Urlaub, beides wird wie in Mail,
+    Krankheitstage, Urlaubstage, die unter einer Krankheit entfallen). Krankheit gewinnt gegen Urlaub, beides wird wie in Mail,
     PDF und Webhook gegen die erfasste Ist-Zeit desselben Ausschnitts gekappt
     (`absence.cut_absences`), damit ein Kalendertag nie mehr Stunden hat, als er hat."""
     vacation = _clean_days(vacation_days, first, last)
     sick = _clean_days(sick_days, first, last)
     try:
         cut = cut_absences(work, vacation, sick)
-    except Exception:
-        _log.exception("Lokale API: Kappung nicht berechenbar, Urlaub und Krankheit ungekappt")
-        return sum(v for d, v in vacation.items() if d not in sick), [], sum(sick.values()), []
+    except Exception as exc:
+        # Nur der Typ: Ausnahmetext und Traceback könnten Tage und Minuten einer
+        # Krankheit tragen (Gesundheitsdaten gehören nie ins Log).
+        _log.warning("Lokale API: Kappung nicht berechenbar, Urlaub und Krankheit "
+                     "ungekappt (%s)", type(exc).__name__)
+        return (sum(v for d, v in vacation.items() if d not in sick), [],
+                sum(sick.values()), [], [])
     return (sum(cut.vacation.values()),
             [{"date": hit.date, "vacation_minutes": hit.minutes,
               "work_minutes": hit.work, "counted_minutes": hit.capped}
@@ -240,7 +245,8 @@ def _absence_part(vacation_days: Mapping[str, int], sick_days: Mapping[str, int]
             sum(cut.sick.values()),
             [{"date": hit.date, "sick_minutes": hit.minutes,
               "work_minutes": hit.work, "counted_minutes": hit.capped}
-             for hit in cut.sick_capped])
+             for hit in cut.sick_capped],
+            [{"date": day, "vacation_minutes": vacation[day]} for day in cut.sick_on_vacation])
 
 
 def summarize(date_from: datetime.date, date_to: datetime.date,
@@ -275,7 +281,7 @@ def summarize(date_from: datetime.date, date_to: datetime.date,
     work = {key: {"slots": [{"start": "00:00", "end": f"{minutes // 60:02d}:{minutes % 60:02d}",
                              "pause": 0} for _, minutes in _day_slots(cache, entries, key)]}
             for key in in_range}
-    vacation_minutes, capped_days, sick_minutes, sick_capped = _absence_part(
+    vacation_minutes, capped_days, sick_minutes, sick_capped, dropped = _absence_part(
         vacation_days, sick_days or {}, first, last, work)
     return {
         "from": first,
@@ -286,6 +292,7 @@ def summarize(date_from: datetime.date, date_to: datetime.date,
         "payable_minutes": total + vacation_minutes + sick_minutes,
         "vacation_capped_days": capped_days,
         "sick_capped_days": sick_capped,
+        "sick_on_vacation_days": dropped,
         "days": days,
         "by_category": [{"kategorie": name, "minutes": minutes} for name, minutes
                         in sorted(by_category.items(),

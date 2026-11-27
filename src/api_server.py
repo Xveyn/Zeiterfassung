@@ -26,6 +26,7 @@ import http
 import http.server
 import json
 import logging
+import re
 import socket
 import socketserver
 import sys
@@ -46,6 +47,7 @@ from src.api_routes import (
 )
 
 _log = logging.getLogger(__name__)
+_DATE_IN_LOG_RE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 
 MAX_BODY_BYTES = 1024 * 1024
 _SOCKET_TIMEOUT_S = 10.0
@@ -152,7 +154,9 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         raise AttributeError(name)
 
     def log_message(self, format: str, *args: Any) -> None:
-        _log.debug("API %s", format % args)
+        # Jedes ISO-Datum maskiert: Pfad und Statuscode einer Anfrage verraten
+        # sonst Tage mit Krankheit oder Urlaub (personenbezogen).
+        _log.debug("API %s", _DATE_IN_LOG_RE.sub("JJJJ-MM-TT", format % args))
 
     def send_error(self, code: int, message: str | None = None,
                    explain: str | None = None) -> None:

@@ -204,11 +204,17 @@ def check_day_writable(date_str: str, *, conflicts_store: Any, vacation_store: A
     Ist-Zeit steht zur Debatte, ein Schreiben würde einen Kandidaten
     überschreiben. Urlaubsminuten > 0: nur `PUT` (Löschen ist der Weg aus der
     Sackgasse); 0-Minuten-Tage einer Periode sind kein Urlaubstag. Ebenso
-    Krankheitsminuten > 0 (nur `PUT`)."""
+    Krankheitsminuten > 0 (nur `PUT`); sie werden zuerst geprüft, Krankheit gewinnt
+    vor Urlaub."""
     if conflicts_store is not None and date_str in conflicts_store.unresolved_entry_keys():
         raise WriteError(409, "sync_conflict",
                          "Für diesen Tag gibt es einen ungelösten Sync-Konflikt. "
                          "Zuerst in der App auflösen.")
+    if for_save and sick_store is not None and sick_store.day_minutes().get(date_str, 0) > 0:
+        raise WriteError(409, "sick_day",
+                         "Für diesen Tag ist Krankheit eingetragen. An einem Krankheitstag "
+                         "lässt sich keine Arbeitszeit erfassen; die Krankheit zuerst in der "
+                         "App löschen.")
     if for_save and vacation_store is not None:
         period = vacation_store.period_for_date(date_str)
         if period is not None and period.get("days", {}).get(date_str, 0):
@@ -216,11 +222,6 @@ def check_day_writable(date_str: str, *, conflicts_store: Any, vacation_store: A
                              f"Für diesen Tag ist Urlaub eingetragen "
                              f"(„{period.get('name', '')}“). An einem Urlaubstag lässt sich "
                              "keine Arbeitszeit erfassen; den Urlaub zuerst in der App löschen.")
-    if for_save and sick_store is not None and sick_store.day_minutes().get(date_str, 0) > 0:
-        raise WriteError(409, "sick_day",
-                         "Für diesen Tag ist Krankheit eingetragen. An einem Krankheitstag "
-                         "lässt sich keine Arbeitszeit erfassen; die Krankheit zuerst in der "
-                         "App löschen.")
 
 
 def warnings_for(settings: Any, all_entries: dict[str, Any], date_str: str,

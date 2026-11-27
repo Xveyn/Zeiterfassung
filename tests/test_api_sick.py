@@ -203,3 +203,109 @@ def test_reservation_minutes_prefill_only_when_reservations_active(env):
     env.settings["reservations_enabled"] = False
     off = env.call("POST", "/v1/sick", make_body(**{"to": FIRST}))
     assert off.body["days"][FIRST] == 480
+
+
+
+# --- Review PR 5 -----------------------------------------------------------------
+
+HUGE = 10 ** 400
+
+
+def test_huge_integer_hours_are_422_not_500(env):
+    response = env.call("POST", "/v1/sick", make_body(day_hours={FIRST: HUGE}))
+    assert (response.status, code(response)) == (422, "invalid_day_hours")
+
+
+def test_post_has_its_own_no_state_text(env):
+    env.settings["state"] = ""
+    warning = env.call("POST", "/v1/sick", make_body()).body["warnings"][0]
+    assert warning["code"] == "no_state"
+    assert "Urlaub" not in warning["message"]
+    assert "Krankheit" in warning["message"]
+
+
+def test_changed_flag_and_on_change_only_when_something_changed(env):
+    first = env.call("POST", "/v1/sick", make_body())
+    assert first.body["changed"] is True and env.events == ["change"]
+    again = env.call("POST", "/v1/sick", make_body())
+    assert again.status == 201 and again.body["changed"] is False
+    assert env.events == ["change"]
+
+
+def test_basis_used_and_average_fallback_warning(env):
+    response = env.call("POST", "/v1/sick", make_body(**{"to": FIRST}, basis="average_3m"))
+    assert response.body["basis_used"] == "standard"
+    assert "average_fallback" in [w["code"] for w in response.body["warnings"]]
+    plain = env.call("POST", "/v1/sick", make_body(**{"from": "2026-07-13", "to": "2026-07-13"}))
+    assert plain.body["basis_used"] == "standard"
+    assert "average_fallback" not in [w["code"] for w in plain.body["warnings"]]
+
+
+def test_sick_over_vacation_warns(env):
+    env.vacations.save(None, "U", FIRST, LAST,
+                       {"2026-07-06": 480, "2026-07-07": 480, "2026-07-08": 480,
+                        "2026-07-09": 480, "2026-07-10": 480})
+    response = env.call("POST", "/v1/sick", make_body(**{"to": FIRST}))
+    warning = [w for w in response.body["warnings"] if w["code"] == "sick_on_vacation"]
+    assert len(warning) == 1
+    from src.sick_plan import HINT_SICK_ON_VACATION
+    assert warning[0]["message"] == HINT_SICK_ON_VACATION
+    clean = env.call("POST", "/v1/sick", make_body(**{"from": "2026-07-13", "to": "2026-07-13"}))
+    assert "sick_on_vacation" not in [w["code"] for w in clean.body["warnings"]]
+
+
+def test_vacation_over_zero_minute_sick_day_warns(env):
+    env.sick.save_range({"2026-07-11": 0})
+    body = json.dumps({"name": "U", "from": "2026-07-10", "to": "2026-07-12",
+                       "hours_per_day": 8, "day_hours": {"2026-07-11": 8}}).encode()
+    response = env.call("POST", "/v1/vacations", body)
+    assert response.status == 201
+    assert "vacation_on_sick_day" in [w["code"] for w in response.body["warnings"]]
+    plain = json.dumps({"name": "V", "from": "2026-08-03", "to": "2026-08-03",
+                        "hours_per_day": 8}).encode()
+    other = env.call("POST", "/v1/vacations", plain)
+    assert "vacation_on_sick_day" not in [w["code"] for w in other.body["warnings"]]
+
+
+def test_huge_hours_in_vacations_are_422(env):
+    for field in ("hours_per_day", "total_hours"):
+        body = json.dumps({"name": "U", "from": FIRST, "to": LAST, field: HUGE}).encode()
+        response = env.call("POST", "/v1/vacations", body)
+        assert (response.status, code(response)) == (422, "invalid_hours")
+    body = ('{"name": "U", "from": "%s", "to": "%s", "hours_per_day": 8, '
+            '"day_hours": {"%s": %d}}' % (FIRST, LAST, FIRST, HUGE)).encode()
+    assert code(env.call("POST", "/v1/vacations", body)) == "invalid_day_hours"
+
+
+def test_sick_wins_over_vacation_in_put_409(env):
+    env.vacations.save(None, "U", FIRST, FIRST, {FIRST: 480})
+    env.sick.save_range({FIRST: 480})
+    body = json.dumps({"slots": [ist_slot("08:00", "12:00")]}).encode()
+    response = env.call("PUT", f"/v1/entries/{FIRST}", body)
+    assert (response.status, code(response)) == (409, "sick_day")
+
+
+def test_shutting_down_refuses_post_and_delete(env):
+    env.sick.save_range({FIRST: 480})
+    env.ctx = ApiContext(**{**env.ctx.__dict__, "closing": lambda: True})
+    for method, path, body in (("POST", "/v1/sick", make_body()),
+                               ("DELETE", f"/v1/sick/{FIRST}", b"")):
+        response = env.call(method, path, body)
+        assert (response.status, code(response)) == (503, "shutting_down")
+    assert env.sick.day_minutes() == {FIRST: 480}
+
+
+def test_delete_from_a_zero_minute_day_removes_the_whole_block(env):
+    env.sick.save_range({"2026-07-10": 480, "2026-07-11": 0, "2026-07-12": 0})
+    response = env.call("DELETE", "/v1/sick/2026-07-12")
+    assert response.status == 200
+    assert env.sick.day_minutes() == {}
+
+
+def test_block_length_366_accepted_367_refused(env):
+    ok = env.call("POST", "/v1/sick", json.dumps({"from": "2026-01-01", "to": "2026-12-31"}).encode())
+    assert ok.status == 201
+    env.call("DELETE", "/v1/sick/2026-01-01")
+    over = env.call("POST", "/v1/sick",
+                    json.dumps({"from": "2026-01-01", "to": "2027-01-02"}).encode())
+    assert over.status == 422

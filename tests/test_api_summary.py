@@ -462,3 +462,30 @@ def test_summary_sick_wins_and_is_payable():
     assert result["payable_minutes"] == 120 + 380
     assert result["sick_capped_days"] == [
         {"date": "2026-01-05", "sick_minutes": 300, "work_minutes": 120, "counted_minutes": 180}]
+
+
+
+def test_sick_on_vacation_days_lists_the_dropped_vacation():
+    result = run({}, vacation={"2026-01-12": 480, "2026-01-13": 480},
+                 sick={"2026-01-12": 300})
+    assert result["sick_on_vacation_days"] == [{"date": "2026-01-12", "vacation_minutes": 480}]
+    assert result["vacation_minutes"] == 480
+
+
+def test_sick_on_vacation_days_is_empty_without_sickness():
+    assert run({}, vacation={"2026-01-12": 480})["sick_on_vacation_days"] == []
+    assert run({})["sick_on_vacation_days"] == []
+
+
+def test_absence_fallback_keeps_numbers_and_logs_only_the_type(monkeypatch, caplog):
+    from src import api_summary
+
+    def boom(*_args):
+        raise RuntimeError("2026-01-12 480")
+    monkeypatch.setattr(api_summary, "cut_absences", boom)
+    with caplog.at_level("WARNING"):
+        result = run({}, vacation={"2026-01-12": 480, "2026-01-13": 480},
+                     sick={"2026-01-12": 300})
+    assert result["vacation_minutes"] == 480 and result["sick_minutes"] == 300
+    assert result["sick_on_vacation_days"] == []
+    assert "2026-01-12" not in caplog.text and "RuntimeError" in caplog.text

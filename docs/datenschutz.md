@@ -201,11 +201,15 @@ Krankheitstage sind Gesundheitsdaten (Art. 9 DSGVO). Die App erfasst nur den Tag
 Diagnose oder einen Grund.
 
 - **Wo sie liegen:** am Rechner in `sick.json`. Bei eingeschaltetem Drive-Sync zusätzlich im App-Ordner des
-  eigenen Google Drive, bei gekoppeltem Handy zusätzlich auf dem Handy.
+  eigenen Google Drive, bei gekoppeltem Handy zusätzlich auf dem Handy. Die Kopie in Google Drive verschlüsselt
+  die App nicht selbst: Google kann sie lesen wie die übrigen synchronisierten Daten.
 - **Transport zum Handy:** Ende-zu-Ende verschlüsselt, auch über den Relay. Der Relay sieht keine Krankheitstage,
   genauso wenig wie Einträge (Abschnitt 1). Der lokale Speicher der Web-App auf dem Handy ist derzeit noch
   unverschlüsselt (Abschnitt 9).
 - **Ausgabe:** In Bericht (Mail und PDF) und Webhook landen Krankheitstage nur mit dem Häkchen „Krankheit
-  ausweisen“. Ohne das Häkchen sind diese Ausgaben unverändert.
+  ausweisen“. Ohne das Häkchen sind diese Ausgaben unverändert. Die lokale API (standardmäßig aus) liefert
+  Krankheitstage und Minuten ohne Häkchen; sie ist, wenn eingeschaltet, nur von diesem Computer und nur mit dem
+  Token erreichbar.
 - **Nie dabei:** die Teilen-Datei, der Google Kalender und das Protokoll der App (kein Datum, keine Minuten).
-- **Löschen:** „Zeiterfassung entfernen“ und die Deinstallation löschen `sick.json` mit den übrigen Nutzerdaten.
+- **Löschen:** „Zeiterfassung entfernen“ und die Deinstallation löschen `sick.json` nur, wenn du das Löschen der
+  Nutzerdaten wählst. Kopien in Google Drive und auf dem Handy werden dadurch nicht gelöscht.

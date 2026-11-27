@@ -74,9 +74,15 @@ def parse_iso_day(value: Any, label: str, code: str = "invalid_date") -> datetim
 
 
 def parse_finite_hours(value: Any, label: str, code: str) -> float:
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise WriteError(422, code, f"{label} muss eine endliche Zahl (Stunden) sein.")
-    return float(value)
+    try:
+        number = float(value)       # eine riesige Ganzzahl wirft OverflowError
+    except OverflowError:
+        raise WriteError(422, code, f"{label} muss eine endliche Zahl (Stunden) sein.") from None
+    if not math.isfinite(number):
+        raise WriteError(422, code, f"{label} muss eine endliche Zahl (Stunden) sein.")
+    return number
 
 
 def parse_vacation_body(body: bytes) -> VacationRequest:

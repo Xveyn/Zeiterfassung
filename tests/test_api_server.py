@@ -703,3 +703,14 @@ def test_the_local_api_still_answers_neither_options_nor_cors(server):
     assert options.status == 405 and options.getheader("Access-Control-Allow-Origin") is None
     assert get.status == 403 and error_code(body) == "bad_origin"
     assert get.getheader("Access-Control-Allow-Origin") is None
+
+
+
+def test_request_lines_in_the_debug_log_carry_no_dates(server, caplog):
+    with caplog.at_level(logging.DEBUG, logger="src.api_server"):
+        http_call(server, "DELETE", "/v1/sick/2026-07-06")
+        http_call(server, "GET", "/v1/sick?from=2026-07-01&to=2026-07-31")
+    text = caplog.text
+    assert "2026-07" not in text
+    assert "DELETE /v1/sick/JJJJ-MM-TT" in text
+    assert "from=JJJJ-MM-TT&to=JJJJ-MM-TT" in text
