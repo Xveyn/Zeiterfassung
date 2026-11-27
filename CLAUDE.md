@@ -880,8 +880,8 @@ Neue Lösch-/Rechtsklick-Stellen müssen dieses Modell einhalten (kein zweiter
 Lösch-Pfad im Linksklick-Dialog auf Win/Linux). Zwei bewusste Ausnahmen, beide nur
 mit dem ausdrücklichen „Speichern“ des Krankheits-Dialogs (Linksklick auf einen
 Krankheitstag): er löscht auf Wunsch (Häkchen, vorbelegt an) die Reservierungen der
-Tage, die der Block neu abdeckt, und macht Tage, die beim Bearbeiten aus dem Block
-fallen, zu Tombstones.
+Tage, die er neu krank meldet (an schon kranken Tagen nie), und macht Tage, die beim
+Bearbeiten aus dem Block fallen, zu Tombstones.
 
 ## Urlaub: Periode als Einheit, Stunden pro Tag
 
@@ -1651,7 +1651,7 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
   Ist-Zeit und gegen Urlaub über Krankheitstagen, Hinweise (Sechs-Wochen-Grenze über den
   Block nach dem Speichern, Vorschlag, Attest). Rein bis auf `commit_sick_block`: das
   schreibt über die übergebenen Stores den Block und löscht danach die Reservierungen
-  der neu abgedeckten Tage (`reservation_dates_to_offer`)
+  der Tage, die vorher kein Krankheitstag waren (`reservation_dates_to_offer`)
 - `src/dialogs/vacation_dialog.py` — Verwaltung der Perioden (Einstieg:
   Einstellungen → Arbeitszeit → „Urlaub verwalten"). Die Entscheidungen des
   Bearbeiten-Dialogs sind Tk-frei und getestet: `prune_overrides` (welche

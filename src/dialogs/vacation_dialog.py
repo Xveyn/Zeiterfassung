@@ -77,14 +77,15 @@ def parse_hours(text):
     None bei Buchstabensalat — kein Sentinel wie -1: der ergäbe die Meldung
     „darf nicht negativ sein“ für eine Eingabe, die gar keine Zahl ist. Das
     Vorzeichen bewertet `plan_vacation_save`, nicht diese Funktion.
-    Ebenso None für „nan“ und „inf“: die Umrechnung in Minuten würfe sonst
-    im trace-Callback eines Tagesfelds.
+    Ebenso None, wenn der Wert oder seine Minuten (× 60) nicht endlich sind
+    („nan“, „inf“, „1e307“): die Umrechnung in Minuten würfe sonst im
+    trace-Callback eines Tagesfelds und in `plan_vacation_save`.
     """
     try:
         value = float((text or "0").replace(",", "."))
     except ValueError:
         return None
-    return value if math.isfinite(value) else None
+    return value if math.isfinite(value * 60) else None
 
 
 def prune_overrides(overrides, plan):

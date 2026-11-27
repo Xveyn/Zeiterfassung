@@ -46,6 +46,10 @@ HINT_SICK_ON_VACATION = (
     "gutgeschrieben werden, verlangt der Arbeitgeber in der Regel ein "
     "ärztliches Attest.")
 
+RESERVATION_CHECK_TEXT = "Reservierungen in diesem Zeitraum löschen"
+RESERVATION_CHECK_TEXT_NEW_DAYS = (
+    "Reservierungen an den neu krank gemeldeten Tagen löschen")
+
 BASES = ("standard", "average_3m")
 DEFAULT_BASIS = "standard"
 
@@ -322,14 +326,26 @@ def reservation_dates_in(days: Mapping[str, int],
 
 def reservation_dates_to_offer(days: Mapping[str, int],
                                reservations: Mapping[str, Any] | None,
-                               old_dates: Iterable[str]) -> list[str]:
+                               sick_dates: Iterable[str]) -> list[str]:
     """Reservierungstage, deren Löschen das Speichern anbietet: nur Tage, die
-    der Block neu abdeckt. Was der Block schon vor dem Bearbeiten abdeckte,
-    hat der Nutzer beim Krankmelden bewusst stehen lassen; beim Anlegen ist
-    `old_dates` leer."""
-    old = set(old_dates)
+    vor diesem Speichern kein Krankheitstag waren. `sick_dates` sind die
+    lebenden Krankheitstage davor (ein Mapping zählt mit seinen Schlüsseln).
+    Die Reservierungen eines schon kranken Tages hat der Nutzer beim
+    Krankmelden bewusst stehen lassen, wie dessen Minuten
+    (`stored_overrides`)."""
+    covered = set(sick_dates)
     return [d for d in reservation_dates_in(days, reservations)
-            if d not in old]
+            if d not in covered]
+
+
+def reservation_check_text(days: Mapping[str, int],
+                           sick_dates: Iterable[str]) -> str:
+    """Beschriftung des Häkchens: „in diesem Zeitraum“ stimmt nur, solange
+    kein geplanter Tag schon krank war (`reservation_dates_to_offer`)."""
+    covered = set(sick_dates)
+    if any(d in covered for d in days):
+        return RESERVATION_CHECK_TEXT_NEW_DAYS
+    return RESERVATION_CHECK_TEXT
 
 
 class ReservationDeleteError(Exception):
@@ -346,14 +362,16 @@ def commit_sick_block(sick_store: SickStore, reservation_store: Any, *,
                       old_dates: Iterable[str], days: dict[str, int],
                       delete_reservations: bool) -> list[str]:
     """Schreibt den Block und löscht danach, nur auf Wunsch, die Reservierungen
-    der Tage, die er neu abdeckt (`reservation_dates_to_offer`). Die Minuten
-    wurden vorher geplant, die Reservierungen dürfen erst jetzt wegfallen.
-    Liefert die gelöschten Reservierungstage.
+    der Tage, die vorher kein Krankheitstag waren (`reservation_dates_to_offer`,
+    gelesen vor dem Schreiben; die alten Tage des Blocks zählen immer als
+    krank). Die Minuten wurden vorher geplant, die Reservierungen dürfen erst
+    jetzt wegfallen. Liefert die gelöschten Reservierungstage.
 
     Ein Fehler beim Schreiben des Blocks wirft unverändert (der Block steht
     dann nicht); jeder Fehler danach wird zu `ReservationDeleteError` (der
     Block steht dann schon)."""
     old = list(old_dates)
+    sick_before = set(sick_store.day_minutes()).union(old)
     if old:
         sick_store.replace_block(old, days)
     else:
@@ -363,7 +381,7 @@ def commit_sick_block(sick_store: SickStore, reservation_store: Any, *,
     deleted: list[str] = []
     try:
         for date in reservation_dates_to_offer(
-                days, reservation_store.get_all(), old):
+                days, reservation_store.get_all(), sick_before):
             reservation_store.delete(date)
             deleted.append(date)
     except Exception as e:

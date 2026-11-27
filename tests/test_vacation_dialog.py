@@ -183,9 +183,21 @@ def test_plan_rejects_a_non_numeric_value():
     ("-inf", None),
     ("Infinity", None),
     ("1e999", None),
+    ("1e307", None),    # endlich, aber in Minuten (× 60) nicht mehr
+    ("-1e307", None),
 ])
 def test_parse_hours(text, expected):
     assert parse_hours(text) == expected
+
+
+@pytest.mark.parametrize("text", ["1e306", "-1e306", "1e307", "24"])
+def test_parse_hours_result_converts_to_minutes(text):
+    """Was `parse_hours` als Zahl liefert, rechnet `hours_to_minutes_exact`
+    ohne `OverflowError` um (trace-Callbacks, `plan_vacation_save`)."""
+    from src.vacation_plan import hours_to_minutes_exact
+    value = parse_hours(text)
+    if value is not None:
+        assert isinstance(hours_to_minutes_exact(value), int)
 
 
 def test_prune_overrides_drops_days_outside_a_valid_plan():

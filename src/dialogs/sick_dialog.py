@@ -22,8 +22,8 @@ from src.sick_plan import (
     BASES, BASIS_LABELS, HINT_AU, HINT_SICK_ON_VACATION, MAX_BLOCK_DAYS,
     ReservationDeleteError, basis_changed, block_hints, commit_sick_block,
     edit_overrides, normalize_basis, plan_sick_save, prefill,
-    reservation_dates_to_offer, resulting_block_days, stored_overrides,
-    touches_vacation, work_blocking_days,
+    reservation_check_text, reservation_dates_to_offer, resulting_block_days,
+    stored_overrides, touches_vacation, work_blocking_days,
 )
 from src.sick_view import block_label, manager_rows, ordered_blocks
 from src.theme import (
@@ -40,10 +40,6 @@ log = logging.getLogger(__name__)
 
 NO_STATE_HINT = ("Kein Bundesland gewählt — Feiertage werden als "
                  "Krankheitstage mit Stunden gezählt.")
-RESERVATION_CHECK_TEXT = "Reservierungen in diesem Zeitraum löschen"
-# Beim Bearbeiten bietet das Häkchen nur die neu abgedeckten Tage an.
-RESERVATION_CHECK_TEXT_EDIT = ("Reservierungen an den neu hinzugekommenen "
-                               "Tagen löschen")
 SAVE_TITLE = "Krankheit nicht gespeichert"
 PARTIAL_TITLE = "Teilweise gespeichert"
 PARTIAL_TEXT = ("Krankheit gespeichert, aber nicht alle Reservierungen "
@@ -139,9 +135,7 @@ def open_sick_dialog(parent, *, sick_store, storage, settings,
     # --- Reservierungen ---
     res_head = form.section("Reservierungen")
     delete_res_var = tk.BooleanVar(value=True)
-    res_check = form.check(
-        RESERVATION_CHECK_TEXT_EDIT if old_dates else RESERVATION_CHECK_TEXT,
-        delete_res_var)
+    res_check = form.check("", delete_res_var)
     res_head.grid_remove()
     res_check.grid_remove()
 
@@ -250,11 +244,15 @@ def open_sick_dialog(parent, *, sick_store, storage, settings,
                 days, vacation_store.day_minutes()):
             hints.append(HINT_SICK_ON_VACATION)
         hints_label.config(text="\n\n".join(hints))
+        # Wie in `commit_sick_block`: die alten Tage des Blocks zählen als
+        # krank, auch wenn sie inzwischen anderswo gelöscht wurden.
+        sick_before = set(sick_store.day_minutes()) | old_set
         shown = bool(reservation_dates_to_offer(
             days, _active_reservations(reservation_store, settings),
-            old_dates))
+            sick_before))
         current["res_shown"] = shown
         if shown:
+            res_check.config(text=reservation_check_text(days, sick_before))
             res_head.grid()
             res_check.grid()
         else:

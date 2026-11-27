@@ -317,8 +317,10 @@ def test_commit_deletes_reservations_only_when_asked(tmp_path):
         store, fake, old_dates=[], days=days, delete_reservations=False)
     assert out == [] and fake.deleted == []
     assert store.day_minutes() == days
+    from src.sick_days import SickStore
+    fresh = SickStore(str(tmp_path / "sick-neu.json"), device_id="dev-a")
     out = sick_plan.commit_sick_block(
-        store, fake, old_dates=[], days=days, delete_reservations=True)
+        fresh, fake, old_dates=[], days=days, delete_reservations=True)
     assert out == ["2026-03-02"] and fake.deleted == ["2026-03-02"]
     out = sick_plan.commit_sick_block(
         store, None, old_dates=[], days=days, delete_reservations=True)
@@ -399,21 +401,60 @@ def test_vacation_sick_conflicts_extension_blocks_only_new_day():
         {"2026-07-01": 480, "2026-07-02": 480}, existing) == ["2026-07-02"]
 
 
-# --- Speichern schont Reservierungen und bestehende Tage (Review PR 3) ------
+# --- Speichern schont Reservierungen und bestehende Tage ---------------------
 
 def _iso(day):
     return day.isoformat()
 
 
-def test_reservation_dates_to_offer_skips_days_the_block_already_covered():
+def test_reservation_dates_to_offer_skips_days_that_were_already_sick():
     days = {"2026-03-02": 480, "2026-03-03": 480, "2026-03-04": 0}
     res = {d: {"slots": [_slot()]} for d in days}
     res["2026-04-01"] = {"slots": [_slot()]}
     assert sick_plan.reservation_dates_to_offer(
         days, res, ["2026-03-02", "2026-03-03"]) == ["2026-03-04"]
+    assert sick_plan.reservation_dates_to_offer(
+        days, res, {"2026-03-03": 120}) == ["2026-03-02", "2026-03-04"]
     assert sick_plan.reservation_dates_to_offer(days, res, []) == sorted(days)
     assert sick_plan.reservation_dates_to_offer(days, None, []) == []
     assert sick_plan.reservation_dates_to_offer(days, res, list(days)) == []
+
+
+def test_commit_new_report_over_an_existing_sick_day_keeps_its_reservation(
+        tmp_path):
+    store = _sick_store(tmp_path)
+    store.save_range({"2026-03-03": 120})
+    fake = _FakeReservations({d: {"slots": [_slot()]}
+                              for d in ("2026-03-03", "2026-03-04")})
+    out = sick_plan.commit_sick_block(
+        store, fake, old_dates=[],
+        days={"2026-03-03": 120, "2026-03-04": 480}, delete_reservations=True)
+    assert out == ["2026-03-04"] and fake.deleted == ["2026-03-04"]
+
+
+def test_commit_extension_into_another_block_keeps_that_blocks_reservations(
+        tmp_path):
+    store = _sick_store(tmp_path)
+    store.save_range({"2026-03-02": 480, "2026-03-03": 480,
+                      "2026-03-05": 480, "2026-03-06": 480})
+    fake = _FakeReservations({d: {"slots": [_slot()]} for d in (
+        "2026-03-03", "2026-03-04", "2026-03-06")})
+    days = {_iso(datetime.date(2026, 3, 2) + datetime.timedelta(days=i)): 480
+            for i in range(5)}
+    out = sick_plan.commit_sick_block(
+        store, fake, old_dates=["2026-03-02", "2026-03-03"], days=days,
+        delete_reservations=True)
+    assert out == ["2026-03-04"] and fake.deleted == ["2026-03-04"]
+
+
+def test_reservation_check_text_names_new_days_when_the_plan_touches_sick_days():
+    days = {"2026-03-03": 480, "2026-03-04": 480}
+    assert sick_plan.reservation_check_text(
+        days, []) == sick_plan.RESERVATION_CHECK_TEXT
+    assert sick_plan.reservation_check_text(
+        days, {"2026-03-10": 480}) == sick_plan.RESERVATION_CHECK_TEXT
+    assert sick_plan.reservation_check_text(
+        days, {"2026-03-03": 120}) == sick_plan.RESERVATION_CHECK_TEXT_NEW_DAYS
 
 
 def test_commit_edit_keeps_reservations_on_days_the_block_already_covered(
