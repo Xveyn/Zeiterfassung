@@ -165,11 +165,14 @@ def prefill(date_from: str, date_to: str, *, basis: str,
             settings: SettingsLike) -> Prefill:
     """Vorbelegte Minuten je Kalendertag (Reihenfolge: Reservierung,
     Wochenende/Feiertag, Grundlage). `reservations` ist `None`, wenn
-    Reservierungen nicht aktiv sind."""
+    Reservierungen nicht aktiv sind. Das 366-Tage-Limit prüft der Aufrufer
+    vorher, der Zeitraum wird Tag für Tag aufgebaut."""
     basis = normalize_basis(basis)
     days = date_range(date_from, date_to)
     state = settings.get("state") or ""
     hints: list[str] = []
+    fell_back = False
+    uses_basis = False
     average: int | None = None
     if basis == "average_3m" and days:
         average = average_minutes(
@@ -177,20 +180,24 @@ def prefill(date_from: str, date_to: str, *, basis: str,
             sick_days=sick_days, state=state)
         if average is None:
             basis = DEFAULT_BASIS
-            hints.append(HINT_AVERAGE_FALLBACK)
+            fell_back = True
     holidays = holiday_dates(days, state)
     out: dict[str, int] = {}
     for day in days:
         iso = day.isoformat()
         reserved = (reservations or {}).get(iso)
         if reserved and reserved.get("slots"):
-            out[iso] = reservation_net_minutes(reserved)
+            out[iso] = min(MAX_MINUTES_PER_DAY,
+                           reservation_net_minutes(reserved))
         elif day.weekday() >= 5 or day in holidays:
             out[iso] = 0
         elif basis == "average_3m" and average is not None:
             out[iso] = average
         else:
+            uses_basis = True
             out[iso] = standard_minutes(day, settings)
+    if fell_back and uses_basis:
+        hints.append(HINT_AVERAGE_FALLBACK)
     return Prefill(out, basis, hints)
 
 
@@ -208,13 +215,15 @@ def plan_sick_save(date_from: str, date_to: str, prefilled: Mapping[str, int],
     if n > MAX_BLOCK_DAYS:
         return {"error": (f"Ein Krankheitszeitraum darf höchstens "
                           f"{MAX_BLOCK_DAYS} Tage umfassen."), "days": {}}
-    days = {d: m for d, m in prefilled.items()}
+    days = {d.isoformat(): prefilled.get(d.isoformat(), 0)
+            for d in date_range(date_from, date_to)}
     for day, minutes in overrides.items():
         if day in days:
             days[day] = max(0, int(minutes))
     over = sorted(d for d, m in days.items() if m > MAX_MINUTES_PER_DAY)
     if over:
-        return {"error": ("Für diese Tage sind mehr als 24 Stunden "
+        return {"error": (f"Für diese Tage sind mehr als "
+                          f"{MAX_MINUTES_PER_DAY // 60} Stunden "
                           "eingetragen:\n\n" + format_day_list(over)),
                 "days": {}}
     return {"error": None, "days": days}

@@ -228,6 +228,33 @@ def test_reservation_net_minutes_ignores_broken():
         {"slots": [{"start": "09:00", "end": "13:00"}]}) == 240
 
 
+def test_plan_builds_days_from_range_not_from_prefill():
+    r = sick_plan.plan_sick_save("2026-03-02", "2026-03-04", {}, {})
+    assert r["days"] == {"2026-03-02": 0, "2026-03-03": 0, "2026-03-04": 0}
+    r = sick_plan.plan_sick_save("2026-03-02", "2026-03-03",
+                                 {"2026-03-02": 60, "2026-03-05": 99}, {})
+    assert r["days"] == {"2026-03-02": 60, "2026-03-03": 0}
+
+
+def test_average_fallback_hint_only_when_a_day_used_the_basis():
+    p = _prefill("2026-03-07", "2026-03-08", basis="average_3m")
+    assert p.basis_used == "standard"
+    assert sick_plan.HINT_AVERAGE_FALLBACK not in p.hints
+
+
+def test_prefill_caps_overlapping_reservation_slots():
+    res = {"2026-03-02": {"slots": [_slot("00:00", "23:59"),
+                                    _slot("00:00", "23:59")]}}
+    p = _prefill("2026-03-02", "2026-03-02", reservations=res)
+    assert p.days == {"2026-03-02": 1440}
+
+
+def test_reference_period_clamps_in_leap_year():
+    e = _entries("2027-01-01")
+    r = sick_plan.reference_period(datetime.date(2028, 5, 31), e)
+    assert r[0] == datetime.date(2028, 2, 29)
+
+
 @pytest.mark.parametrize("bad", ["x", None])
 def test_reference_period_ignores_non_date_keys(bad):
     e = {bad: {"slots": [_slot()]}}
