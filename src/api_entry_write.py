@@ -199,11 +199,12 @@ def check_date_range(day: datetime.date) -> None:
 
 
 def check_day_writable(date_str: str, *, conflicts_store: Any, vacation_store: Any,
-                       for_save: bool) -> None:
+                       for_save: bool, sick_store: Any = None) -> None:
     """Die Sperren der UI. Ungelöster Sync-Konflikt: `PUT` und `DELETE` — die
     Ist-Zeit steht zur Debatte, ein Schreiben würde einen Kandidaten
     überschreiben. Urlaubsminuten > 0: nur `PUT` (Löschen ist der Weg aus der
-    Sackgasse); 0-Minuten-Tage einer Periode sind kein Urlaubstag."""
+    Sackgasse); 0-Minuten-Tage einer Periode sind kein Urlaubstag. Ebenso
+    Krankheitsminuten > 0 (nur `PUT`)."""
     if conflicts_store is not None and date_str in conflicts_store.unresolved_entry_keys():
         raise WriteError(409, "sync_conflict",
                          "Für diesen Tag gibt es einen ungelösten Sync-Konflikt. "
@@ -215,6 +216,11 @@ def check_day_writable(date_str: str, *, conflicts_store: Any, vacation_store: A
                              f"Für diesen Tag ist Urlaub eingetragen "
                              f"(„{period.get('name', '')}“). An einem Urlaubstag lässt sich "
                              "keine Arbeitszeit erfassen; den Urlaub zuerst in der App löschen.")
+    if for_save and sick_store is not None and sick_store.day_minutes().get(date_str, 0) > 0:
+        raise WriteError(409, "sick_day",
+                         "Für diesen Tag ist Krankheit eingetragen. An einem Krankheitstag "
+                         "lässt sich keine Arbeitszeit erfassen; die Krankheit zuerst in der "
+                         "App löschen.")
 
 
 def warnings_for(settings: Any, all_entries: dict[str, Any], date_str: str,

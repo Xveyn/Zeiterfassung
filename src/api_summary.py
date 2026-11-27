@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING, Any
 from src.holidays_de import get_holidays
 from src.pause_requirement import check_day_pause
 from src.time_utils import calculate_hours, get_week_dates, hours_to_minutes
-from src.vacations import cap_by_worktime
+from src.absence import cut_absences
 from src.weekly_limit import is_limit_active
 
 if TYPE_CHECKING:  # nur für die Signaturen
@@ -207,34 +207,46 @@ def _pause_warnings(settings: SettingsLike,
     return found
 
 
-def _vacation_part(vacation_days: Mapping[str, int], first: str, last: str,
-                   work: dict[str, Any]) -> tuple[int, list[dict[str, Any]]]:
-    """(Urlaubsminuten nach Kappung, gekappte Tage). Gekappt wird wie in Mail,
-    PDF und Webhook gegen die erfasste Ist-Zeit desselben Ausschnitts, damit ein
-    Kalendertag nie mehr Stunden hat, als er hat (`absence.cap_by_worktime`)."""
-    # Höchstens ein Kalendertag: negative oder riesige Werte (kaputtes
-    # vacations.json) würden sonst in die Summe und in `vacation_capped_days` laufen.
-    days = {key: minutes for key, minutes in vacation_days.items()
+def _clean_days(days: Mapping[str, int], first: str, last: str) -> dict[str, int]:
+    """Nur echte Kalendertage im Zeitraum mit 0–1440 Minuten: negative oder
+    riesige Werte (kaputte Stores) würden sonst in Summe und Kappungsliste laufen."""
+    return {key: minutes for key, minutes in days.items()
             if _is_day_key(key) and first <= key <= last
             and isinstance(minutes, int) and not isinstance(minutes, bool)
             and 0 <= minutes <= _MINUTES_PER_DAY}
+
+
+def _absence_part(vacation_days: Mapping[str, int], sick_days: Mapping[str, int],
+                  first: str, last: str, work: dict[str, Any]
+                  ) -> tuple[int, list[dict[str, Any]], int, list[dict[str, Any]]]:
+    """(Urlaubsminuten, gekappte Urlaubstage, Krankheitsminuten, gekappte
+    Krankheitstage). Krankheit gewinnt gegen Urlaub, beides wird wie in Mail,
+    PDF und Webhook gegen die erfasste Ist-Zeit desselben Ausschnitts gekappt
+    (`absence.cut_absences`), damit ein Kalendertag nie mehr Stunden hat, als er hat."""
+    vacation = _clean_days(vacation_days, first, last)
+    sick = _clean_days(sick_days, first, last)
     try:
-        capped, hits = cap_by_worktime(days, work)
+        cut = cut_absences(work, vacation, sick)
     except Exception:
-        _log.exception("Lokale API: Urlaubskappung nicht berechenbar, Urlaub ungekappt")
-        capped, hits = dict(days), []
-    return sum(capped.values()), [
-        {"date": hit.date, "vacation_minutes": hit.vacation,
-         "work_minutes": hit.work, "counted_minutes": hit.capped}
-        for hit in hits]
+        _log.exception("Lokale API: Kappung nicht berechenbar, Urlaub und Krankheit ungekappt")
+        return sum(v for d, v in vacation.items() if d not in sick), [], sum(sick.values()), []
+    return (sum(cut.vacation.values()),
+            [{"date": hit.date, "vacation_minutes": hit.minutes,
+              "work_minutes": hit.work, "counted_minutes": hit.capped}
+             for hit in cut.vacation_capped],
+            sum(cut.sick.values()),
+            [{"date": hit.date, "sick_minutes": hit.minutes,
+              "work_minutes": hit.work, "counted_minutes": hit.capped}
+             for hit in cut.sick_capped])
 
 
 def summarize(date_from: datetime.date, date_to: datetime.date,
               entries: Mapping[str, Any], settings: SettingsLike,
-              vacation_days: Mapping[str, int]) -> dict[str, Any]:
+              vacation_days: Mapping[str, int],
+              sick_days: Mapping[str, int] | None = None) -> dict[str, Any]:
     """Auswertung für [date_from, date_to] (beide einschließlich) über einen
-    `Storage.get_all()`-Snapshot (ohne Tombstones) und den Urlaubs-Snapshot
-    `{ISO: Minuten}`. `by_category` ist nach Minuten absteigend sortiert, bei
+    `Storage.get_all()`-Snapshot (ohne Tombstones) und die Snapshots
+    `{ISO: Minuten}` von Urlaub und Krankheit (`None` = keine). `by_category` ist nach Minuten absteigend sortiert, bei
     Gleichstand nach Name (Groß-/Kleinschreibung beachtend, anders als der Bericht), die
     leere Kategorie zuletzt. `weeks` führt jede ISO-Woche auf, die der Zeitraum
     berührt, mit der Summe der GANZEN Woche — das Wochenlimit gilt für die Woche,
@@ -260,14 +272,17 @@ def summarize(date_from: datetime.date, date_to: datetime.date,
     work = {key: {"slots": [{"start": "00:00", "end": f"{minutes // 60:02d}:{minutes % 60:02d}",
                              "pause": 0} for _, minutes in _day_slots(cache, entries, key)]}
             for key in in_range}
-    vacation_minutes, capped_days = _vacation_part(vacation_days, first, last, work)
+    vacation_minutes, capped_days, sick_minutes, sick_capped = _absence_part(
+        vacation_days, sick_days or {}, first, last, work)
     return {
         "from": first,
         "to": last,
         "total_minutes": total,
         "vacation_minutes": vacation_minutes,
-        "payable_minutes": total + vacation_minutes,
+        "sick_minutes": sick_minutes,
+        "payable_minutes": total + vacation_minutes + sick_minutes,
         "vacation_capped_days": capped_days,
+        "sick_capped_days": sick_capped,
         "days": days,
         "by_category": [{"kategorie": name, "minutes": minutes} for name, minutes
                         in sorted(by_category.items(),

@@ -90,9 +90,9 @@ def day(*slots):
     return {"slots": list(slots)}
 
 
-def run(entries, settings=None, vacation=None, span=JAN):
+def run(entries, settings=None, vacation=None, span=JAN, sick=None):
     return summarize(span[0], span[1], entries, {} if settings is None else settings,
-                     {} if vacation is None else vacation)
+                     {} if vacation is None else vacation, sick_days=sick)
 
 
 # --- Summen -------------------------------------------------------------------------------
@@ -437,3 +437,28 @@ def test_the_warning_for_an_odd_slot_is_short_and_has_no_traceback(caplog):
     record = caplog.records[0]
     assert record.exc_info is None
     assert len(record.getMessage()) < 200 and "GEHEIM" not in record.getMessage()
+
+
+# --- Krankheit ---
+
+def test_summary_without_sick_days_is_unchanged():
+    entries = {"2026-01-05": day(ist_slot("08:00", "12:00"))}
+    base = run(entries, vacation={"2026-01-06": 480})
+    for sick in (None, {}):
+        again = run(entries, vacation={"2026-01-06": 480}, sick=sick)
+        assert {k: v for k, v in again.items()
+                if k not in ("sick_minutes", "sick_capped_days")} == {
+            k: v for k, v in base.items() if k not in ("sick_minutes", "sick_capped_days")}
+        assert (again["sick_minutes"], again["sick_capped_days"]) == (0, [])
+
+
+def test_summary_sick_wins_and_is_payable():
+    entries = {"2026-01-05": day(ist_slot("08:00", "10:00"))}
+    result = run(entries, vacation={"2026-01-05": 480, "2026-01-06": 480},
+                 sick={"2026-01-05": 300, "2026-01-06": 200})
+    assert result["total_minutes"] == 120
+    assert result["sick_minutes"] == 180 + 200
+    assert result["vacation_minutes"] == 0
+    assert result["payable_minutes"] == 120 + 380
+    assert result["sick_capped_days"] == [
+        {"date": "2026-01-05", "sick_minutes": 300, "work_minutes": 120, "counted_minutes": 180}]

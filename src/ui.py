@@ -210,6 +210,7 @@ class App:
                        data_lock=self._data_lock,
                        conflicts_store=self.conflicts_store,
                        vacation_store=self.vacation_store,
+                       sick_store=self.sick_store,
                        reservation_store=self.reservation_store,
                        on_reservations_change=self._on_remote_calendar_data_changed,
                        on_vacations_change=self._on_remote_calendar_data_changed,
