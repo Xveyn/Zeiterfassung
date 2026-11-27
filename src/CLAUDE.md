@@ -81,7 +81,7 @@ Rendering der Monats-/Wochenansicht inkl. Double-Buffer und Fenster-Geometrie.
   und bleibt dort. Ohne Ratchet spränge es bei jedem Lohn-Ein/Aus zwischen schmal und breit
   (Test: `tests/test_grid_geometry.py`). Die Höhe ratcht bewusst nicht (Banner braucht beide
   Richtungen).
-- **Slot-Reihenfolge (#520):** Zellenzeile (`_cell_time_text`: der erste Slot der Reihenfolge plus `+N`) und Tooltip zeigen die Slots über `slot_order.sorted_slots` im Modus `slot_order_mode` (`GridRenderer._slot_order`); der Löschen-Dialog (`ui._delete_options`) zeigt ebenso, seine Schlüssel tragen den Index der **gespeicherten** Liste. Bericht, PDF und Webhook bekommen den Modus als Parameter (`slot_order`), `send_task`/`export_dialog` lesen ihn aus den Einstellungen; der Handy-Abgleich nennt ihn in der Antwort (`mobile_sync.build_response`).
+- **Slot-Reihenfolge (#520):** Zellenzeile (`_cell_time_text`: der erste Slot der Reihenfolge plus `+N`; passt sie nicht in die Zelle, die Kurzform `_cell_time_short` mit nur dessen Beginn plus `+N` — `_fit_time_line` wählt nach der tatsächlichen Breite, weil die Zelle mit dem Fenster wächst und das Fenster ohne Stundenlohn schmaler ist) und Tooltip zeigen die Slots über `slot_order.sorted_slots` im Modus `slot_order_mode` (`GridRenderer._slot_order`); der Löschen-Dialog (`ui._delete_options`) zeigt ebenso, seine Schlüssel tragen den Index der **gespeicherten** Liste. Bericht, PDF und Webhook bekommen den Modus als Parameter (`slot_order`), `send_task`/`export_dialog` lesen ihn aus den Einstellungen; der Handy-Abgleich nennt ihn in der Antwort (`mobile_sync.build_response`).
 - `_fmt_slot_line` ist `@staticmethod`; `App._delete_day` ruft es als
   `GridRenderer._fmt_slot_line(...)` (bleibt in App, nutzt aber den Renderer-Static).
 
@@ -1160,7 +1160,7 @@ Kalender-Abgleich zeigt der Reservierungs-Block `RESERVATION_CALENDAR_NOTE`, wei
 Termin die volle Spanne zeigt; `slot_category_display` bekommt für Reservierungen
 weiter `pause=None`, deren Pause setzt kein `*`; **Notiz** (Xveyn#519): jede Ist-Zeile hat ein
 Notizfeld in einer eigenen Zeile unter dem Slot (`Notiz:`, mindestens 24 Zeichen, dehnt sich auf die Breite des Slots;
-neben den Zeiten machte es den Dialog breiter, weil dessen Breiten-Probe eine Slot-Zeile misst; `SlotRowList(note_suggestions=…)` mit `slot_notes.suggestions`: die Notizen der
+neben den Zeiten machte es den Dialog breiter, weil dessen Breiten-Probe eine Slot-Zeile misst; jeder Slot beider Blöcke steht in einem Rahmen in `SEPARATOR`, damit die Notiz sichtbar zu ihrem Slot gehört; `SlotRowList(note_suggestions=…)` mit `slot_notes.suggestions`: die Notizen der
 gewählten Kategorie zuerst, dann alle übrigen), die Reservierung keines. `save_all` übergibt `notiz` an **jedem** Ist-Slot, auch
 als `""`: ein Slot ohne den Schlüssel erbt in `Storage.save` die gespeicherte Notiz, Leeren wäre
 unmöglich. `plan_entry_save` prüft über `slot_notes.check_note` und lehnt eine ungültige Notiz

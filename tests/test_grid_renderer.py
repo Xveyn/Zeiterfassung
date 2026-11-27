@@ -421,6 +421,25 @@ def test_tooltip_und_zelle_folgen_dem_slot_modus():
     assert custom.index("13:00") < custom.index("09:00")
     assert GridRenderer._cell_time_text(entry["slots"], "category") == "13:00-14:00  +1"
     assert GridRenderer._cell_time_text(custom_entry["slots"], "custom") == "13:00-14:00  +1"
+    assert GridRenderer._cell_time_short(entry["slots"], "category") == "13:00  +1"
+
+
+def test_kurzform_der_zellenzeile_nennt_beginn_und_restzahl():
+    slots = [{"start": "11:00", "end": "13:00"}, {"start": "09:00", "end": "11:00"},
+             {"start": "14:00", "end": "15:00"}]
+    assert GridRenderer._cell_time_short(slots) == "09:00  +2"
+    assert GridRenderer._cell_time_short(slots[:1]) == "11:00"
+    assert GridRenderer._cell_time_short([{"start": None, "end": "10:00"}]) == "?"
+    assert GridRenderer._cell_time_short([]) == ""
+
+
+def test_zellenzeile_nimmt_die_volle_form_nur_wenn_sie_passt():
+    # Gemessen wird in Pixeln; hier zählt jedes Zeichen einen.
+    full, short = "08:00-09:00  +2", "08:00  +2"
+    assert GridRenderer._fit_cell_text(full, short, len, 15) == full     # passt genau
+    assert GridRenderer._fit_cell_text(full, short, len, 14) == short
+    assert GridRenderer._fit_cell_text(full, short, len, 3) == short     # auch zu schmal: nie leer
+    assert GridRenderer._fit_cell_text("", "", len, 0) == ""
 
 
 def test_fmt_slot_line_with_category_and_note():
