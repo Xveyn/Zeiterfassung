@@ -31,7 +31,7 @@ import { blockSignature, rowsToBlock } from './categories.js';
 import {
   categoriesModel, conflictsModel, connectionLabel, dayChanged, dayTitle, desktopHint, NOTE_DISPLAY_OPTIONS, normalizeNoteDisplay, editLock, editorRows, focusKeyToRestore, hintsModel, olderModel, pushModel, reservationRows,
   iosInstallHint, isSetupPhase, localDateDe, pairingAfterBack, reservationRowsToSlots, daySave, noteChoices, setupModel, statusModel, reachedAfterSyncError, unpairDialogModel, validateReservationRows, validateRows, weekModel,
-  canReportSick, sickDialogModel, sickRemovalText,
+  canReportSick, sickDialogModel, sickRemovalText, sickSaveResult,
 } from './view-model.js';
 import { BUILD, CACHE_PREFIX } from './sw-core.js';
 import { describeRepair, repairServiceWorker } from './sw-repair.js';
@@ -1034,14 +1034,16 @@ class App {
         const meta = this.store.getMeta();
         // Zweite Sicherung: ein Abgleich kann seit dem Öffnen die Fähigkeit, das Fenster oder den Tag geändert haben.
         if (!canReportSick({ date, today, meta })) {
-          return editLock({ date, today, meta })?.text ?? 'Der Desktop kennt keine Krankheitstage. Bitte die Desktop-App aktualisieren.';
+          return { message: editLock({ date, today, meta })?.text ?? 'Der Desktop kennt keine Krankheitstage. Bitte die Desktop-App aktualisieren.',
+            final: false };
         }
+        // Vor `markSick`: danach sind die Tage krank, und das Modell böte keine Reservierung mehr zum Löschen an.
         const current = modelFor(to);
-        if (!current.canSave) return current.error;
+        if (!current.canSave) return { message: current.error, final: false };
         try {
           await this.store.markSick(date, to);
         } catch (error) {
-          return String(error?.message ?? error);
+          return sickSaveResult({ markError: error });
         }
         let failed = null;
         if (deleteReservations) {
@@ -1057,7 +1059,7 @@ class App {
         this.scheduleSyncAfterSave();
         if (!failed) return null;
         editor.close();                                     // die Krankheit steht: der Editor zeigte einen veralteten Tag
-        return withDetail('Krankheit gespeichert, aber nicht alle Reservierungen ließen sich löschen. Bitte die Reservierungen prüfen.', failed);
+        return sickSaveResult({ reservationError: failed });
       },
       done: () => editor.close(),
     });

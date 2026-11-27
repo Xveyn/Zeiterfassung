@@ -10,6 +10,7 @@ import {
 import { blocksLan } from './browser-policy.js';
 import { categoryRows, timesSummary } from './categories.js';
 import { WEEKDAY_KEYS, resolveSlotDefaults, weekdayKey } from './defaults.js';
+import { withDetail } from './diagnose.js';
 import { describeError } from './messages.js';
 import { checkNote, groupKey, noteSuggestions } from './notes.js';
 import { openReservationSlots, pendingReservationMinutes, reservationBlockVisible, validateReservationSlots } from './reservations.js';
@@ -202,7 +203,8 @@ export function weekModel({ getDay, anchor, today, conflictDates = [], windowDay
       reservationVisible: visible,
       reservation: reservation && {
         slots: sortedSlots(openReservationSlots(reservation.slots, slots, date === today), slotOrder).map(slotText), dirty: reservation.dirty, error: reservation.error },
-      pendingMinutes: reservation ? pendingReservationMinutes(reservation.slots, slots, date === today) : 0,
+      // An einem Krankheitstag steht nichts mehr aus: die Reservierung bleibt zu sehen, zählt aber nicht.
+      pendingMinutes: reservation && !sickRecord ? pendingReservationMinutes(reservation.slots, slots, date === today) : 0,
     };
   });
   const total = week.reduce((sum, day) => sum + day.minutes, 0);
@@ -734,7 +736,7 @@ function dayList(dates) {
 /** Der Dialog „Krank melden“ ab `date` bis `to` (Vorgabe: derselbe Tag). `maxTo` ist das späteste Bis-Datum: das Ende
  *  des Fensters, höchstens `MAX_SICK_BLOCK_DAYS` Tage. `blocked` sind die Tage mit Ist-Zeit (dort lässt sich keine
  *  Krankheit melden, `workBlockedDates`). Das Häkchen zum Löschen der Reservierungen erscheint nur, wenn der Desktop
- *  Reservierungen meldet und an heute oder später Tage welche tragen, die vorher kein Krankheitstag waren (R10b, wie
+ *  Reservierungen meldet und an heute oder später Tage welche tragen, die vorher kein Krankheitstag waren (wie
  *  `sick_plan.reservation_dates_to_offer`); war ein Tag im Zeitraum schon krank, nennt die Beschriftung nur die neuen.
  *  @param {{ date: string, to?: string, today: string, meta: any, getDay: (date: string) => any,
  *    getReservation?: (date: string) => any }} state */
@@ -768,6 +770,24 @@ export function sickDialogModel({ date, to = date, today, meta, getDay, getReser
       dates: reservationDates,
       label: dates.some(wasSick) ? SICK_RESERVATION_TEXT_NEW_DAYS : SICK_RESERVATION_TEXT,
     },
+  };
+}
+
+/** Ausgang von „Krank melden“: `null` bei Erfolg, sonst `{message, final}`. Scheitert schon das Melden, ist nichts
+ *  geschehen und ein neuer Versuch möglich. Scheitert erst das Löschen einer Reservierung, steht die Krankheit schon:
+ *  `final`, der Dialog darf nur noch schließen (ein zweites Melden böte die Reservierungen nicht mehr an, ihre Tage sind
+ *  jetzt krank).
+ *  @param {{ markError?: unknown, reservationError?: unknown }} outcome */
+export function sickSaveResult({ markError, reservationError } = {}) {
+  if (markError !== undefined && markError !== null) {
+    const message = typeof markError === 'object' && 'message' in markError ? String(markError.message) : String(markError);
+    return { message, final: false };
+  }
+  if (reservationError === undefined || reservationError === null) return null;
+  return {
+    message: withDetail('Krankheit gespeichert, aber nicht alle Reservierungen ließen sich löschen. Bitte die Reservierungen prüfen.',
+      reservationError),
+    final: true,
   };
 }
 

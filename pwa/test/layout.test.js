@@ -500,4 +500,18 @@ test('app.js wires sick days: week model only with the capability, report and re
   assert.equal((sickCode.match(/this\.scheduleSyncAfterSave\(\)/g) || []).length, 2);
   // Krankheitstage gehen nie ins Debug-Protokoll: weder Daten noch Minuten.
   assert.doesNotMatch(sickCode, /logFailure|debugLog|console\./);
+  // Das Modell (welche Reservierungen gelöscht werden) entsteht VOR `markSick`: danach sind die Tage krank, das
+  // Häkchen böte keine mehr an und löschte still nichts.
+  const model = sickCode.indexOf('const current = modelFor(to);');
+  const mark = sickCode.indexOf('await this.store.markSick(date, to)');
+  assert.ok(model > 0 && mark > model, 'modelFor(to) muss vor markSick stehen');
+  assert.match(sickCode, /return sickSaveResult\(\{ markError: error \}\)/);
+  assert.match(sickCode, /return sickSaveResult\(\{ reservationError: failed \}\)/);
+});
+
+test('after a partial failure the sick dialog only closes: no second report, the message stays', () => {
+  const dialog = /export function sickDialog[\s\S]*?\n}\n/.exec(views)?.[0];
+  assert.ok(dialog, 'sickDialog fehlt');
+  assert.match(dialog, /if \(result\.final\) \{[\s\S]*?save\.disabled = true;[\s\S]*?save\.hidden = true;[\s\S]*?cancel\.textContent = 'Schließen';[\s\S]*?message\.textContent = result\.message;/);
+  assert.match(dialog, /if \(finished\) return;/);                        // auch Enter im Feld meldet nicht erneut
 });

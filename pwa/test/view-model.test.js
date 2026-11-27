@@ -1481,7 +1481,7 @@ test('reservations stay plain text, a conflict version shows the note as its own
 
 // --- Krankheitstage ------------------------------------------------------------------------------
 
-import { SICK_RESERVATION_TEXT, SICK_RESERVATION_TEXT_NEW_DAYS, canReportSick, sickDialogModel, sickLabel, sickRemovalText } from '../view-model.js';
+import { SICK_RESERVATION_TEXT, SICK_RESERVATION_TEXT_NEW_DAYS, canReportSick, sickDialogModel, sickLabel, sickRemovalText, sickSaveResult } from '../view-model.js';
 
 const SICK_TODAY = '2026-10-08';
 const sickRecord = (minutes, over = {}) => ({ minutes, modified_at: '2026-10-07T20:00:00Z', deleted: false,
@@ -1513,6 +1513,30 @@ test('the week marks sick days with hours, flags and no invitation; tombstones a
   assert.equal(week.days[4].addHint, '');
   assert.equal(week.days[3].addHint, 'Eintragen oder planen');
   assert.equal(week.totalMinutes, 0);                                  // Krankheit zählt nicht in die Ist-Zeit
+});
+
+test('a reservation on a sick day is not pending: „Noch ausstehend“ leaves it out', () => {
+  const getReservation = reservations({ '2026-10-09': reserved([RES_SLOT]), '2026-10-10': reserved([RES_SLOT]) });
+  const sickDays = { '2026-10-09': sickRecord(180), '2026-10-10': sickRecord(0, { deleted: true }) };
+  const at = (sickEnabled) => weekModel({ getDay: days({}), anchor: SICK_TODAY, today: SICK_TODAY, aheadDays: 14,
+    reservationsEnabled: true, getReservation, sickDays, sickEnabled });
+  const week = at(true);
+  assert.equal(week.days[4].pendingMinutes, 0);                        // krank: nichts mehr ausstehend
+  assert.equal(week.days[5].pendingMinutes, 180);                      // Tombstone: kein Krankheitstag
+  assert.equal(week.pendingMinutes, 180);
+  assert.equal(week.pendingLabel, '3:00');
+  assert.deepEqual(week.days[4].reservation.slots, ['09:00–12:00 · Projekt']);   // die Reservierung bleibt sichtbar
+  assert.equal(at(false).pendingMinutes, 360);                         // ohne Fähigkeit zählt sie wie bisher
+});
+
+test('saving a sick report: a refused report can be retried, a partial failure is final and keeps its message', () => {
+  assert.equal(sickSaveResult({}), null);
+  assert.deepEqual(sickSaveResult({ markError: new Error('Ungültiger Zeitraum.') }), { message: 'Ungültiger Zeitraum.', final: false });
+  const partial = sickSaveResult({ reservationError: new DOMException('Speicher voll', 'QuotaExceededError') });
+  assert.equal(partial.final, true);
+  assert.match(partial.message, /^Krankheit gespeichert, aber nicht alle Reservierungen ließen sich löschen\. Bitte die Reservierungen prüfen/);
+  assert.match(partial.message, /QuotaExceededError/);
+  assert.equal(sickSaveResult({ reservationError: 'kaputt' }).final, true);
 });
 
 test('without the capability the week shows no sick day', () => {
@@ -1605,7 +1629,7 @@ test('the reservation checkbox shows only with reservations at the desktop and i
   assert.equal(at('2026-10-08', '2026-10-10', sickMeta({}, { reservations_enabled: false })).visible, false);
 });
 
-test('reservations on days that were sick before are not offered, and the label says so (R10b)', () => {
+test('reservations on days that were sick before are not offered, and the label says so', () => {
   const plans = reservations({ '2026-10-09': reserved([RES_SLOT]), '2026-10-10': reserved([RES_SLOT]) });
   const meta = sickMeta({ '2026-10-10': sickRecord(450), '2026-10-12': sickRecord(0, { deleted: true }) });
   const model = sickDialogModel({ date: '2026-10-08', to: '2026-10-12', today: SICK_TODAY, meta, getDay: days({}), getReservation: plans });

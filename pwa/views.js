@@ -616,8 +616,9 @@ export function confirmDialog({ title, text, confirmLabel }, onConfirm) {
 /** „Krank melden“ ab dem Tag des Editors (Modell aus `sickDialogModel`). Das Bis-Datum reicht höchstens bis `maxTo`;
  *  jede Eingabe holt über `handlers.update(to)` ein neues Modell (Sperre durch Ist-Zeit, Häkchen und seine Beschriftung).
  *  Das Häkchen „Reservierungen … löschen“ steht standardmäßig an und gilt nur, solange es zu sehen ist.
- *  `handlers.save({to, deleteReservations})` liefert `null` oder eine Meldung; nach dem Erfolg schließt der Dialog und
- *  ruft `handlers.done()`. */
+ *  `handlers.save({to, deleteReservations})` liefert `null` oder `{message, final}` (`sickSaveResult`); nach dem Erfolg
+ *  schließt der Dialog und ruft `handlers.done()`. Mit `final` bleibt die Meldung stehen und der Dialog kann nur noch
+ *  schließen. */
 export function sickDialog({ title, model }, handlers) {
   const dialog = h('dialog', { 'aria-labelledby': 'sick-title', class: 'sick-dialog' });
   const toInput = h('input', { id: 'sick-to', type: 'date', min: model.from, max: model.maxTo, value: model.to, required: true,
@@ -628,29 +629,44 @@ export function sickDialog({ title, model }, handlers) {
   const range = h('p', { class: 'muted' }, '');
   const message = h('div', { class: 'error-text', role: 'alert' }, '');
   const save = h('button', { type: 'submit', class: 'primary', 'data-focus': 'sick-save' }, 'Krank melden');
+  const cancel = button('Abbrechen', () => dialog.close(), '', { 'data-focus': 'sick-cancel' });
+  let finished = false;
   const show = (next) => {
     checkRow.hidden = !next.reservations.visible;
     checkText.textContent = next.reservations.label;
     range.textContent = `Höchstens bis ${next.maxLabel}. Die Stunden je Tag rechnet der Desktop beim nächsten Abgleich.`;
     message.textContent = next.error;
   };
-  toInput.addEventListener('input', () => show(handlers.update(toInput.value)));
+  toInput.addEventListener('input', () => { if (!finished) show(handlers.update(toInput.value)); });
   dialog.append(
     h('form', { method: 'dialog', onsubmit: async (event) => {
       event.preventDefault();
+      if (finished) return;
       const latest = handlers.update(toInput.value);
       show(latest);
       if (!latest.canSave) return;
       save.disabled = true;
-      const failure = await handlers.save({ to: toInput.value, deleteReservations: latest.reservations.visible && check.checked });
-      save.disabled = false;
-      if (failure) {
-        show(handlers.update(toInput.value));
-        message.textContent = failure;
+      const result = await handlers.save({ to: toInput.value, deleteReservations: latest.reservations.visible && check.checked });
+      if (!result) {
+        dialog.close();
+        handlers.done();
         return;
       }
-      dialog.close();
-      handlers.done();
+      if (result.final) {
+        // Die Krankheit steht schon: kein zweites Melden, nur noch Schließen; die Meldung bleibt stehen.
+        finished = true;
+        save.disabled = true;
+        save.hidden = true;
+        toInput.disabled = true;
+        check.disabled = true;
+        cancel.textContent = 'Schließen';
+        cancel.focus();
+        message.textContent = result.message;
+        return;
+      }
+      save.disabled = false;
+      show(handlers.update(toInput.value));
+      message.textContent = result.message;
     } },
       h('h2', { id: 'sick-title' }, 'Krank melden'),
       h('p', {}, `Ab ${title}`),
@@ -658,7 +674,7 @@ export function sickDialog({ title, model }, handlers) {
       range,
       checkRow,
       message,
-      h('div', { class: 'buttons' }, button('Abbrechen', () => dialog.close()), save)));
+      h('div', { class: 'buttons' }, cancel, save)));
   show(model);
   return openDialog(dialog);
 }

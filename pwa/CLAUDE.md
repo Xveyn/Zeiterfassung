@@ -333,7 +333,8 @@ nichts davon (Woche, Sperre, Knopf), sendet nichts und löscht nichts (`markSick
 - **Woche.** `weekModel(…, sickDays, sickEnabled)` gibt je Tag `sick: {minutes, label, dirty, error} | null`; nur
   lebende Tage. Zeile in `--sick` (`#4c1d3d`, wie `SICK_BG` am Desktop) mit Streifen links, darin „krank“ in
   `--sick-text` (`sickLabel`: mit Stunden erst, wenn der Desktop sie gerechnet hat und der Tag welche trägt). Krankheit
-  gewinnt die Farbe der Zeile und zählt nicht in „Woche gesamt“; ein Krankheitstag trägt keine Einladung „Eintragen“.
+  gewinnt die Farbe der Zeile und zählt nicht in „Woche gesamt“; ein Krankheitstag trägt keine Einladung „Eintragen“, und
+  seine Reservierung bleibt zu sehen, zählt aber nicht in „Noch ausstehend“.
   `test/contrast.test.js` misst die Fläche.
 - **Sperre.** `editLock` sperrt die Arbeitszeit an einem Krankheitstag vor allen anderen Regeln (auch mit gehaltenem Tag
   und außerhalb des Fensters): „An diesem Tag bist du krank gemeldet.“ mit dem Knopf „Krankheit entfernen“. Der fragt
@@ -344,14 +345,14 @@ nichts davon (Woche, Sperre, Knopf), sendet nichts und löscht nichts (`markSick
   bis zum Fensterende und höchstens 366 Tage. Ein Tag mit Ist-Zeit sperrt das Melden (`workBlockedDates`), die Meldung
   nennt die Tage.
 - **Reservierungen löschen.** Das Häkchen erscheint (Vorgabe an) nur mit `reservations_enabled` und nur, wenn im
-  Zeitraum an heute oder später Tage Reservierungen tragen, die vorher kein Krankheitstag waren (R10b, wie
+  Zeitraum an heute oder später Tage Reservierungen tragen, die vorher kein Krankheitstag waren (wie
   `sick_plan.reservation_dates_to_offer`). War ein Tag im Zeitraum schon krank, heißt es „Reservierungen an den neu krank
   gemeldeten Tagen löschen“, sonst „Reservierungen in diesem Zeitraum löschen“. Gemeldet wird erst die Krankheit
-  (`markSick`), dann `clearReservation` je Tag; beides geht im nächsten Abgleich hinaus.
+  (`markSick`), dann `clearReservation` je Tag; beides geht im nächsten Abgleich hinaus. Welche Tage gelöscht werden,
+  steht vor `markSick` fest (danach sind sie krank und würden nicht mehr angeboten). Scheitert erst das Löschen, steht
+  die Krankheit schon: der Dialog zeigt die Meldung und kann nur noch schließen (`sickSaveResult`, `final`).
 - **Datenschutz.** Kein Datum und keine Minuten eines Krankheitstags gehen ins Debug-Protokoll; die Wege in `app.js`
   rufen weder `logFailure` noch das Protokoll (`test/layout.test.js` hält das am Quelltext fest).
-- **Geprüft** in Node und im Browser (Chromium, 390 und 280 px) gegen den Dev-Server, mit und ohne `--no-sick`.
-  **Auf iOS ungeprüft:** das Datumsfeld (`<input type="date">`) des Dialogs.
 
 ## Wochenansicht: Hinweise und leere Tage (#461)
 
