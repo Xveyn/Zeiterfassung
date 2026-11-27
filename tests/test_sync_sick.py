@@ -120,18 +120,19 @@ def test_excluded_device_keeps_sick_days_when_remote_lacks_section():
     assert merged["sick"] == {"2026-03-02": _rec(480, OLD, "A")}
 
 
-def test_excluded_device_drops_old_sick_day_missing_from_remote_section():
-    local = _doc({"2026-03-02": _rec(480, OLD, "A"), "2026-03-03": _rec(480, FRESH, "A")})
+def test_excluded_device_keeps_old_sick_day_missing_from_remote_section():
+    """Auch ein vorhandener Bereich ohne den Tag heißt nicht „gelöscht“: ein
+    neueres Gerät, das den Tag nie gesehen hat, kann ihn ohne ihn hochgeladen
+    haben. Kein Self-Heal für Krankheitstage."""
+    local = _doc({"2026-03-02": _rec(480, OLD, "A")})
     remote = _doc({}, watermark=WM)
-    merged = merge(local, remote, T0)
-    # Der alte Tag wurde anderswo gelöscht und kompaktiert; der frische ist ein
-    # echter Offline-Eintrag und bleibt.
-    assert merged["sick"] == {"2026-03-03": _rec(480, FRESH, "A")}
+    merged = merge(local, remote, T0)   # last_pull_at < Watermark: excluded
+    assert merged["sick"] == {"2026-03-02": _rec(480, OLD, "A")}
 
 
 def test_excluded_device_keeps_sick_day_whose_remote_record_is_broken():
-    """Ein unbrauchbarer Datensatz heißt nicht „wegkompaktiert“: der Tag stand
-    remote noch da, Self-Heal darf ihn lokal nicht verwerfen."""
+    """Ein unbrauchbarer Remote-Datensatz verdrängt den lokalen Tag nicht, auch
+    nicht auf einem Gerät, das über eine Kompaktierung hinweg offline war."""
     local = _doc({"2026-03-02": _rec(480, OLD, "A")})
     remote = _doc({"2026-03-02": {"minutes": "8h", "modified_at": FRESH,
                                   "device_id": "B", "deleted": False}}, watermark=WM)
@@ -143,7 +144,7 @@ def test_broken_sick_section_keeps_doc_valid_and_local_days():
     remote = _doc(["x"], watermark=WM)
     assert validate_remote_doc(remote) == (True, "")
     local = _doc({"2026-03-02": _rec(480, OLD, "A")})
-    merged = merge(local, remote, T0)   # excluded, aber der Bereich ist kein Objekt
+    merged = merge(local, remote, T0)   # last_pull_at < Watermark: excluded
     assert merged["sick"] == {"2026-03-02": _rec(480, OLD, "A")}
 
 

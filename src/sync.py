@@ -36,12 +36,16 @@ das wäre für ein reines Anzeigefeld völlig unverhältnismäßig. Konsequenzen
   ist deshalb **kein** Validierungsfehler — es wird verworfen, nicht das Doc.
 
 `sick` (Krankheitstage, s. `sick_days.py`) ist ebenso additiv ohne Schema-Bump und
-steht nur im Doc, wenn ein Gerät Krankheitstage (auch Tombstones) hat. Ältere
-Clients lassen den Bereich beim Push fallen, deshalb heißt **Fehlen nie
-„gelöscht“**: ein neueres Gerät lädt seinen Stand beim nächsten Push wieder hoch,
-Self-Heal greift nur gegen einen vorhandenen Bereich. Je Tag gewinnt der neuere
-Datensatz (`_lww_key`), Konflikte gibt es keine. Ein kaputter Bereich oder
-Datensatz wird verworfen, nicht das Doc.
+steht nur im Doc, wenn ein Gerät Krankheitstage (auch Tombstones) hat. Je Tag
+gewinnt der neuere Datensatz (`_lww_key`), Konflikte gibt es keine. Ein kaputter
+Bereich oder Datensatz wird verworfen, nicht das Doc.
+
+Ein fehlender Krankheitstag heißt **nie „gelöscht“**: ältere Clients lassen den
+Bereich beim Push fallen, und ein neueres Gerät lädt danach nur die Tage hoch,
+die es kennt. Anders als bei den Einträgen gibt es deshalb kein Self-Heal
+(Regel 2). Der Preis: ein gelöschter Krankheitstag, dessen Tombstone kompaktiert
+wurde, kann von einem Gerät zurückkommen, das über die Kompaktierung hinweg
+offline war.
 """
 
 from __future__ import annotations
@@ -422,28 +426,20 @@ def _sick_section(doc: Doc) -> dict[str, SickDay]:
     return clean_section(raw)
 
 
-def _merge_sick(local: Doc, remote: Doc, excluded: bool,
-                remote_wm: str) -> dict[str, SickDay]:
-    """Krankheitstage beider Seiten, je Tag der neuere Stand; nie ein Konflikt.
-
-    Self-Heal (Regel 2) nur gegen einen Bereich, der remote als Objekt vorliegt
-    und den Tag gar nicht nennt: fehlt der Bereich, hat ein älterer Client ihn
-    beim Push weggelassen, und ein unbrauchbarer Datensatz ist kein
-    wegkompaktierter Tag."""
+def _merge_sick(local: Doc, remote: Doc) -> dict[str, SickDay]:
+    """Krankheitstage beider Seiten, je Tag der neuere Stand; nie ein Konflikt
+    und nie ein Self-Heal (s. Modul-Docstring)."""
     loc_days = _sick_section(local)
     rem_days = _sick_section(remote)
-    rem_raw = remote.get("sick")
-    named = rem_raw.keys() if excluded and isinstance(rem_raw, dict) else None
     merged: dict[str, SickDay] = {}
     for day in sorted(loc_days.keys() | rem_days.keys()):
         loc, rem = loc_days.get(day), rem_days.get(day)
         if loc is not None and rem is not None:
             merged[day] = _lww_winner(loc, rem)
+        elif loc is not None:
+            merged[day] = loc
         elif rem is not None:
             merged[day] = rem
-        elif loc is not None and not (named is not None and day not in named
-                                      and loc["modified_at"] < remote_wm):
-            merged[day] = loc
     return merged
 
 
@@ -510,7 +506,7 @@ def merge(local: Doc, remote: Doc, last_pull_at: str) -> Doc:
     merged["conflicts"] = list(by_id.values())
 
     if "sick" in local or "sick" in remote:
-        merged["sick"] = _merge_sick(local, remote, excluded, remote_wm)
+        merged["sick"] = _merge_sick(local, remote)
 
     _apply_resolutions(merged)
 
