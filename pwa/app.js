@@ -31,7 +31,7 @@ import { blockSignature, rowsToBlock } from './categories.js';
 import {
   categoriesModel, conflictsModel, connectionLabel, dayChanged, dayTitle, desktopHint, NOTE_DISPLAY_OPTIONS, normalizeNoteDisplay, editLock, editorRows, focusKeyToRestore, hintsModel, olderModel, pushModel, reservationRows,
   iosInstallHint, isSetupPhase, localDateDe, pairingAfterBack, reservationRowsToSlots, daySave, noteChoices, setupModel, statusModel, reachedAfterSyncError, unpairDialogModel, validateReservationRows, validateRows, weekModel,
-  canReportSick, editorStartTab, sickDialogModel, sickRemovalText, sickSaveResult,
+  canReportSick, editorStartTab, reservationLock, sickDialogModel, sickRemovalText, sickSaveResult,
 } from './view-model.js';
 import { BUILD, CACHE_PREFIX } from './sw-core.js';
 import { describeRepair, repairServiceWorker } from './sw-repair.js';
@@ -958,12 +958,16 @@ class App {
       notes: notes ? { available: this.hasNotes(), suggest: (kategorie) => noteChoices(this.storedDays(), kategorie) } : null,
       // „Krank melden“ nur mit Fähigkeit des Desktops, im Fenster und nicht an einem Krankheitstag (dort sperrt `lock`).
       reportSick: canReportSick({ date, today, meta }),
+      reservationLock: reservationLock({ date, meta }),
     }, {
       loadOlder: () => { dialog.close(); void this.loadOlder(lock.wish); },
       reportSick: (editor) => this.reportSick(date, editor),
       removeSick: (editor) => this.removeSick(date, editor),
       save: async (kind, rows) => {
         if (kind === 'reservation') {
+          // Wie bei der Arbeitszeit mit dem Stand von jetzt: ein Abgleich bei offenem Editor kann den Tag krank gemacht haben.
+          const resLock = reservationLock({ date, meta: this.store.getMeta() });
+          if (resLock) return resLock.text;
           const current = this.store.getReservation(date);
           if (dayChanged(reservationBaseline, current)) {
             reservationBaseline = current;   // bewusst gewarnt: das nächste Speichern überschreibt

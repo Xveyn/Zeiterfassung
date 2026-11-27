@@ -500,7 +500,7 @@ function slotSection({ rows, categories, defaults, weekday, withPause, pauseEnab
  *  (`handlers.reportSick(dialog)`); eine Sperre mit `action: 'remove-sick'` trägt „Krankheit entfernen“
  *  (`handlers.removeSick(dialog)`). */
 export function editorDialog({ title, rows, categories, defaults = null, weekday = '', errors = {}, lock = null, canClear, validate,
-  reservation = null, startWith = 'work', pauseEnabled = false, shiftStep = 0, notes = null, reportSick = false }, handlers) {
+  reservation = null, startWith = 'work', pauseEnabled = false, shiftStep = 0, notes = null, reportSick = false, reservationLock = null }, handlers) {
   const message = h('div', { class: 'error-text', role: 'alert' }, '');
   const save = h('button', { type: 'submit', class: 'primary' }, 'Speichern');
   const dialog = h('dialog', { 'aria-labelledby': 'editor-title' });
@@ -513,9 +513,9 @@ export function editorDialog({ title, rows, categories, defaults = null, weekday
   const check = () => (active === 'work' ? validate(work.state) : reservation.validate(res.state));
   const refresh = () => {
     // „Speichern“ bleibt anklickbar: ein stummes Grau erklärt nicht, was fehlt. Nur die Sperre (#273) deaktiviert es.
-    save.disabled = active === 'work' && Boolean(lock);
+    save.disabled = Boolean(active === 'work' ? lock : reservationLock);
     const result = check();
-    if (active === 'work' && lock) message.textContent = '';
+    if (active === 'work' ? lock : reservationLock) message.textContent = '';
     else if (errors[active] && !edited[active]) message.textContent = errors[active];
     else message.textContent = attempted[active] && !result.ok ? result.message : '';
   };
@@ -527,10 +527,13 @@ export function editorDialog({ title, rows, categories, defaults = null, weekday
   const clearButton = button('Tag leeren', () => handlers.clear(active, dialog), 'link destructive');
   // Gesperrte Arbeitszeit (#273): statt der Zeilen ein Hinweis, mit dem Ausweg „Ältere Zeiten laden“, wo es ihn gibt.
   // An einem Krankheitstag ist der Ausweg „Krankheit entfernen“ (fragt nach; kein Hauptknopf, es wird gelöscht).
-  const windowHint = lock && h('div', { class: 'hint warn', 'data-focus': 'edit-lock' },
-    h('p', {}, lock.text),
-    lock.action === 'older' && button(lock.buttonText, () => handlers.loadOlder(), 'primary', { 'data-focus': 'load-older' }),
-    lock.action === 'remove-sick' && button(lock.buttonText, () => handlers.removeSick(dialog), 'remove-sick', { 'data-focus': 'remove-sick' }));
+  const hintFor = (l, focus) => l && h('div', { class: 'hint warn', 'data-focus': focus },
+    h('p', {}, l.text),
+    l.action === 'older' && button(l.buttonText, () => handlers.loadOlder(), 'primary', { 'data-focus': 'load-older' }),
+    l.action === 'remove-sick' && button(l.buttonText, () => handlers.removeSick(dialog), 'remove-sick', { 'data-focus': `remove-sick${focus === 'edit-lock' ? '' : '-res'}` }));
+  const windowHint = hintFor(lock, 'edit-lock');
+  // An einem Krankheitstag ist auch die Reservierung gesperrt: Zeilen bleiben sichtbar, aber nicht bedienbar (`inert`).
+  const resHint = hintFor(reservationLock, 'edit-lock-res');
   // Gilt für den ganzen Tag, nicht für einen Reiter: an Tagen nach heute öffnet der Editor bei der Reservierung.
   const sickButton = reportSick && button('Krank melden', () => handlers.reportSick(dialog), 'link', { 'data-focus': 'report-sick' });
   const tabs = reservation && {
@@ -540,14 +543,15 @@ export function editorDialog({ title, rows, categories, defaults = null, weekday
   const show = (kind) => {
     active = kind;
     work.element.hidden = kind !== 'work' || Boolean(lock);
-    if (res) res.element.hidden = kind !== 'reservation';
+    if (res) { res.element.hidden = kind !== 'reservation'; res.element.inert = Boolean(reservationLock); }
     if (windowHint) windowHint.hidden = kind !== 'work';
+    if (resHint) resHint.hidden = kind !== 'reservation';
     if (tabs) {
       tabs.work.setAttribute('aria-selected', String(kind === 'work'));
       tabs.reservation.setAttribute('aria-selected', String(kind === 'reservation'));
     }
     clearButton.textContent = kind === 'work' ? 'Tag leeren' : 'Reservierung löschen';
-    clearButton.hidden = !(kind === 'work' ? canClear : reservation.canClear);
+    clearButton.hidden = !(kind === 'work' ? canClear : reservation.canClear && !reservationLock);
     heading.textContent = editorTitle(title, kind, Boolean(reservation));
     refresh();
   };
@@ -567,6 +571,7 @@ export function editorDialog({ title, rows, categories, defaults = null, weekday
       heading,
       tabs && h('div', { class: 'tabs', role: 'tablist' }, tabs.work, tabs.reservation),
       windowHint,
+      resHint,
       work.element,
       res && res.element,
       sickButton,

@@ -693,9 +693,8 @@ export function olderModel(state) {
  *  Tag: Krankheit und Arbeitszeit schließen sich am selben Tag aus. Der Ausweg ist „Krankheit entfernen“; das Handy
  *  hält den Krankheitstag, darf ihn also auch außerhalb des Fensters entfernen. */
 export function editLock({ date, today, meta, hasRecord = false }) {
-  if (meta.sick_capable === true && liveSick(meta.sick, date)) {
-    return { kind: 'sick', action: 'remove-sick', buttonText: 'Krankheit entfernen', text: 'An diesem Tag bist du krank gemeldet.' };
-  }
+  const sick = reservationLock({ date, meta });
+  if (sick) return sick;
   if (hasRecord) return null;
   const ahead = aheadDays(meta.window_ahead);
   if (date > addDays(today, ahead)) {
@@ -710,9 +709,21 @@ export function editLock({ date, today, meta, hasRecord = false }) {
     text: `Dieser Tag liegt vor dem Zeitraum, den das Handy vom Desktop kennt, und lässt sich hier nicht bearbeiten, damit kein Eintrag am Desktop überschrieben wird. ${older.text}` };
 }
 
+/** Darf die Reservierung dieses Tages hier bearbeitet werden? `null` ja, sonst die Sperre eines Krankheitstags (nur mit
+ *  `meta.sick_capable`, auch mit 0 Minuten: das Handy kennt die Minuten vor dem Abgleich nicht). Der Desktop lässt an
+ *  Krankheitstagen keine Reservierung zu, sie löste Erinnerungen und später ein „verpasst“ aus; bestehende Slots löscht
+ *  das Häkchen beim Krankmelden. Gleiche Sperre und derselbe Ausweg wie bei der Arbeitszeit.
+ *  @param {{ date: string, meta: any }} state */
+export function reservationLock({ date, meta }) {
+  if (meta.sick_capable === true && liveSick(meta.sick, date)) {
+    return { kind: 'sick', action: 'remove-sick', buttonText: 'Krankheit entfernen', text: 'An diesem Tag bist du krank gemeldet.' };
+  }
+  return null;
+}
+
 /** Mit welchem Reiter öffnet der Tages-Editor? An Tagen nach heute bei der Reservierung: die Ist-Zeilen sind mit den
  *  Standardzeiten vorbelegt, ein Speichern dort legte sonst still eine Ist-Zeit an. An einem Krankheitstag immer bei der
- *  Arbeitszeit, denn nur dort steht „Krankheit entfernen“; der Reiter „Reservierung“ bleibt erreichbar.
+ *  Arbeitszeit; „Krankheit entfernen“ steht unter beiden Reitern.
  *  @param {{ date: string, today: string, reservationOn: boolean, lock: { kind: string } | null }} state
  *  @returns {'work' | 'reservation'} */
 export function editorStartTab({ date, today, reservationOn, lock }) {

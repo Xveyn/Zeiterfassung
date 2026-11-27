@@ -483,7 +483,7 @@ test('the editor offers „Krank melden“ only when told so and removes the sic
   assert.match(views, /reportSick && button\('Krank melden', \(\) => handlers\.reportSick\(dialog\)/);
   // Unter beiden Reitern: an Tagen nach heute öffnet der Editor bei der Reservierung.
   assert.doesNotMatch(views, /sickButton\.hidden/);
-  assert.match(views, /lock\.action === 'remove-sick' && button\(lock\.buttonText, \(\) => handlers\.removeSick\(dialog\), 'remove-sick'/);
+  assert.match(views, /l\.action === 'remove-sick' && button\(l\.buttonText, \(\) => handlers\.removeSick\(dialog\), 'remove-sick'/);
   // Auf der Hinweiskarte (--cell) braucht der Knopf einen Rahmen, sonst läse er sich als Text.
   assert.match(rule('.hint button.remove-sick'), /border: 1px solid var\(--line\)/);
 });
@@ -524,4 +524,15 @@ test('after a partial failure the sick dialog only closes: no second report, the
   assert.ok(dialog, 'sickDialog fehlt');
   assert.match(dialog, /if \(result\.final\) \{[\s\S]*?save\.disabled = true;[\s\S]*?save\.hidden = true;[\s\S]*?cancel\.textContent = 'Schließen';[\s\S]*?message\.textContent = result\.message;/);
   assert.match(dialog, /if \(finished\) return;/);                        // auch Enter im Feld meldet nicht erneut
+});
+
+test('on a sick day the reservation tab is locked in the editor and re-checked when saving', () => {
+  assert.match(views, /reservationLock = null/);
+  assert.match(views, /save\.disabled = Boolean\(active === 'work' \? lock : reservationLock\)/);
+  assert.match(views, /res\.element\.inert = Boolean\(reservationLock\)/);
+  assert.match(views, /resHint\.hidden = kind !== 'reservation'/);
+  assert.match(app, /reservationLock: reservationLock\(\{ date, meta \}\)/);
+  const save = /\n {6}save: async \(kind, rows\) => \{[\s\S]*?\n {6}\},\n {6}clear:/.exec(app)?.[0];
+  assert.ok(save);
+  assert.match(save, /const resLock = reservationLock\(\{ date, meta: this\.store\.getMeta\(\) \}\);\s*if \(resLock\) return resLock\.text;/);
 });

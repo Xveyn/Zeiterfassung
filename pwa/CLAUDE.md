@@ -371,7 +371,10 @@ nichts davon (Woche, Sperre, Knopf), sendet nichts und löscht nichts (`markSick
   und außerhalb des Fensters): „An diesem Tag bist du krank gemeldet.“ mit dem Knopf „Krankheit entfernen“. Der fragt
   nach (`sickRemovalText`) und ruft `clearSick` für den ganzen Block (`blockOf`), soweit das Handy ihn kennt
   (`docs/known-limitations.md`). „Speichern“ der Arbeitszeit prüft die Sperre mit dem Stand von jetzt, nicht mit dem vom
-  Öffnen: ein Abgleich bei offenem Editor kann den Tag krank gemacht haben.
+  Öffnen: ein Abgleich bei offenem Editor kann den Tag krank gemacht haben. Auch die Reservierung ist an einem
+  Krankheitstag gesperrt (`reservationLock`, gleicher Hinweis und Ausweg; Zeilen sichtbar, nicht bedienbar, Speichern
+  prüft erneut): der Desktop lässt dort keine zu, sie löste Erinnerungen und ein „verpasst“ aus. Bestehende löscht das
+  Häkchen beim Krankmelden.
 - **Krank melden.** Der Knopf steht unter beiden Reitern des Tages-Editors, nur wenn `canReportSick` es erlaubt: mit
   Fähigkeit, nicht an einem Krankheitstag und nur im Fenster. Außerhalb ist Krankheit gesperrt wie die Arbeitszeit
   (#273), auch wenn das Handy den Ist-Tag hält. Der Dialog (`sickDialogModel`) fragt nur das Bis-Datum ab, höchstens

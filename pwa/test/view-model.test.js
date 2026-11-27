@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 
 import {
   SETTINGS_TABS, categoriesModel, categoryRemovalText, categoryRenameHint, settingsTabLabel, retentionLabel,
-  WEEKDAYS, dayTitle, normalizeNoteDisplay, categoryDisplay, categoryLabel, categoryOptions, conflictsModel, dayChanged, editLock, editorRows, focusKeyToRestore, hintKey, hintsModel, desktopHint, localTime, nextRow, olderModel, pickCategory, rowsToSlots, slotText,
+  WEEKDAYS, dayTitle, normalizeNoteDisplay, categoryDisplay, categoryLabel, categoryOptions, conflictsModel, dayChanged, editLock, reservationLock, editorRows, focusKeyToRestore, hintKey, hintsModel, desktopHint, localTime, nextRow, olderModel, pickCategory, rowsToSlots, slotText,
   reachedAfterSyncError, unpairDialogModel, statusModel, localDateDe, validateRows, weekModel, windowRow, reservationRows, reservationRowsToSlots, validateReservationRows,
 } from '../view-model.js';
 import { SyncError } from '../sync.js';
@@ -1662,4 +1662,15 @@ test('the removal text names the whole block', () => {
     'Die Krankheit vom 05.10.2026 bis 09.10.2026 wird gelöscht (beim nächsten Abgleich auch am Desktop).');
   assert.equal(sickRemovalText({ from: '2026-10-05', to: '2026-10-05', dates: [] }),
     'Die Krankheit vom 05.10.2026 wird gelöscht (beim nächsten Abgleich auch am Desktop).');
+});
+
+test('a sick day locks the reservation too, with the same way out; other days stay free', () => {
+  const meta = sickMeta({ '2026-10-05': sickRecord(450), '2026-05-04': sickRecord(null) });
+  const model = reservationLock({ date: '2026-10-05', meta });
+  assert.deepEqual(model, { kind: 'sick', action: 'remove-sick', buttonText: 'Krankheit entfernen',
+    text: 'An diesem Tag bist du krank gemeldet.' });
+  assert.equal(reservationLock({ date: '2026-05-04', meta }).kind, 'sick');          // 0 Minuten: ebenfalls gesperrt
+  assert.equal(reservationLock({ date: '2026-10-06', meta }), null);
+  assert.equal(reservationLock({ date: '2026-10-05', meta: sickMeta({ '2026-10-05': sickRecord(450) }, { sick_capable: false }) }), null);
+  assert.equal(reservationLock({ date: '2026-10-05', meta: sickMeta({ '2026-10-05': { ...sickRecord(450), deleted: true } }) }), null);
 });
