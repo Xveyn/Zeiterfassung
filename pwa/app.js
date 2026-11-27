@@ -31,7 +31,7 @@ import { blockSignature, rowsToBlock } from './categories.js';
 import {
   categoriesModel, conflictsModel, connectionLabel, dayChanged, dayTitle, desktopHint, NOTE_DISPLAY_OPTIONS, normalizeNoteDisplay, editLock, editorRows, focusKeyToRestore, hintsModel, olderModel, pushModel, reservationRows,
   iosInstallHint, isSetupPhase, localDateDe, pairingAfterBack, reservationRowsToSlots, daySave, noteChoices, setupModel, statusModel, reachedAfterSyncError, unpairDialogModel, validateReservationRows, validateRows, weekModel,
-  canReportSick, sickDialogModel, sickRemovalText, sickSaveResult,
+  canReportSick, editorStartTab, sickDialogModel, sickRemovalText, sickSaveResult,
 } from './view-model.js';
 import { BUILD, CACHE_PREFIX } from './sw-core.js';
 import { describeRepair, repairServiceWorker } from './sw-repair.js';
@@ -934,9 +934,7 @@ class App {
     // Desktop versteht die Pause an Reservierungen (#455). Der Wert bleibt bei geöffnetem Dialog fest: ein Abgleich,
     // der das Flag dreht, ändert ihn nicht (der Draht ist getrennt in `snapshotReservations` gesperrt).
     const pauseEnabled = Boolean(meta.reservation_pause);
-    // An Tagen nach heute öffnet der Editor bei der Reservierung: die Ist-Zeilen sind mit den
-    // Standardzeiten vorbelegt, ein Speichern dort legte sonst still eine Ist-Zeit an.
-    const startWith = reservationOn && date > today ? 'reservation' : 'work';
+    const startWith = editorStartTab({ date, today, reservationOn, lock });
     // Notizfeld nur, wenn der Desktop Notizen versteht (#519); ohne bleibt alles wie vorher, kein `notiz` im Slot.
     const notes = Boolean(meta.slot_notes);
     const dialog = editorDialog({
@@ -977,8 +975,12 @@ class App {
             return String(error?.message ?? error);
           }
         } else {
-          if (lock) return lock.text;          // der Editor sperrt schon; hier die zweite Sicherung
+          // Zweite Sicherung neben dem gesperrten Editor, mit dem Stand von jetzt: ein Abgleich bei offenem Editor kann den
+          // Tag inzwischen krank gemacht haben, die Sperre vom Öffnen wüsste davon nichts.
           const current = this.store.getDay(date);
+          const currentLock = editLock({ date, today: localIsoDate(new Date()), meta: this.store.getMeta(),
+            hasRecord: Boolean(current) });
+          if (currentLock) return currentLock.text;
           if (dayChanged(baseline, current)) {
             baseline = current;   // bewusst gewarnt: das nächste Speichern überschreibt
             return 'Dieser Tag wurde inzwischen aktualisiert (Abgleich). Nochmaliges Speichern überschreibt die neuere Fassung.';

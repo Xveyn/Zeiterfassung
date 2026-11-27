@@ -509,6 +509,16 @@ test('app.js wires sick days: week model only with the capability, report and re
   assert.match(sickCode, /return sickSaveResult\(\{ reservationError: failed \}\)/);
 });
 
+test('app.js opens a future sick day on the actual time and re-checks the lock when saving work time', () => {
+  // „Krankheit entfernen“ steht nur unter der Arbeitszeit; welcher Reiter vorn ist, entscheidet `editorStartTab`.
+  assert.match(app, /const startWith = editorStartTab\(\{ date, today, reservationOn, lock \}\);/);
+  // Ein Abgleich bei offenem Editor kann den Tag krank gemacht haben: die Sperre vom Öffnen genügt beim Speichern nicht.
+  const save = /\n {6}save: async \(kind, rows\) => \{[\s\S]*?\n {6}\},\n {6}clear:/.exec(app)?.[0];
+  assert.ok(save, 'save-Handler des Tages-Editors fehlt');
+  assert.match(save, /const current = this\.store\.getDay\(date\);\s*const currentLock = editLock\(\{ date, today: localIsoDate\(new Date\(\)\), meta: this\.store\.getMeta\(\),\s*hasRecord: Boolean\(current\) \}\);\s*if \(currentLock\) return currentLock\.text;/);
+  assert.doesNotMatch(save, /if \(lock\) return lock\.text;/);
+});
+
 test('after a partial failure the sick dialog only closes: no second report, the message stays', () => {
   const dialog = /export function sickDialog[\s\S]*?\n}\n/.exec(views)?.[0];
   assert.ok(dialog, 'sickDialog fehlt');

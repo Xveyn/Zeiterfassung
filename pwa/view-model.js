@@ -710,6 +710,16 @@ export function editLock({ date, today, meta, hasRecord = false }) {
     text: `Dieser Tag liegt vor dem Zeitraum, den das Handy vom Desktop kennt, und lässt sich hier nicht bearbeiten, damit kein Eintrag am Desktop überschrieben wird. ${older.text}` };
 }
 
+/** Mit welchem Reiter öffnet der Tages-Editor? An Tagen nach heute bei der Reservierung: die Ist-Zeilen sind mit den
+ *  Standardzeiten vorbelegt, ein Speichern dort legte sonst still eine Ist-Zeit an. An einem Krankheitstag immer bei der
+ *  Arbeitszeit, denn nur dort steht „Krankheit entfernen“; der Reiter „Reservierung“ bleibt erreichbar.
+ *  @param {{ date: string, today: string, reservationOn: boolean, lock: { kind: string } | null }} state
+ *  @returns {'work' | 'reservation'} */
+export function editorStartTab({ date, today, reservationOn, lock }) {
+  if (!reservationOn || lock?.kind === 'sick') return 'work';
+  return date > today ? 'reservation' : 'work';
+}
+
 // --- Krankheitstage ------------------------------------------------------------------------------
 
 export const SICK_RESERVATION_TEXT = 'Reservierungen in diesem Zeitraum löschen';

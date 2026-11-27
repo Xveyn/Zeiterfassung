@@ -567,9 +567,11 @@ Minuten ist kein Inhalt).
   mit Gerätenamen aus der Registry, alle Slots über `storage.sanitize_slot`. `on_change` ruft die Route
   nach Freigabe von Guard und Lock.
 
-  Der Zeitraum-Kern, den Urlaub (und später Krankheit) teilen — `date_range`,
-  `apportion_minutes`, `cap_by_worktime`, `cap_notice`, `format_day_list` —
-  liegt Tk-frei in `absence.py`; `vacations`/`vacation_plan` re-exportieren ihn.
+  Der Zeitraum-Kern von Urlaub und Krankheit — `date_range`, `holiday_dates`,
+  `apportion_minutes`, `cap_by_worktime`, `cap_notice`, `format_day_list`, dazu der
+  Schnitt der beiden gegeneinander (`cut_absences`/`cut_for_output`, Krankheit gewinnt) —
+  liegt Tk-frei in `absence.py`. `vacations`/`vacation_plan` re-exportieren ihn, die
+  Krankheits-Module (`sick_days`, `sick_plan`, `mobile_sick`) importieren direkt von dort.
 
   `VacationStore` (`vacations.json`) hängt am geteilten `data_lock` wie
   `Storage`, `Settings`, `ConflictsStore` und `ReservationStore` — anders als

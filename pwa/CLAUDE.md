@@ -287,7 +287,8 @@ bietet sie nur an, wenn „Reservierungen verwenden“ an ist.
   Reiter im Tages-Editor erscheinen nur dann; vergangene Tage zeigen nichts,
   auch keine vorhandene Reservierung. Der Editor öffnet an Tagen **nach heute**
   bei der Reservierung (die Ist-Zeilen sind mit Standardzeiten vorbelegt, ein
-  Speichern dort legte sonst still eine Ist-Zeit an), heute bei der Arbeitszeit.
+  Speichern dort legte sonst still eine Ist-Zeit an), heute bei der Arbeitszeit; an einem Krankheitstag immer bei der
+  Arbeitszeit, dort steht „Krankheit entfernen“ (`editorStartTab`).
   Reservierungen zählen nicht in die Wochensumme; stattdessen zeigt der Wochenfuß unter
   „Woche gesamt“ eine Zeile **„Noch ausstehend“** (#329, `pendingLabel` in `view-model.js`): die
   reservierte Zeit, die noch nicht erledigt ist — an künftigen Tagen die ganze Reservierung,
@@ -329,23 +330,30 @@ bietet sie nur an, wenn „Reservierungen verwenden“ an ist.
 - **Fähigkeit `sick_days`.** Nur wenn die Antwort sie nennt, sendet die PWA den Bereich `sick`, zeigt Krankheit an und
   bietet sie an; ohne sie löscht sie auch nie einen lokalen Datensatz (ein älterer Desktop kennt den Bereich nicht
   und ließe ihn fallen).
-- **Speicher in der Meta** (`sick`, `sick_capable`): kein IndexedDB-Upgrade.
+- **Speicher in der Meta** (`sick`, `sick_capable`): kein IndexedDB-Upgrade. Dafür teilen die Krankheitstage das
+  Schreiben der Meta als ganzer Datensatz (`setMeta`): ein veralteter zweiter Tab, der die Meta schreibt, schreibt auch
+  seinen Stand von `sick` zurück (offener Punkt unter „Mehrere Tabs (#277)“).
 - **Kein `minutes` auf dem Draht.** Die PWA sendet nur Tage. Die Minuten rechnet der Desktop: bei einem schon bekannten
   Tag behält er seine, sonst nimmt er die Reservierung (in dem Stand, den sie vor derselben Anfrage hatte), die Regel
   für Wochenende und Feiertag oder die synchronisierte Grundlage (`sick_hours_basis`).
 - **Reservierungen gehen im selben ersten Paket hinaus.** Das Häkchen bietet nur Tage an, die vorher kein Krankheitstag
-  waren; die Tombstones der gelöschten Reservierungen reisen mit der Krankheit in einer Anfrage, damit der Desktop nie
-  Krankheit ohne die Löschung sieht.
+  waren; die Tombstones der gelöschten Reservierungen reisen in der Regel mit der Krankheit in einer Anfrage. Zugesagt ist
+  die Reihenfolge: `markSick` speichert die Krankheit vor dem ersten Löschen, die Löschung einer Reservierung erreicht den
+  Desktop also nie vor der Krankheit. Läuft ein Abgleich genau dazwischen, kommt die Krankheit allein an und die Löschung
+  mit dem nächsten Abgleich; der Desktop rechnet die Minuten dann schon mit der noch lebenden Reservierung.
 - **Die Antwort gilt für gesendete Tage.** Der Desktop darf seinen unveränderten Datensatz behalten, der Stempel in der
   Antwort kann deshalb älter sein als der gesendete.
 - **Fehler** mit Präfix „Krankheit YYYY-MM-DD:“ ordnet die PWA dem Tag mit `dayKind 'sick'` zu.
-- **Version ab 1.** Vom Desktop stammende Reservierungen und Krankheitstage tragen `version` ≥ 1, ein nie
-  abgeglichener lokaler Datensatz 0. Deshalb sendet das Entfernen eines abgeglichenen Datensatzes einen Tombstone,
-  ein nie abgeglichener wird nur lokal verworfen.
+- **Version ab 1.** Vom Desktop stammende Reservierungen und Krankheitstage tragen `synced_version` ≥ 1, ein nie
+  abgeglichener lokaler Datensatz `synced_version` 0. Deshalb sendet das Entfernen eines abgeglichenen Datensatzes einen
+  Tombstone, ein nie abgeglichener wird nur lokal verworfen.
 - **Bekannte Grenze.** Geht die Antwort verloren, kann ein entfernter Tag einmal zurückkommen: `synced_version 0` beweist
   nicht, dass der Desktop ihn nie kannte. Erneutes Entfernen hält (`docs/known-limitations.md`).
 - **Außerhalb des Lesefensters gesperrt** wie die Arbeitszeit (#273), siehe „Krank melden“ unten.
 - **Kein Krankheitsdatum im Debug-Protokoll** (s. „Datenschutz“ unten).
+- **Ende-zu-Ende geprüft** in `tests/test_mobile_sick_e2e.py` über `tests/mobile_sick_probe.mjs`: die echte PWA-Logik gegen
+  `mobile_sync.perform_sync` (Melden mit Reservierung und Häkchen, zweiter Abgleich ohne Änderung, Entfernen des Blocks,
+  Desktop ohne Fähigkeit). `MAX_SICK_PER_REQUEST` (`store.js`) hält `tests/test_mobile_sick.py` gleich `MAX_SICK_DAYS`.
 
 ## Krankheitstage: Oberfläche
 
@@ -361,7 +369,9 @@ nichts davon (Woche, Sperre, Knopf), sendet nichts und löscht nichts (`markSick
   `test/contrast.test.js` misst die Fläche.
 - **Sperre.** `editLock` sperrt die Arbeitszeit an einem Krankheitstag vor allen anderen Regeln (auch mit gehaltenem Tag
   und außerhalb des Fensters): „An diesem Tag bist du krank gemeldet.“ mit dem Knopf „Krankheit entfernen“. Der fragt
-  nach (`sickRemovalText`) und ruft `clearSick` für den ganzen Block (`blockOf`).
+  nach (`sickRemovalText`) und ruft `clearSick` für den ganzen Block (`blockOf`), soweit das Handy ihn kennt
+  (`docs/known-limitations.md`). „Speichern“ der Arbeitszeit prüft die Sperre mit dem Stand von jetzt, nicht mit dem vom
+  Öffnen: ein Abgleich bei offenem Editor kann den Tag krank gemacht haben.
 - **Krank melden.** Der Knopf steht unter beiden Reitern des Tages-Editors, nur wenn `canReportSick` es erlaubt: mit
   Fähigkeit, nicht an einem Krankheitstag und nur im Fenster. Außerhalb ist Krankheit gesperrt wie die Arbeitszeit
   (#273), auch wenn das Handy den Ist-Tag hält. Der Dialog (`sickDialogModel`) fragt nur das Bis-Datum ab, höchstens
@@ -1157,7 +1167,8 @@ sonst könnte ein Dritter im WLAN einen Tag als abgelehnt markieren lassen).
 deshalb unter einer Web-Locks-Sperre (`navigator.locks`, Name `zeiterfassung-sync`) und lädt den Stand
 darunter frisch aus IndexedDB (`Store.load` tauscht die Maps atomar). Ohne Web Locks bleibt der alte
 Ablauf; Tests übergeben `locks` (`null` oder eine Attrappe), damit sie nicht von der Node-Version abhängen.
-Offen: andere Schreibwege eines veralteten Tabs (Tag speichern, Einstellungen) lesen den Stand weiter nur einmal.
+Offen: andere Schreibwege eines veralteten Tabs (Tag speichern, Einstellungen, Krankheit melden und entfernen) lesen den
+Stand weiter nur einmal.
 
 ## Veröffentlichung
 

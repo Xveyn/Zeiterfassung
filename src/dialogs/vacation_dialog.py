@@ -44,15 +44,6 @@ def sick_blocked_message(plan_days, sick_days, existing_days=None):
               "Krankheit im Urlaub trägst du als Krankheit ein.")
 
 
-def _format_hours(minutes: int) -> str:
-    """Minuten → Anzeigewert der Stundenfelder, deutsches Dezimalkomma.
-
-    Eine Schreibweise im ganzen Dialog: Sammelfeld und Tageszeilen sprechen
-    dasselbe Format, statt `str(8.0)` = „8.0" neben „8,00" zu stellen.
-    """
-    return f"{minutes / 60:.2f}".replace(".", ",")
-
-
 def _dominant_minutes(days: dict) -> int:
     """Der häufigste Nicht-Null-Tageswert einer Periode — die Rückrechnung
     des Sammelfelds beim Bearbeiten.
@@ -68,6 +59,16 @@ def _dominant_minutes(days: dict) -> int:
     if not counts:
         return 0
     return max(counts, key=lambda m: (counts[m], m))
+
+
+def format_hours(minutes: int) -> str:
+    """Minuten → Anzeigewert der Stundenfelder, deutsches Dezimalkomma; das
+    Gegenstück zu `parse_hours`, auch im Krankheits-Dialog.
+
+    Eine Schreibweise in beiden Dialogen: Sammelfeld und Tageszeilen sprechen
+    dasselbe Format, statt `str(8.0)` = „8.0" neben „8,00" zu stellen.
+    """
+    return f"{minutes / 60:.2f}".replace(".", ",")
 
 
 def parse_hours(text):
@@ -376,7 +377,7 @@ def _open_edit_dialog(parent, vacation_store, settings, period_id, on_saved,
     # Settings: sonst zeigte der Dialog einem Urlaub mit 6 h/Tag ein „8,0",
     # und die erste Änderung schriebe stillschweigend 8 h in alle Tage.
     mode_var = tk.StringVar(value="per_day")
-    value_var = tk.StringVar(value=_format_hours(
+    value_var = tk.StringVar(value=format_hours(
         _dominant_minutes(existing["days"]) if existing
         else _hours_to_minutes_exact(settings.get("vacation_hours_per_day") or 8.0)
     ))
@@ -463,7 +464,7 @@ def _open_edit_dialog(parent, vacation_store, settings, period_id, on_saved,
             row.pack(anchor="w", pady=1)
             tk.Label(row, text=format_iso_weekday_date(day), font=FONT_SMALL,
                      bg=BG, fg=TEXT, width=24, anchor="w").pack(side=tk.LEFT)
-            var = tk.StringVar(value=_format_hours(days[day]))
+            var = tk.StringVar(value=format_hours(days[day]))
             day_vars[day] = var
             dark_entry(row, var, width=6).pack(side=tk.LEFT)
             holiday_name = holidays.get(datetime.date.fromisoformat(day))

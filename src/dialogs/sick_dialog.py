@@ -14,7 +14,7 @@ from tkinter import messagebox
 from src.absence import format_day_list
 from src.dialogs.date_row import build_date_row
 from src.dialogs.vacation_dialog import (
-    _format_hours, parse_hours, prune_overrides,
+    format_hours, parse_hours, prune_overrides,
 )
 from src.holidays_de import get_holidays
 from src.reservations import reservations_active
@@ -210,7 +210,7 @@ def open_sick_dialog(parent, *, sick_store, storage, settings,
             row.pack(anchor="w", pady=1)
             tk.Label(row, text=format_iso_weekday_date(day), font=FONT_SMALL,
                      bg=BG, fg=TEXT, width=24, anchor="w").pack(side=tk.LEFT)
-            var = tk.StringVar(value=_format_hours(days[day]))
+            var = tk.StringVar(value=format_hours(days[day]))
             day_vars[day] = var
             dark_entry(row, var, width=6).pack(side=tk.LEFT)
             name = holidays.get(datetime.date.fromisoformat(day))

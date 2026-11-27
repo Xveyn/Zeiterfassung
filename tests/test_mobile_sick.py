@@ -1,5 +1,7 @@
 # tests/test_mobile_sick.py
 import datetime
+import pathlib
+import re
 
 import pytest
 
@@ -62,6 +64,14 @@ def test_more_than_the_limit_is_rejected():
     assert str(MAX_SICK_DAYS) in rejected(days)
     days.popitem()
     assert len(parse(days)) == MAX_SICK_DAYS
+
+
+def test_the_phone_sends_exactly_as_many_sick_days_as_the_desktop_accepts():
+    # Mehr lehnte der Desktop als ganze Anfrage ab, weniger ließe nicht übertragene Tage länger liegen.
+    store = pathlib.Path(__file__).resolve().parent.parent / "pwa" / "store.js"
+    match = re.search(r"^const MAX_SICK_PER_REQUEST = (\d+);", store.read_text(encoding="utf-8"), re.MULTILINE)
+    assert match is not None, "Parser gescheitert: MAX_SICK_PER_REQUEST fehlt in pwa/store.js"
+    assert int(match.group(1)) == MAX_SICK_DAYS
 
 
 @pytest.mark.parametrize("minutes", [-1, 1441, 480.0, "480", True, None, [480]])

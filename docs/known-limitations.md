@@ -883,6 +883,11 @@ Die Slots eines Tages stehen chronologisch, nach Kategorie oder in einer eigenen
 - **Nach einer verlorenen Antwort kann ein am Handy entfernter Krankheitstag einmal zurückkommen.** Die Web-App verwirft
   einen nie abgeglichenen Tag nur lokal; `synced_version 0` beweist aber nicht, dass der Desktop ihn nie kannte, wenn
   die Antwort auf den Abgleich verloren ging. Erneutes Entfernen hält.
+- **„Krankheit entfernen“ in der Web-App entfernt nur die Tage, die das Handy kennt.** Das Handy hält Krankheitstage nur
+  in seinem Lesefenster (standardmäßig die letzten 90 Tage, dazu 14 Tage voraus). Beginnt ein Block vor dem Fenster
+  (oder endet er dahinter), entfernt das Handy nur den Teil darin; die Tage davor bzw. danach bleiben am Desktop krank
+  gemeldet. Die Rückfrage am Handy nennt genau die Tage, die es entfernt; den Rest löscht der Desktop (Rechtsklick auf
+  den Block).
 - **Das Bis-Datum von „Krank melden“ in der Web-App ist auf iOS ungeprüft.** Der Dialog nutzt ein natives
   `<input type="date">`; Safari zeichnet solche Felder mit eigener Breite (bei der Zeitauswahl führte das zu #511). Das
   Feld steht allein in voller Breite, Überlappen ist daher unwahrscheinlich. Zu prüfen im Pre-Release auf einem

@@ -1,6 +1,9 @@
 """Tk-freie Planungslogik des Urlaubs-Dialogs (M16: Verhalten gehört in pure
 Funktionen, nicht ins Widget)."""
 
+import ast
+import pathlib
+
 import pytest
 
 from src.dialogs.vacation_dialog import (
@@ -105,10 +108,21 @@ def test_dominant_minutes_breaks_ties_deterministically():
 
 
 def test_format_hours_uses_german_decimal_comma():
-    from src.dialogs.vacation_dialog import _format_hours
-    assert _format_hours(480) == "8,00"
-    assert _format_hours(390) == "6,50"
-    assert _format_hours(0) == "0,00"
+    from src.dialogs.vacation_dialog import format_hours
+    assert format_hours(480) == "8,00"
+    assert format_hours(390) == "6,50"
+    assert format_hours(0) == "0,00"
+
+
+def test_the_sick_dialog_imports_only_public_names_from_the_vacation_dialog():
+    # Beide Dialoge teilen das Format der Stundenfelder; ein privater Name wäre eine Abhängigkeit, die niemand sieht.
+    source = pathlib.Path(__file__).resolve().parent.parent / "src" / "dialogs" / "sick_dialog.py"
+    tree = ast.parse(source.read_text(encoding="utf-8"))
+    names = [alias.name for node in ast.walk(tree)
+             if isinstance(node, ast.ImportFrom) and node.module == "src.dialogs.vacation_dialog"
+             for alias in node.names]
+    assert "format_hours" in names
+    assert [name for name in names if name.startswith("_")] == []
 
 
 # ---------------------------------------------------------- format_day_list

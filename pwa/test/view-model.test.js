@@ -1481,7 +1481,7 @@ test('reservations stay plain text, a conflict version shows the note as its own
 
 // --- Krankheitstage ------------------------------------------------------------------------------
 
-import { SICK_RESERVATION_TEXT, SICK_RESERVATION_TEXT_NEW_DAYS, canReportSick, sickDialogModel, sickLabel, sickRemovalText, sickSaveResult } from '../view-model.js';
+import { SICK_RESERVATION_TEXT, SICK_RESERVATION_TEXT_NEW_DAYS, canReportSick, editorStartTab, sickDialogModel, sickLabel, sickRemovalText, sickSaveResult } from '../view-model.js';
 
 const SICK_TODAY = '2026-10-08';
 const sickRecord = (minutes, over = {}) => ({ minutes, modified_at: '2026-10-07T20:00:00Z', deleted: false,
@@ -1554,6 +1554,19 @@ test('a sick day locks the actual time with a way to remove the sickness', () =>
   // auch mit gehaltenem Tag (Ist-Zeit am Krankheitstag) und vor dem Fenster, wenn das Handy den Krankheitstag hält
   assert.equal(editLock({ date: '2026-10-05', today: SICK_TODAY, meta: sickMeta({ '2026-10-05': sickRecord(450) }), hasRecord: true }).kind, 'sick');
   assert.equal(editLock({ date: '2026-05-04', today: SICK_TODAY, meta: sickMeta({ '2026-05-04': sickRecord(null) }) }).kind, 'sick');
+});
+
+test('a future sick day opens the editor on the actual time, where „Krankheit entfernen“ stands', () => {
+  const lockOn = (date) => editLock({ date, today: SICK_TODAY, meta: sickMeta({ '2026-10-09': sickRecord(450) }) });
+  assert.equal(editorStartTab({ date: '2026-10-09', today: SICK_TODAY, reservationOn: true, lock: lockOn('2026-10-09') }), 'work');
+  // sonst wie bisher: nach heute bei der Reservierung, heute und ohne Reservierungen bei der Arbeitszeit
+  assert.equal(editorStartTab({ date: '2026-10-10', today: SICK_TODAY, reservationOn: true, lock: lockOn('2026-10-10') }), 'reservation');
+  assert.equal(editorStartTab({ date: SICK_TODAY, today: SICK_TODAY, reservationOn: true, lock: null }), 'work');
+  assert.equal(editorStartTab({ date: '2026-10-09', today: SICK_TODAY, reservationOn: false, lock: lockOn('2026-10-09') }), 'work');
+  // Eine andere Sperre der Arbeitszeit (zu weit voraus) lässt die Reservierung vorn: nur dort lässt sich etwas tun.
+  const future = editLock({ date: '2026-10-30', today: SICK_TODAY, meta: sickMeta() });
+  assert.equal(future.kind, 'future');
+  assert.equal(editorStartTab({ date: '2026-10-30', today: SICK_TODAY, reservationOn: true, lock: future }), 'reservation');
 });
 
 test('a tombstone, another day or a desktop without the capability does not lock as sick', () => {
