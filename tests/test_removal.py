@@ -288,7 +288,10 @@ def _installer():
 
 
 def test_credential_files_match_installer():
-    names = set(re.findall(r'Type: files; Name: "\{app\}\\([^"*]+)"', _installer()))
+    # Nur [UninstallDelete]: [InstallDelete] räumt beim Upgrade Programmdateien ab.
+    section = re.search(r"^\[UninstallDelete\]$(.*?)(?=^\[|\Z)", _installer(), re.M | re.S)
+    assert section, "[UninstallDelete] fehlt"
+    names = set(re.findall(r'Type: files; Name: "\{app\}\\([^"*]+)"', section.group(1)))
     assert names == set(removal.CREDENTIAL_FILES)
 
 

@@ -263,7 +263,8 @@ Abschnitt 3.
   `src/theme/`, `src/tray/`,
   `src/desktop_entry.py` und Tests. Rein kosmetisch; falls umbenennen, dann als
   eigener PR, nicht nebenbei. Die Linux-`.desktop`-Seite ist bereits neutral
-  (`icon.png` / `Zeiterfassung.desktop`).
+  (`icon.png` / `Zeiterfassung.desktop`). **Erledigt:** heute `assets/app-icon.*`,
+  erzeugt aus `assets/app-icon.svg`.
 
 ---
 
@@ -282,6 +283,7 @@ Abschnitt 3.
 
 `AppPublisher=Margenheld` in `installer.iss:4` steht bewusst noch so da — reine
 Anzeige in „Apps & Features", Änderung gefahrlos, aber nicht Teil des Umzugs.
+**Erledigt:** heute `AppPublisher=Xveyn`.
 
 ---
 

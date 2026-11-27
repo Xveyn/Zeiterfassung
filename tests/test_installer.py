@@ -29,8 +29,10 @@ def _text():
 def _section(name):
     """Inhalt eines .iss-Abschnitts ohne dessen Kopfzeile."""
     body = _text()
-    start = body.index(f"[{name}]") + len(name) + 2
-    rest = body[start:]
+    # Nur die Kopfzeile selbst: Kommentare nennen Abschnitte auch im Fließtext.
+    header = re.search(rf"^\[{name}\]$", body, re.MULTILINE)
+    assert header, f"[{name}] fehlt"
+    rest = body[header.end() + 1:]
     nxt = re.search(r"^\[[A-Za-z]+\]", rest, re.MULTILINE)
     return rest[: nxt.start()] if nxt else rest
 
@@ -127,3 +129,26 @@ class TestPascalSyntax:
         .iss-Abschnitte kommentieren mit `;`."""
         for line in _section("Code").splitlines():
             assert not line.strip().startswith(";"), line
+
+
+class TestAppIcon:
+    """Setup, Verknüpfungen und „Apps & Features“ zeigen das App-Icon; ob Inno die
+    Dateien wirklich findet, zeigt erst der Workflow Build mit `installer`-Häkchen."""
+
+    def test_setup_and_shortcuts_use_the_app_icon(self):
+        assert re.search(r"^SetupIconFile=assets\\app-icon\.ico$", _text(), re.MULTILINE)
+        files = _section("Files")
+        assert 'Source: "assets\\app-icon.ico"' in files
+        assert 'Source: "assets\\app-icon.png"' in files
+        icons = re.findall(r'IconFilename: "([^"]+)"', _section("Icons"))
+        assert icons and set(icons) == {"{app}\\assets\\app-icon.ico"}
+
+    def test_upgrade_removes_old_icon_files(self):
+        """Ein Upgrade entfernt keine Datei, die das Setup nicht mehr ausliefert."""
+        body = _section("InstallDelete")
+        assert "{app}\\assets\\margenheld-icon.ico" in body
+        assert "{app}\\assets\\margenheld-icon.png" in body
+        assert "*" not in body
+
+    def test_publisher_is_the_project(self):
+        assert re.search(r"^AppPublisher=Xveyn$", _text(), re.MULTILINE)
