@@ -9,7 +9,7 @@ aktuelle Oberfläche zeigt oder eine drei Releases alte.
 
 | Datei | Motiv |
 |-------|-------|
-| `kalender-v1.30.0.png` | Monatsansicht (Hero-Bild) mit Urlaub, violettem Punkt (Reservierung) und bernsteinfarbenem Punkt (Sende-Erinnerung) |
+| `kalender-v--VERSION--.png` | Monatsansicht (Hero-Bild) mit Krankheitstagen (Mi–Fr), Urlaub, violettem Punkt (Reservierung) und bernsteinfarbenem Punkt (Sende-Erinnerung) |
 | `tagesdialog-v--VERSION--.png` | Tages-Dialog: Ist-Zeit mit Notiz unter dem Slot, Reservierung, Erinnerung |
 | `senden-v1.30.0.png` | Sende-Dialog mit Zeitraum- und Kategoriewahl, „Nach Kategorie“ und „Nach Notiz aufschlüsseln“ angehakt |
 | `bericht-v1.30.0.png` | Erzeugter PDF-Bericht, Seite 1 (Notizen in der Kategorie-Spalte) |
@@ -39,8 +39,8 @@ nach; `--check` hält den Release-PR an, solange ein Platzhalter übrig ist.
 
 Aufgenommen wird mit **Demo-Daten**, nie mit echten Nutzerdaten. Die legt
 `scripts/demo_data.py` an — Max Mustermann, zwei Monate Arbeitszeit relativ
-zu heute, Reservierungen, ein Urlaub im laufenden Monat, SMTP-Konten und
-Webhooks, Adressen nur aus den Beispiel-Domains (`…@example.com`):
+zu heute, Reservierungen, eine Folge Krankheitstage (Mi–Fr) und ein Urlaub im
+laufenden Monat, SMTP-Konten und Webhooks, Adressen nur aus den Beispiel-Domains (`…@example.com`):
 
 ```
 python scripts/demo_data.py          # in den Datenordner des Repo-Modus
