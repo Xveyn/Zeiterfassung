@@ -43,7 +43,7 @@ CREDENTIAL_FILES: tuple[str, ...] = (
     "mobile_relay.json", "mobile_box.json", "mobile_box_cursor.json",
 )
 USER_DATA_FILES: tuple[str, ...] = (
-    "zeiterfassung.json", "reservations.json", "vacations.json",
+    "zeiterfassung.json", "reservations.json", "vacations.json", "sick.json",
     "conflicts.json", "sync_history.json", "sync-apply.journal",
 )
 SETTINGS_FILE = "settings.json"

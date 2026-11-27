@@ -93,7 +93,7 @@ class App:
                  data_lock=None, sync_guard=None, webhook_store=None,
                  vacation_store=None, smtp_store=None, mobile_store=None, mobile_keys=None,
                  mobile_relay_store=None, mobile_box_store=None,
-                 mobile_box_cursor=None):
+                 mobile_box_cursor=None, sick_store=None):
         self.root = root
         self.storage = storage
         self.settings = settings
@@ -102,6 +102,7 @@ class App:
         self.conflicts_store = conflicts_store
         self.reservation_store = reservation_store
         self.vacation_store = vacation_store
+        self.sick_store = sick_store
         self._data_lock = data_lock      # geteilter Store-RLock (Audit H1)
         self._sync_guard = sync_guard    # Sync-Re-Entrancy-Guard (Audit H2)
         self._removal = removal.RemovalState()   # „Zeiterfassung entfernen“ (#50)
@@ -140,7 +141,7 @@ class App:
         self._sync = SyncOrchestrator(
             self.root, self.storage, self.settings, self.conflicts_store,
             self.base_path, self._bg, self._refresh, lambda: self._tray,
-            data_lock=data_lock, sync_guard=sync_guard,
+            data_lock=data_lock, sync_guard=sync_guard, sick_store=sick_store,
         )
         # Lokale HTTP-API (#92): Lebenszyklus samt Token-Laden im Worker. Der
         # Dienst startet nur bei `api_enabled`; lesende Routen halten keinen
@@ -694,6 +695,7 @@ class App:
             api_service=self._api,
             mobile_service=self._mobile,
             relay_service=self._relay,
+            sick_store=self.sick_store,
             initial_tab=initial_tab,
             auto_updater=self._updates.auto_updater,
             on_request_removal=self.remove_application,

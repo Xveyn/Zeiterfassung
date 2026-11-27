@@ -246,3 +246,71 @@ def test_sweep_drops_sick_tombstones_only_when_never_synced(tmp_path, stamp):
     assert drop_orphan_tombstones(storage, settings, sick_store=sick) == 2
     assert sick.get_all_raw() == {"2026-03-02": _rec(480, T1, "A")}
     assert "2026-03-04" not in storage.get_all_raw()
+
+
+# --- Sync-Flows (Drive gefälscht) -------------------------------------------
+
+
+def _fake_drive(monkeypatch, remote_doc):
+    import json
+    from src import drive
+    uploaded = {}
+    monkeypatch.setattr(drive, "get_drive_service", lambda *a, **k: object())
+    monkeypatch.setattr(drive, "find_sync_file", lambda service: "file-1")
+    monkeypatch.setattr(drive, "download",
+                        lambda service, fid: (json.dumps(remote_doc).encode(), "etag"))
+
+    def upload(service, content, file_id):
+        uploaded["doc"] = json.loads(content)
+        return "file-1", "etag-new"
+    monkeypatch.setattr(drive, "upload", upload)
+    return uploaded
+
+
+def _remote_without_sick():
+    return {"schema_version": 4, "entries": {}, "settings": {}, "conflicts": [],
+            "meta": {"gc_watermark": ""}}
+
+
+def test_push_uploads_sick_section(tmp_path, stamp, monkeypatch):
+    from src import sync_runtime
+    storage, settings, conflicts, sick = _stores(tmp_path)
+    sick.save_range({"2026-03-02": 480})
+    uploaded = _fake_drive(monkeypatch, _remote_without_sick())
+
+    res = sync_runtime.run_push_blocking(
+        storage, settings, conflicts, str(tmp_path), sick_store=sick)
+
+    assert res["ok"] is True
+    assert uploaded["doc"]["sick"] == {"2026-03-02": _rec(480, T1, "A")}
+    assert sick.day_minutes() == {"2026-03-02": 480}
+
+
+def test_pull_keeps_local_sick_days_when_remote_has_no_section(tmp_path, stamp, monkeypatch):
+    from src import sync_runtime
+    storage, settings, conflicts, sick = _stores(tmp_path)
+    sick.save_range({"2026-03-02": 480})
+    _fake_drive(monkeypatch, _remote_without_sick())
+    done = {}
+
+    sync_runtime.run_pull_in_background(
+        storage, settings, conflicts, str(tmp_path),
+        lambda **kw: done.update(kw), sick_store=sick)
+
+    assert done["ok"] is True
+    assert sick.day_minutes() == {"2026-03-02": 480}
+
+
+def test_compaction_strips_settled_sick_tombstones_end_to_end(tmp_path, stamp, monkeypatch):
+    from src import sync_runtime
+    storage, settings, conflicts, sick = _stores(tmp_path)
+    sick.save_range({"2026-03-02": 480, "2026-03-03": 480})
+    sick.delete_days(["2026-03-03"])
+    uploaded = _fake_drive(monkeypatch, _remote_without_sick())
+
+    res = sync_runtime.run_compaction_blocking(
+        storage, settings, conflicts, str(tmp_path), sick_store=sick)
+
+    assert res["ok"] is True
+    assert uploaded["doc"]["sick"] == {"2026-03-02": _rec(480, T1, "A")}
+    assert sick.get_all_raw() == {"2026-03-02": _rec(480, T1, "A")}

@@ -59,9 +59,9 @@ def test_pull_holds_data_lock_during_apply_and_releases_guard(tmp_path, monkeypa
     held = []
     orig = sync.apply_merged_doc
 
-    def spy(merged, storage_, settings_, conflicts_):
+    def spy(merged, storage_, settings_, conflicts_, **kw):
         held.append(not _other_thread_can_acquire(lock))
-        return orig(merged, storage_, settings_, conflicts_)
+        return orig(merged, storage_, settings_, conflicts_, **kw)
 
     monkeypatch.setattr(sync, "apply_merged_doc", spy)
     calls = []
@@ -112,9 +112,9 @@ def test_push_holds_data_lock_during_apply(tmp_path, monkeypatch):
     held = []
     orig = sync.apply_merged_doc
 
-    def spy(merged, storage_, settings_, conflicts_):
+    def spy(merged, storage_, settings_, conflicts_, **kw):
         held.append(not _other_thread_can_acquire(lock))
-        return orig(merged, storage_, settings_, conflicts_)
+        return orig(merged, storage_, settings_, conflicts_, **kw)
 
     monkeypatch.setattr(sync, "apply_merged_doc", spy)
     res = sync_runtime.run_push_blocking(
@@ -210,9 +210,9 @@ def test_compaction_holds_data_lock_during_compact(tmp_path, monkeypatch):
     held = []
     orig = sync.compact_local
 
-    def spy(storage_, settings_, conflicts_, now):
+    def spy(storage_, settings_, conflicts_, now, **kw):
         held.append(not _other_thread_can_acquire(lock))
-        return orig(storage_, settings_, conflicts_, now)
+        return orig(storage_, settings_, conflicts_, now, **kw)
 
     monkeypatch.setattr(sync, "compact_local", spy)
     res = sync_runtime.run_compaction_blocking(

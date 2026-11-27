@@ -93,7 +93,7 @@ def _lock_ctx(lock):
 
 
 def run_pull_in_background(storage, settings, conflicts_store, base, ui_callback,
-                            data_lock=None, sync_guard=None):
+                            data_lock=None, sync_guard=None, sick_store=None):
     """Pull läuft in einem Thread; UI-Update über ui_callback (root.after).
 
     sync_guard (plain Lock, Re-Entrancy-Guard, Audit H2): läuft bereits ein
@@ -157,11 +157,13 @@ def run_pull_in_background(storage, settings, conflicts_store, base, ui_callback
             # Snapshot→Merge→Apply atomar: kein UI-Save kann zwischen
             # build_local_doc und apply_merged_doc interleaven (Audit H1).
             with _lock_ctx(data_lock):
-                local_doc = sync.build_local_doc(storage, settings, conflicts_store)
+                local_doc = sync.build_local_doc(storage, settings, conflicts_store,
+                                                 sick_store=sick_store)
                 merged = sync.merge(local_doc, remote_doc, settings.get("last_pull_at") or "")
                 sync_journal.apply_merged_doc_journaled(
                     merged, storage, settings, conflicts_store,
-                    os.path.join(base, sync_journal.JOURNAL_FILENAME))
+                    os.path.join(base, sync_journal.JOURNAL_FILENAME),
+                    sick_store=sick_store)
                 settings.set_many({
                     "last_pull_at": utc_now_iso(),
                     "drive_etag": etag,
@@ -179,7 +181,8 @@ def run_pull_in_background(storage, settings, conflicts_store, base, ui_callback
 
 
 def run_push_blocking(storage, settings, conflicts_store, base, timeout_seconds=5,
-                       data_lock=None, sync_guard=None, guard_timeout=0):
+                       data_lock=None, sync_guard=None, guard_timeout=0,
+                       sick_store=None):
     """Synchroner Push mit Timeout. Fehler werden geloggt, nicht angezeigt
     (App schließt gerade).
 
@@ -250,12 +253,15 @@ def run_push_blocking(storage, settings, conflicts_store, base, timeout_seconds=
                 # Snapshot→Merge→Apply→Upload-Snapshot atomar (Audit H1);
                 # der Upload danach läuft bewusst ungelockt.
                 with _lock_ctx(data_lock):
-                    local_doc = sync.build_local_doc(storage, settings, conflicts_store)
+                    local_doc = sync.build_local_doc(storage, settings, conflicts_store,
+                                                     sick_store=sick_store)
                     merged = sync.merge(local_doc, remote_doc, settings.get("last_pull_at") or "")
                     sync_journal.apply_merged_doc_journaled(
                         merged, storage, settings, conflicts_store,
-                        os.path.join(base, sync_journal.JOURNAL_FILENAME))
-                    doc = sync.build_local_doc(storage, settings, conflicts_store)
+                        os.path.join(base, sync_journal.JOURNAL_FILENAME),
+                        sick_store=sick_store)
+                    doc = sync.build_local_doc(storage, settings, conflicts_store,
+                                               sick_store=sick_store)
                     content = json.dumps(doc, ensure_ascii=False).encode("utf-8")
                 new_id, new_etag = drive.upload(service, content, file_id)
                 settings.set_many({
@@ -283,7 +289,7 @@ def run_push_blocking(storage, settings, conflicts_store, base, timeout_seconds=
 
 
 def run_compaction_blocking(storage, settings, conflicts_store, base, timeout_seconds=20,
-                             data_lock=None, sync_guard=None):
+                             data_lock=None, sync_guard=None, sick_store=None):
     """User-ausgelöste Kompaktierung: frischer Pull → Alt-Client-Guard → Merge →
     Watermark setzen + lokal strippen → Push. Liefert
     {"ok": bool, "reason": str, "error": ..., "tb": ...}.
@@ -347,16 +353,20 @@ def run_compaction_blocking(storage, settings, conflicts_store, base, timeout_se
                 # (Audit H1); der Upload danach läuft bewusst ungelockt.
                 with _lock_ctx(data_lock):
                     # 1) normaler Merge des frischen Remote-Stands
-                    local_doc = sync.build_local_doc(storage, settings, conflicts_store)
+                    local_doc = sync.build_local_doc(storage, settings, conflicts_store,
+                                                     sick_store=sick_store)
                     merged = sync.merge(local_doc, remote_doc, settings.get("last_pull_at") or "")
                     sync_journal.apply_merged_doc_journaled(
                         merged, storage, settings, conflicts_store,
-                        os.path.join(base, sync_journal.JOURNAL_FILENAME))
+                        os.path.join(base, sync_journal.JOURNAL_FILENAME),
+                        sick_store=sick_store)
                     settings.set("last_pull_at", now)
                     # 2) Watermark setzen + lokal strippen
-                    sync.compact_local(storage, settings, conflicts_store, now)
+                    sync.compact_local(storage, settings, conflicts_store, now,
+                                       sick_store=sick_store)
                     # 3) kompaktiertes Doc für den Upload snapshotten
-                    doc = sync.build_local_doc(storage, settings, conflicts_store)
+                    doc = sync.build_local_doc(storage, settings, conflicts_store,
+                                               sick_store=sick_store)
                     payload = json.dumps(doc, ensure_ascii=False).encode("utf-8")
                 new_id, new_etag = drive.upload(service, payload, file_id)
                 settings.set("drive_etag", new_etag)

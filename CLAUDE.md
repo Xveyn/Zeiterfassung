@@ -1616,6 +1616,16 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
   serverseitig gar nicht erst sieht. `purge_vacation_events` ist der Weg
   zurück: alle App-Urlaubs-Events löschen und die `gcal_event_id` lokal
   leeren, wenn `vacation_gcal_enabled` abgeschaltet wird
+- `src/sick_days.py` — Krankheitstage (`sick.json`, `SickStore` am geteilten
+  `data_lock`): je Kalendertag ein Datensatz `{minutes, modified_at, device_id,
+  deleted}`, ein Block ist nur die Ableitung aus lückenlosen lebenden Tagen.
+  Reist additiv als Bereich `sick` im Sync-Doc (kein Schema-Bump), steht **nie**
+  im Share-Doc oder im Google-Kalender. Gesundheitsdaten: Logs nennen höchstens
+  Anzahlen
+- `src/sick_plan.py` — Planung der Krankheitstage, Tk-frei und ohne I/O:
+  Grundlage der Stunden (`sick_hours_basis`: Standardzeit des Wochentags oder
+  Durchschnitt der letzten drei Monate), Vorbelegung, Sperren gegen Ist-Zeit und
+  Reservierung, Hinweise (Sechs-Wochen-Grenze, Vorschlag, Attest)
 - `src/dialogs/vacation_dialog.py` — Verwaltung der Perioden (Einstieg:
   Einstellungen → Arbeitszeit → „Urlaub verwalten"). Die Entscheidungen des
   Bearbeiten-Dialogs sind Tk-frei und getestet: `prune_overrides` (welche

@@ -203,7 +203,8 @@ class SyncOrchestrator:
     lazy über get_tray gelesen (einzige Quelle bleibt App._tray)."""
 
     def __init__(self, root, storage, settings, conflicts_store, base_path,
-                 runner, on_refresh, get_tray, data_lock=None, sync_guard=None):
+                 runner, on_refresh, get_tray, data_lock=None, sync_guard=None,
+                 sick_store=None):
         self._root = root
         self._storage = storage
         self._settings = settings
@@ -214,6 +215,7 @@ class SyncOrchestrator:
         self._get_tray = get_tray        # lambda: App._tray
         self._data_lock = data_lock      # geteilter Store-RLock (Audit H1)
         self._sync_guard = sync_guard    # Sync-Re-Entrancy-Guard (Audit H2)
+        self._sick_store = sick_store    # Krankheitstage im Sync-Doc
         self._sync_button = None
         self._status_label = None
         self._next_button = None
@@ -282,7 +284,7 @@ class SyncOrchestrator:
             self._storage, self._settings, self._conflicts_store,
             self._base_path, timeout_seconds=timeout_seconds,
             data_lock=self._data_lock, sync_guard=self._sync_guard,
-            guard_timeout=guard_timeout,
+            guard_timeout=guard_timeout, sick_store=self._sick_store,
         )
 
     def on_pull_success(self):

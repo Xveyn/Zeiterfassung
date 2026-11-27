@@ -12,6 +12,7 @@ settings.json
 conflicts.json
 reservations.json*
 vacations.json*
+sick.json*
 sync_history.json
 sync-apply.journal
 instance-secret

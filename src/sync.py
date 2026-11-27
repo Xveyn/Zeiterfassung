@@ -42,9 +42,9 @@ Bereich oder Datensatz wird verworfen, nicht das Doc.
 
 Ein fehlender Krankheitstag heißt **nie „gelöscht“**: ältere Clients lassen den
 Bereich beim Push fallen, und ein neueres Gerät lädt danach nur die Tage hoch,
-die es kennt. Anders als bei den Einträgen gibt es deshalb kein Self-Heal
-(Regel 2). Der Preis: ein gelöschter Krankheitstag, dessen Tombstone kompaktiert
-wurde, kann von einem Gerät zurückkommen, das über die Kompaktierung hinweg
+die es kennt. Anders als bei den Einträgen gibt es deshalb keinen Self-Heal
+für zurückkehrende Geräte. Der Preis: ein gelöschter Krankheitstag, dessen
+Tombstone kompaktiert wurde, kann von einem Gerät zurückkommen, das über die Kompaktierung hinweg
 offline war.
 """
 

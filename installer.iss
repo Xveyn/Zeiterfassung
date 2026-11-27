@@ -169,6 +169,7 @@ begin
   DeleteMatching('zeiterfassung.json.corrupt-*');
   DeleteMatching('reservations.json.corrupt-*');
   DeleteMatching('vacations.json.corrupt-*');
+  DeleteMatching('sick.json.corrupt-*');
   DeleteMatching('settings.json.corrupt-*');
   DeleteMatching('conflicts.json.corrupt-*');
   DeleteMatching('sync_history.json.corrupt-*');
@@ -176,6 +177,7 @@ begin
   DeleteFile(ExpandConstant('{app}\zeiterfassung.json'));
   DeleteFile(ExpandConstant('{app}\reservations.json'));
   DeleteFile(ExpandConstant('{app}\vacations.json'));
+  DeleteFile(ExpandConstant('{app}\sick.json'));
   DeleteFile(ExpandConstant('{app}\settings.json'));
   DeleteFile(ExpandConstant('{app}\conflicts.json'));
   DeleteFile(ExpandConstant('{app}\sync_history.json'));

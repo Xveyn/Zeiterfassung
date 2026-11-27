@@ -28,7 +28,7 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
                          vacation_store=None, on_vacation_change=None,
                          on_vacation_display_change=None, initial_tab=None,
                          on_request_removal=None, api_service=None,
-                         mobile_service=None, relay_service=None):
+                         mobile_service=None, relay_service=None, sick_store=None):
     """Modaler Dialog zum Bearbeiten der App-Einstellungen, aufgeteilt auf acht
     Tabs (Arbeitszeit / Erinnerungen / Versand / Google / API / Mobil / App / Updates).
 
@@ -62,6 +62,8 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     keinen Tab „Mobil".
     relay_service: der `relay_service.RelayService` der App (#358); ohne ihn fehlt im Tab
     „Mobil" der Knopf „Über Relay koppeln".
+    sick_store: der `SickStore` der App; die Kompaktierung im Google-Tab räumt damit
+    auch erledigte Krankheits-Tombstones ab.
     """
     dialog = create_dialog(parent, "Einstellungen", escape_closes=False)
 
@@ -87,7 +89,8 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
                          smtp_store, runner, parent)
     google = GoogleTab(
         frames["google"], dialog, settings, base_path, on_change, runner,
-        storage, conflicts_store, reservation_store, data_lock, sync_guard)
+        storage, conflicts_store, reservation_store, data_lock, sync_guard,
+        sick_store=sick_store)
     api = None
     if api_service is not None:
         api = ApiTab(frames["api"], dialog, settings, api_service, runner)

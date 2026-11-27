@@ -217,8 +217,8 @@ liefert `None`, wenn sich nicht ermitteln ließ, ob ein Passwort existiert
 `share_task`, `smtp_dialog.do_test`) melden das als eigenen Fehlerfall statt
 sich mit leerem Passwort anzumelden.
 
-**Datenschicht-Locking (Audit H1/H2/M1):** Fünf Stores
-(`storage`/`settings`/`conflicts_store`/`reservations`/`vacations`) teilen
+**Datenschicht-Locking (Audit H1/H2/M1):** Sechs Stores
+(`storage`/`settings`/`conflicts_store`/`reservations`/`vacations`/`sick`) teilen
 sich einen in `main()` erzeugten `RLock` (Konstruktor-Param `lock=`; ohne
 Injektion legt jeder Store einen eigenen an — Tests bleiben unverändert); alle übrigen
 (`webhook_store`, `smtp_store` und die gerätelokalen `mobile_*`-Stores: Geräte, Schlüssel,
@@ -638,6 +638,19 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
   beides gleich). Ein anders gestempelter Eintrag ohne `notes` ist ein späterer Schreibvorgang und erbt
   nicht. Ein Tombstone wird nie ergänzt und gewinnt oder verliert nach LWW; Kompaktierung und
   Startup-Sweep sehen nur `deleted` und entfernen ihn samt Markierung (Grenze: `docs/known-limitations.md`).
+
+  **Krankheitstage** liegen in `sick.json` (`SickStore`, am geteilten `data_lock`) und reisen als
+  additiver Bereich `sick` im Sync-Doc (kein Schema-Bump; er fehlt, solange kein Gerät einen Tag oder
+  Tombstone hat). Je Tag gewinnt der neuere Datensatz, Konflikte gibt es nicht. Dieselben Wege räumen
+  ihre Tombstones ab: die Kompaktierung strippt erledigte (`compact_local`), der Startup-Sweep verwirft
+  sie auf nie gesyncten Geräten (`drop_orphan_tombstones`). **Anders als bei den Einträgen gibt es
+  keinen Self-Heal:** ein fehlender Tag beweist keine Löschung, weil ältere Geräte den Bereich beim
+  Push fallen lassen. Der akzeptierte Preis: ein gelöschter Tag, dessen Tombstone kompaktiert wurde,
+  kann von einem Gerät zurückkommen, das über die Kompaktierung hinweg offline war. Jeder Flow, der ein
+  lokales Doc baut **und** ein gemergtes anwendet (Pull, Push, Kompaktierung), reicht `sick_store` an
+  `build_local_doc` **und** an `apply_merged_doc_journaled` weiter: bekäme nur das Anwenden den Store,
+  fehlten dem Merge die lokalen Tage, und das Anwenden überschriebe sie. Das Journal-Recovery wendet
+  nur an und bekommt den Store ebenfalls. Logs nennen höchstens Anzahlen, nie Datum oder Minuten.
 
   Die Bedingung des Sweeps ist bewusst eng: Feature AUS reicht nicht, es muss
   **nie an** gewesen sein. Wer den Sync abschaltet, dessen Remote kennt die

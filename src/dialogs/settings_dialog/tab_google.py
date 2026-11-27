@@ -75,7 +75,7 @@ class GoogleTab:
 
     def __init__(self, frame, dialog, settings, base_path, on_change, runner,
                  storage, conflicts_store, reservation_store,
-                 data_lock, sync_guard):
+                 data_lock, sync_guard, sick_store=None):
         self.frame = frame
         self._dialog = dialog
         self._settings = settings
@@ -87,6 +87,7 @@ class GoogleTab:
         self._reservation_store = reservation_store
         self._data_lock = data_lock
         self._sync_guard = sync_guard
+        self._sick_store = sick_store
         self._creds_path = os.path.join(base_path, "credentials.json")
 
         # label_button liefert einen tk.Frame (keine -state-Option) — Doppelklick-
@@ -528,7 +529,8 @@ class GoogleTab:
             return run_compaction_blocking(
                 self._storage, self._settings, self._conflicts_store,
                 self._base_path,
-                data_lock=self._data_lock, sync_guard=self._sync_guard)
+                data_lock=self._data_lock, sync_guard=self._sync_guard,
+                sick_store=self._sick_store)
 
         self._runner.run(_fn, _show)
 

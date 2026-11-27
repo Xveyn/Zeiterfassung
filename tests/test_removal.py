@@ -314,6 +314,11 @@ def test_user_data_files_match_installer():
     assert names == {*removal.USER_DATA_FILES, removal.SETTINGS_FILE}
 
 
+def test_sick_days_are_user_data():
+    assert "sick.json" in removal.USER_DATA_FILES
+    assert "sick.json" in _installer()
+
+
 def test_user_data_backups_match_installer():
     """#242: die Sicherungen (`<datei>.corrupt-*`) sind volle Kopien der Nutzerdaten;
     „meine Daten löschen" muss sie genauso mitnehmen wie `removal.py`."""
