@@ -180,7 +180,7 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
                       on_report_sick=None):
     """Modaler Dialog zum Bearbeiten von Ist-Zeit und Reservierung eines Tages.
 
-    on_report_sick: Callback des Knopfs „Krank melden…“ (Knopf nur, wenn
+    on_report_sick: Callback des Knopfs „Krank melden“ (Knopf nur, wenn
     gesetzt): der Dialog schließt sich und ruft ihn; ein Speicherweg, kein
     Löschweg.
 
@@ -603,7 +603,7 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
         def report_sick():
             dialog.destroy()
             on_report_sick()
-        secondary_button(save_frame, "Krank melden…", report_sick).pack(
+        secondary_button(save_frame, "Krank melden", report_sick).pack(
             side=tk.RIGHT, padx=2)
     refresh_save_state()  # startet gesperrt (Cooldown)
     dialog.after(int(STRAY_CLICK_GUARD_S * 1000), unlock_save)

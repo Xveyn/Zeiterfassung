@@ -1095,7 +1095,7 @@ class App:
             elif themed_ask_action(
                     self.root, "Urlaub an diesem Tag",
                     message + "\n\nWar es ein Krankheitstag im Urlaub, "
-                    "trägst du ihn als Krankheit ein.", "Krank melden…",
+                    "trägst du ihn als Krankheit ein.", "Krank melden",
                     lock_ms=int(STRAY_CLICK_GUARD_S * 1000)):
                 self._open_sick_dialog(date_str, None)
             return
