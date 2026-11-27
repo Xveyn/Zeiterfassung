@@ -188,7 +188,7 @@ def test_icon_pixmaps_returns_pixmaps_only_when_png_present(tmp_path):
     from PIL import Image  # pyright: ignore[reportMissingImports]  # Pillow: nicht in CI-Test-Deps
     bundle = tmp_path / "bundle" / "assets"
     bundle.mkdir(parents=True)
-    Image.new("RGBA", (8, 8), (1, 2, 3, 4)).save(bundle / "margenheld-icon.png")
+    Image.new("RGBA", (8, 8), (1, 2, 3, 4)).save(bundle / "app-icon.png")
     data_dir = tmp_path / "data"
     data_dir.mkdir()
 

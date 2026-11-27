@@ -34,7 +34,7 @@ _app_icon_ref: tk.PhotoImage | None = None
 
 
 def apply_app_icon(window):
-    """Setzt das App-Icon (margenheld-icon) auf einen Toplevel.
+    """Setzt das App-Icon (app-icon) auf einen Toplevel.
 
     iconphoto(default=True) auf dem Root-Window vererbt das Icon auf Windows
     nicht zuverlässig auf neue Toplevels — die zeigen dann das Tk-Default-
@@ -55,7 +55,7 @@ def apply_app_icon(window):
         return
     global _app_icon_ref
     base = get_resource_path()
-    png_path = os.path.join(base, "assets", "margenheld-icon.png")
+    png_path = os.path.join(base, "assets", "app-icon.png")
     if os.path.exists(png_path):
         try:
             if _app_icon_ref is None:

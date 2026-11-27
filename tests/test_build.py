@@ -14,6 +14,8 @@ damit der Test unabhängig davon läuft, von wo pytest gestartet wurde.
 import importlib.util
 import pathlib
 
+import pytest
+
 _BUILD_PY = pathlib.Path(__file__).resolve().parent.parent / "scripts" / "build.py"
 _spec = importlib.util.spec_from_file_location("_build_script", _BUILD_PY)
 build = importlib.util.module_from_spec(_spec)
@@ -153,3 +155,35 @@ def test_all_platforms_bundle_the_privacy_document(monkeypatch):
         pairs = [cmd[i + 1] for i, part in enumerate(cmd[:-1]) if part == "--add-data"]
         assert wanted in pairs, f"{build_fn.__name__}: {pairs}"
         assert (_BUILD_PY.parent.parent / "docs" / "datenschutz.md").is_file()
+
+
+@pytest.mark.parametrize("build_fn, icon", [("build_windows", "assets/app-icon.ico"),
+                                           ("build_macos", "assets/app-icon.icns")])
+def test_pyinstaller_uses_the_generated_icon(monkeypatch, build_fn, icon):
+    """Das Icon der Exe bzw. des App-Bundles kommt aus den von `scripts/app_icons.py`
+    erzeugten Dateien."""
+    cmd = _capture_pyinstaller_cmd(monkeypatch, getattr(build, build_fn))
+    assert cmd[cmd.index("--icon") + 1] == icon
+    assert (_BUILD_PY.parent.parent / icon).is_file()
+
+
+def test_appimage_carries_a_neutral_icon_name(monkeypatch, tmp_path):
+    """Desktop-Integrationen (z. B. appimaged) installieren das AppImage-Icon unter seinem
+    Namen ins Icon-Theme: der Name muss die App benennen, nicht generisch sein."""
+    (tmp_path / "dist").mkdir()
+    (tmp_path / "dist" / "Zeiterfassung").write_bytes(b"ELF")
+    (tmp_path / build.NOTICES_PATH).write_text("notices", encoding="utf-8")
+    (tmp_path / "assets").mkdir()
+    (tmp_path / "assets" / "app-icon.png").write_bytes(b"PNGDATA")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(build.subprocess, "run", lambda cmd, **kw: None)
+    monkeypatch.setattr(build, "generate_third_party_notices", lambda: None)
+    monkeypatch.setattr(build.shutil, "which", lambda _name: "/usr/bin/appimagetool")
+
+    build.build_linux()
+
+    appdir = tmp_path / "dist" / "AppDir"
+    assert (appdir / "zeiterfassung.png").read_bytes() == b"PNGDATA"
+    desktop = (appdir / "Zeiterfassung.desktop").read_text(encoding="utf-8")
+    assert "Icon=zeiterfassung\n" in desktop
+    assert not list(appdir.glob("margenheld*"))

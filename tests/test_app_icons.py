@@ -111,3 +111,12 @@ def test_maskable_icon_is_full_bleed():
 @pytest.mark.parametrize("name", ["icon-192.png", "icon-512.png"])
 def test_pwa_icons_keep_transparent_corners(name):
     assert _png_top_left_rgba(PWA / name)[3] == 0
+
+
+def test_old_icon_files_are_gone():
+    assert not list(ASSETS.glob("margenheld-icon.*"))
+
+
+def test_code_no_longer_names_the_old_icon():
+    files = [*(ROOT / "src").rglob("*.py"), *(ROOT / "scripts").glob("*.py")]
+    assert [f for f in files if "margenheld-icon" in f.read_text(encoding="utf-8")] == []

@@ -338,8 +338,8 @@ class App:
         Unter Windows das .ico als Tk-Default (`wm iconbitmap -default`), damit
         künftige Toplevels (Settings, Entry, …) es erben statt des Tk-Default-
         Feder-Icons; zusätzlich das .png als iconphoto auf allen Plattformen."""
-        ico_path = os.path.join(resource_path, "assets", "margenheld-icon.ico")
-        png_path = os.path.join(resource_path, "assets", "margenheld-icon.png")
+        ico_path = os.path.join(resource_path, "assets", "app-icon.ico")
+        png_path = os.path.join(resource_path, "assets", "app-icon.png")
         if platform.system() == "Windows" and os.path.exists(ico_path):
             self.root.iconbitmap(default=ico_path)
         if os.path.exists(png_path):

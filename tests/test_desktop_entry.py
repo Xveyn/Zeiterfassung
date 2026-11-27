@@ -114,7 +114,7 @@ def test_write_menu_entry_is_idempotent_and_refreshes_exec(fake_home):
 def test_ensure_icon_copies_the_bundled_png(tmp_path):
     bundle = tmp_path / "bundle" / "assets"
     bundle.mkdir(parents=True)
-    (bundle / "margenheld-icon.png").write_bytes(b"PNGDATA")
+    (bundle / "app-icon.png").write_bytes(b"PNGDATA")
     data = tmp_path / "data"
     data.mkdir()
 
@@ -126,7 +126,7 @@ def test_ensure_icon_copies_the_bundled_png(tmp_path):
 def test_ensure_icon_does_not_copy_again_when_sizes_match(tmp_path):
     bundle = tmp_path / "bundle" / "assets"
     bundle.mkdir(parents=True)
-    (bundle / "margenheld-icon.png").write_bytes(b"PNGDATA")
+    (bundle / "app-icon.png").write_bytes(b"PNGDATA")
     data = tmp_path / "data"
     data.mkdir()
     ensure_icon(str(tmp_path / "bundle"), str(data))
@@ -140,7 +140,7 @@ def test_ensure_icon_does_not_copy_again_when_sizes_match(tmp_path):
 def test_ensure_icon_recopies_when_size_differs(tmp_path):
     bundle = tmp_path / "bundle" / "assets"
     bundle.mkdir(parents=True)
-    (bundle / "margenheld-icon.png").write_bytes(b"NEUEDATEN-LAENGER")
+    (bundle / "app-icon.png").write_bytes(b"NEUEDATEN-LAENGER")
     data = tmp_path / "data"
     data.mkdir()
     (data / "icon.png").write_bytes(b"ALT")

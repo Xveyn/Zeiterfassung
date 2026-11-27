@@ -196,14 +196,14 @@ def argb32_from_rgba(rgba):
 
 
 def icon_pixmaps(resource_path, sizes=(32, 64, 128)):
-    """`[(breite, höhe, argb32)]` aus `assets/margenheld-icon.png`.
+    """`[(breite, höhe, argb32)]` aus `assets/app-icon.png`.
 
     Mehrere Größen, damit der Host für seine Panel-Höhe die passende wählt.
     Pillow wird lazy importiert (wie im pystray-Backend). Fehlt die PNG oder
     Pillow, bleibt die Liste leer und das Item startet ohne eigenes Icon —
     besser als ein Tray, das gar nicht erst hochkommt.
     """
-    png = os.path.join(resource_path, "assets", "margenheld-icon.png")
+    png = os.path.join(resource_path, "assets", "app-icon.png")
     if not os.path.exists(png):
         logger.warning("Tray-Icon %s fehlt — Item startet ohne Pixmap", png)
         return []
@@ -638,7 +638,7 @@ class LinuxTrayBackend:
     async def _notify(self, bus, message, title):
         from dbus_fast import Message  # pyright: ignore[reportMissingImports]  # dbus-fast: nur auf Linux installiert
 
-        icon = os.path.join(self.resource_path, "assets", "margenheld-icon.png")
+        icon = os.path.join(self.resource_path, "assets", "app-icon.png")
         await bus.call(Message(
             destination=NOTIFY_NAME, path=NOTIFY_PATH, interface=NOTIFY_NAME,
             member="Notify", signature="susssasa{sv}i",

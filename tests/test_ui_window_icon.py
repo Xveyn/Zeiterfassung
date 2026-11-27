@@ -34,7 +34,7 @@ def test_broken_png_does_not_raise(tmp_path, monkeypatch):
     erreichbar ist."""
     assets = tmp_path / "assets"
     assets.mkdir()
-    (assets / "margenheld-icon.png").write_bytes(b"not a real png")
+    (assets / "app-icon.png").write_bytes(b"not a real png")
 
     def _raise(*args, **kwargs):
         raise tk.TclError("couldn't recognize data in image file")
@@ -55,7 +55,7 @@ def test_valid_png_sets_iconphoto(tmp_path, monkeypatch):
     das statt zu rendern nur ein Sentinel-Objekt liefert."""
     assets = tmp_path / "assets"
     assets.mkdir()
-    (assets / "margenheld-icon.png").write_bytes(b"PNGDATA")
+    (assets / "app-icon.png").write_bytes(b"PNGDATA")
 
     sentinel = object()
     monkeypatch.setattr("src.ui.tk.PhotoImage", lambda file: sentinel)

@@ -58,7 +58,7 @@ class _PystrayBackend:
         falls die PNG-Datei nicht da ist (sollte nicht passieren — assets sind
         in PyInstaller-Bundle mit drin)."""
         from PIL import Image  # pyright: ignore[reportMissingImports]  # Pillow: nicht in CI-Test-Deps
-        png = os.path.join(self.resource_path, "assets", "margenheld-icon.png")
+        png = os.path.join(self.resource_path, "assets", "app-icon.png")
         if os.path.exists(png):
             return Image.open(png)
         # Last-resort 16x16 weißes Bild — Icon ist sichtbar aber unbranded.

@@ -23,7 +23,7 @@ import shutil
 logger = logging.getLogger(__name__)
 
 ICON_FILENAME = "icon.png"
-BUNDLED_ICON = os.path.join("assets", "margenheld-icon.png")
+BUNDLED_ICON = os.path.join("assets", "app-icon.png")
 
 
 def _quote_arg(value: str) -> str:
