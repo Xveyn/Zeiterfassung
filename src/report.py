@@ -523,7 +523,7 @@ def _cap_footnote(capped_days: list[CappedDay] | None,
                   style: dict[str, Any]) -> str:
     """Fußnote unter dem Urlaubs-Block, wenn Tage gekappt wurden.
 
-    Wortlaut aus `vacations.cap_notice` — dieselbe Formulierung wie die
+    Wortlaut aus `absence.cap_notice` — dieselbe Formulierung wie die
     Hinweiszeile im Zeitraum-Picker, damit Vorschau und Bericht nicht
     verschieden über denselben Sachverhalt reden.
     """

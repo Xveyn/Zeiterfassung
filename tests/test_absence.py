@@ -1,3 +1,5 @@
+import pytest
+
 from src import absence, vacation_plan, vacations
 from src.absence import CappedDay, cap_notice
 
@@ -29,4 +31,20 @@ def test_cap_notice_sick_lists_up_to_three_days():
 
 def test_cap_notice_sick_drops_list_beyond_three_days():
     hits = [CappedDay(f"2026-09-0{i}", 480, 60, 420) for i in range(1, 5)]
-    assert cap_notice(hits, kind="sick").startswith("An 4 Tagen ist Arbeitszeit erfasst;")
+    assert cap_notice(hits, kind="sick") == (
+        "An 4 Tagen ist Arbeitszeit erfasst; "
+        "die Krankheitsstunden sind dort um insgesamt 4.0h gekürzt.")
+
+
+def test_cap_notice_sick_lists_exactly_three_days():
+    hits = [CappedDay(f"2026-09-0{i}", 480, 60, 420) for i in (1, 2, 3)]
+    assert cap_notice(hits, kind="sick") == (
+        "An 3 Tagen (01.09.2026, 02.09.2026, 03.09.2026) ist Arbeitszeit "
+        "erfasst; die Krankheitsstunden sind dort um insgesamt 3.0h gekürzt.")
+
+
+def test_cap_notice_rejects_unknown_kind():
+    with pytest.raises(ValueError):
+        cap_notice([CappedDay("2026-09-01", 480, 240, 240)], kind="krank")
+    with pytest.raises(ValueError):
+        cap_notice([], kind="krank")

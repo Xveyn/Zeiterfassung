@@ -16,7 +16,7 @@ def vacation_preview(date_from, date_to, all_entries, categories,
 
     Rechnet exakt wie der erzeugte Bericht: derselbe Zeitraum- und
     Kategorien-Ausschnitt, dieselbe Kappung gegen erfasste Ist-Zeit
-    (`vacations.cap_by_worktime`). Ohne sie behauptete die Vorschau
+    (`absence.cap_by_worktime`). Ohne sie behauptete die Vorschau
     „+ 8.0h Urlaub", während der Bericht für denselben Tag 4.0h ausweist.
 
     Returns (Minuten, Hinweistext) — der Text ist "" ohne Kollision.

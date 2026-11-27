@@ -7,8 +7,8 @@ Tkinter und das Theme in einen Serverthread-Pfad, der davon frei bleiben soll.
 `dialogs/vacation_dialog.py` importiert sie von hier unter ihren alten Namen.
 """
 
-from src.absence import format_day_list  # noqa: F401  (Re-Export, s. absence)
-from src.vacations import apportion_minutes, conflicting_days, expand_days
+from src.absence import apportion_minutes, format_day_list
+from src.vacations import conflicting_days, expand_days
 
 # Obergrenze je Urlaubstag. 24 h ist die einzige Grenze, die sich nicht
 # diskutieren lässt — ein Kalendertag hat nicht mehr. Alles darunter wäre

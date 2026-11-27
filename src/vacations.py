@@ -26,14 +26,14 @@ import secrets
 import threading
 from typing import Any, Collection
 
-from src.absence import (  # noqa: F401  (Re-Export unter dem alten Namen)
-    CappedDay, apportion_minutes, cap_by_worktime, cap_notice, date_range,
-    holiday_dates,
-)
+# Redundante Aliase: bewusster Re-Export unter den alten Namen.
+from src.absence import CappedDay as CappedDay
+from src.absence import apportion_minutes as apportion_minutes
+from src.absence import cap_by_worktime as cap_by_worktime
+from src.absence import cap_notice as cap_notice
+from src.absence import date_range, holiday_dates
 from src.json_store import atomic_write_json, load_json_or_quarantine
-from src.time_utils import (
-    utc_now_iso,
-)
+from src.time_utils import utc_now_iso
 
 _log = logging.getLogger(__name__)
 

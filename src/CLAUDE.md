@@ -284,7 +284,7 @@ den Store zu — dieselbe Regel wie beim Entries-Snapshot.
 
 Der Snapshot ist dabei **nicht** der endgültige Wert: `report.generate_report`,
 `report.generate_pdf` und `webhook.build_json_payload` schicken ihn jeweils
-noch durch `vacations.cap_by_worktime`, das die Urlaubsminuten eines Tages um
+noch durch `absence.cap_by_worktime`, das die Urlaubsminuten eines Tages um
 die dort erfasste Ist-Zeit kappt (Xveyn#97, Begründung in der Wurzel-CLAUDE.md
 unter „Urlaub"). Gekappt wird erst dort, weil erst dort feststeht, auf welchen
 Zeitraum und welche Kategorien der Bericht gefiltert ist.
@@ -520,6 +520,10 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
   `build_response` ist rein: Fenster `[heute − Fenster, heute + WINDOW_AHEAD_DAYS]` (14 Tage nach vorn, nicht im Budget; gewährt über `grant_window`, vom Budget `fit_window` gekürzt, #250/#292) plus gesendete Tage, offene Eintrags-Konflikte
   mit Gerätenamen aus der Registry, alle Slots über `storage.sanitize_slot`. `on_change` ruft die Route
   nach Freigabe von Guard und Lock.
+
+  Der Zeitraum-Kern, den Urlaub (und später Krankheit) teilen — `date_range`,
+  `apportion_minutes`, `cap_by_worktime`, `cap_notice`, `format_day_list` —
+  liegt Tk-frei in `absence.py`; `vacations`/`vacation_plan` re-exportieren ihn.
 
   `VacationStore` (`vacations.json`) hängt am geteilten `data_lock` wie
   `Storage`, `Settings`, `ConflictsStore` und `ReservationStore` — anders als
@@ -950,7 +954,7 @@ Wert.
   Reservierungs-Slots lehnen `notiz` weiter als unbekanntes Feld ab. In `api_routes` liefert `_wire_slots`
   `notiz` an jedem Slot immer (`""` ohne); beim `PUT` erbt ein Slot ohne Feld die Notiz des bisherigen
   Slots mit gleicher Startzeit, ein Slot mit Feld (auch `""`) gilt wie angegeben.
-- `api_summary.py` — Auswertungen der lokalen API (#92), Tk-frei, rein: Pfad-Parser (`parse_week`, `parse_month`, `parse_year`, nur ASCII-Ziffern, `fromisocalendar` entscheidet über KW 53), `summarize` (Tage, Kategorien, `weeks[]` mit Wochenlimit, Pausenwarnungen, Urlaub über `vacations.cap_by_worktime`), `category_names`, `holidays_for`. Gerechnet wird über **Minuten je Slot**; gespeicherte Slots sind Fremddaten, ein ungewöhnlicher Slot zählt 0 Minuten und wird geloggt. Schlüssel zählen nur als echter Kalendertag (`_is_day_key`: `2025-12-32` passt auf die Form, nicht auf den Kalender), Urlaubsminuten nur zwischen 0 und 1440; `VacationStore.day_minutes` überspringt Perioden ohne lesbare `days`. Die Routen (`/v1/summary/week|month`, `/v1/categories`, `/v1/holidays`) in `api_routes` holen nur den Snapshot (`Storage.get_all()`, `VacationStore.day_minutes()`), halten keinen Lock und melden nie `on_change`.
+- `api_summary.py` — Auswertungen der lokalen API (#92), Tk-frei, rein: Pfad-Parser (`parse_week`, `parse_month`, `parse_year`, nur ASCII-Ziffern, `fromisocalendar` entscheidet über KW 53), `summarize` (Tage, Kategorien, `weeks[]` mit Wochenlimit, Pausenwarnungen, Urlaub über `absence.cap_by_worktime`), `category_names`, `holidays_for`. Gerechnet wird über **Minuten je Slot**; gespeicherte Slots sind Fremddaten, ein ungewöhnlicher Slot zählt 0 Minuten und wird geloggt. Schlüssel zählen nur als echter Kalendertag (`_is_day_key`: `2025-12-32` passt auf die Form, nicht auf den Kalender), Urlaubsminuten nur zwischen 0 und 1440; `VacationStore.day_minutes` überspringt Perioden ohne lesbare `days`. Die Routen (`/v1/summary/week|month`, `/v1/categories`, `/v1/holidays`) in `api_routes` holen nur den Snapshot (`Storage.get_all()`, `VacationStore.day_minutes()`), halten keinen Lock und melden nie `on_change`.
 - `api_server.py` — HTTP-Server, seit #221 für zwei Instanzen gebaut: die lokale API (Loopback, ein Token) und die Handy-Instanz (LAN, Gerätetoken) teilen sich ihn und unterscheiden sich in der **`Surface`** (`dispatch`, `route_methods(path)` für den Preflight **und** das `Allow` eines 405 (RFC 9110: die Methoden der Zielressource), `methods` (Vereinigung aller Routen) nur als `Allow` für einen unbekannten Pfad, `public` = exakte (Methode, Pfad)-Paare ohne Token, `cors`); `ApiServer(context, …)` baut ohne Angabe die lokale (`local_surface`). Ein Prüfer liefert `Principal | Denied | None` (`Denied(code)` → `401 <code>`).
   Ein Daemon-Thread mit eigener `handle_request()`-Schleife (kein
   `serve_forever()`/`shutdown()`: `shutdown()` wartet, bis die Schleife verlassen

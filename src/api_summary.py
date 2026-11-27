@@ -211,7 +211,7 @@ def _vacation_part(vacation_days: Mapping[str, int], first: str, last: str,
                    work: dict[str, Any]) -> tuple[int, list[dict[str, Any]]]:
     """(Urlaubsminuten nach Kappung, gekappte Tage). Gekappt wird wie in Mail,
     PDF und Webhook gegen die erfasste Ist-Zeit desselben Ausschnitts, damit ein
-    Kalendertag nie mehr Stunden hat, als er hat (`vacations.cap_by_worktime`)."""
+    Kalendertag nie mehr Stunden hat, als er hat (`absence.cap_by_worktime`)."""
     # Höchstens ein Kalendertag: negative oder riesige Werte (kaputtes
     # vacations.json) würden sonst in die Summe und in `vacation_capped_days` laufen.
     days = {key: minutes for key, minutes in vacation_days.items()

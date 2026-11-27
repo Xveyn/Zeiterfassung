@@ -6,17 +6,19 @@ from __future__ import annotations
 
 import datetime
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
 from src.holidays_de import get_holidays
-from src.time_utils import (
-    calculate_hours, format_iso_date, hours_to_minutes,
-)
+from src.time_utils import calculate_hours, format_iso_date, hours_to_minutes
 
 
 def date_range(date_from: str, date_to: str) -> list[datetime.date]:
     """Alle Kalendertage von `date_from` bis `date_to` (inklusive). Leere
-    Liste, wenn `date_to` vor `date_from` liegt."""
+    Liste, wenn `date_to` vor `date_from` liegt.
+
+    Wirft `ValueError` bei einem Wert, der kein ISO-Datum ist. Eine
+    Längengrenze gibt es hier nicht: Aufrufer prüfen das 366-Tage-Limit vorher.
+    """
     start = datetime.date.fromisoformat(date_from)
     end = datetime.date.fromisoformat(date_to)
     if end < start:
@@ -53,11 +55,11 @@ def apportion_minutes(total: int, n: int) -> list[int]:
 
 @dataclass(frozen=True)
 class CappedDay:
-    """Ein Tag, an dem Urlaub auf erfasste Ist-Zeit trifft.
+    """Ein Tag, an dem eine Abwesenheit (Urlaub oder Krankheit) auf erfasste
+    Ist-Zeit trifft.
 
-    `minutes` sind die ursprünglichen Minuten der Abwesenheit (Urlaub oder
-    Krankheit) am Tag, `work` die an ihm erfasste Arbeitszeit, `capped` der
-    verbleibende Rest. `vacation` ist der Name für den Urlaubsfall.
+    `minutes` sind die ursprünglichen Abwesenheitsminuten des Tages, `work`
+    die an ihm erfasste Arbeitszeit, `capped` der verbleibende Rest.
     """
 
     date: str
@@ -67,39 +69,22 @@ class CappedDay:
 
     @property
     def vacation(self) -> int:
+        """Für die Urlaubs-Aufrufer (`api_summary`); neuer Code liest
+        `minutes`. Keine Aussage über die Art der Abwesenheit."""
         return self.minutes
 
 
 def cap_by_worktime(day_minutes: dict[str, int],
                     entries: dict[str, Any]
                     ) -> tuple[dict[str, int], list[CappedDay]]:
-    """Kappt die Urlaubsminuten je Tag um die an ihm erfasste Ist-Zeit
-    (Untergrenze 0) und meldet die betroffenen Tage.
+    """Kappt die Abwesenheitsminuten je Tag um die dort erfasste Ist-Zeit
+    (Untergrenze 0).
 
-    Gegenstück zu `conflicting_days`: die schließt den Zustand an den
-    UI-Eingängen aus, diese Funktion räumt auf, wo er trotzdem entsteht.
-    `Storage` kennt den Urlaub nicht, deshalb schreiben zwei Wege an der
-    Sperre vorbei — der Import geteilter Arbeitszeiten (der Absender kennt
-    den Urlaub des Empfängers nicht) und der Drive-Sync eines zweiten Geräts
-    (Urlaub ist gerätelokal). Ohne Kappung landeten beide Werte additiv in
-    „Zu vergüten gesamt“, ein Kalendertag käme also auf mehr Stunden, als er
-    hat (Xveyn#97).
-
-    Gekappt wird zugunsten des Urlaubs: der Tag bleibt bei seinem
-    Urlaubswert, die erfasste Arbeitszeit wird darin aufgezehrt. Die App
-    entscheidet damit nicht, welche der beiden Zahlen die richtige ist — der
-    Tag ist schlicht falsch erfasst, und die Hinweiszeile im Zeitraum-Picker
-    sowie die Fußnote im Bericht sagen das auch.
-
-    Tage OHNE Urlaubsminuten bleiben unberührt: Wochenenden und Feiertage
-    stehen mit 0 in der Periode und dürfen Arbeitszeit tragen — dieselbe
-    Ausnahme, die `conflicting_days` macht.
-
-    `entries` ist der bereits zeitraum- und kategoriegefilterte Ausschnitt,
-    den der Bericht auch anzeigt: nur so gehen dort Ist-Zeit, Urlaub und
-    „Zu vergüten gesamt“ zusammen auf. Gerechnet wird über MINUTEN je Slot
-    (CLAUDE.md, Abschnitt „Stunden“), dieselbe Auflösung wie
-    `report._week_block` und `webhook.total_minutes`.
+    Tage mit 0 Abwesenheitsminuten bleiben unberührt, sie dürfen Arbeitszeit
+    tragen. `entries` ist der bereits zeitraum- und kategoriegefilterte
+    Ausschnitt, den die Ausgabe zeigt; gerechnet wird in Minuten je Slot.
+    Begründung für Urlaub: Wurzel-`CLAUDE.md`, „Urlaub: Periode als Einheit,
+    Stunden pro Tag“ (`cap_by_worktime`).
 
     Returns (gekappte Tagesminuten, betroffene Tage chronologisch).
     """
@@ -121,43 +106,46 @@ def cap_by_worktime(day_minutes: dict[str, int],
 
 
 # Ab wie vielen betroffenen Tagen der Hinweis nur noch die Zahl nennt: eine
-# Datumsliste über einen ganzen Urlaubsmonat wäre in der einzeiligen
+# Datumsliste über einen ganzen Monat Abwesenheit wäre in der einzeiligen
 # Hinweiszeile des Zeitraum-Pickers nicht mehr lesbar.
 _MAX_LISTED_DAYS = 3
 
 
-def cap_notice(hits: list[CappedDay], kind: str = "vacation") -> str:
+def _where(dates: list[str]) -> str:
+    """„An 1 Tag (01.09.2026)“ bzw. „An 2 Tagen (…)“; ab dem vierten Tag ohne
+    Datumsliste."""
+    if len(dates) == 1:
+        return f"An 1 Tag ({format_iso_date(dates[0])})"
+    liste = (f" ({', '.join(format_iso_date(d) for d in dates)})"
+             if len(dates) <= _MAX_LISTED_DAYS else "")
+    return f"An {len(dates)} Tagen{liste}"
+
+
+def cap_notice(hits: list[CappedDay],
+               kind: Literal["vacation", "sick"] = "vacation") -> str:
     """Ein Satz über die von `cap_by_worktime` gekappten Tage, oder "".
 
-    `kind` ist `"vacation"` oder `"sick"`. Gemeinsame Formulierung für die
-    Hinweiszeile im Zeitraum-Picker und die Fußnote im Bericht — beide sagen
-    dasselbe, und zwar wortgleich. Datumsangaben deutsch (CLAUDE.md), Stunden
-    im selben Dezimalformat wie der Rest des Berichts.
+    `kind` ist `"vacation"` oder `"sick"`, alles andere wirft `ValueError`.
+    Gemeinsame Formulierung für die Hinweiszeile im Zeitraum-Picker und die
+    Fußnote im Bericht — beide sagen dasselbe, und zwar wortgleich. Stunden im
+    selben Dezimalformat wie der Rest des Berichts.
     """
+    if kind not in ("vacation", "sick"):
+        raise ValueError(f"unbekannte Art der Abwesenheit: {kind!r}")
     if not hits:
         return ""
 
     gekuerzt = round(sum(h.minutes - h.capped for h in hits) / 60, 2)
+    wo = _where([h.date for h in hits])
+    einzeln = len(hits) == 1
     if kind == "sick":
-        if len(hits) == 1:
-            wo = f"An 1 Tag ({format_iso_date(hits[0].date)})"
-            satz = f"die Krankheitsstunden sind dort um {gekuerzt}h gekürzt."
-        else:
-            liste = (f" ({', '.join(format_iso_date(h.date) for h in hits)})"
-                     if len(hits) <= _MAX_LISTED_DAYS else "")
-            wo = f"An {len(hits)} Tagen{liste}"
-            satz = (f"die Krankheitsstunden sind dort um insgesamt "
-                    f"{gekuerzt}h gekürzt.")
-        return f"{wo} ist Arbeitszeit erfasst; {satz}"
-
-    if len(hits) == 1:
-        wo = f"An 1 Tag ({format_iso_date(hits[0].date)})"
-        satz = ("Der Urlaub ist dort um "
-                f"{gekuerzt}h gekürzt, damit der Tag nicht doppelt zählt.")
+        wie = "" if einzeln else "insgesamt "
+        return (f"{wo} ist Arbeitszeit erfasst; "
+                f"die Krankheitsstunden sind dort um {wie}{gekuerzt}h gekürzt.")
+    if einzeln:
+        satz = (f"Der Urlaub ist dort um {gekuerzt}h gekürzt, "
+                f"damit der Tag nicht doppelt zählt.")
     else:
-        liste = (f" ({', '.join(format_iso_date(h.date) for h in hits)})"
-                 if len(hits) <= _MAX_LISTED_DAYS else "")
-        wo = f"An {len(hits)} Tagen{liste}"
         satz = (f"Der Urlaub ist dort um insgesamt {gekuerzt}h gekürzt, "
                 f"damit die Tage nicht doppelt zählen.")
     return f"{wo} liegt Urlaub auf erfasster Arbeitszeit. {satz}"

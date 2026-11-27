@@ -911,7 +911,7 @@ Regeln:
   **Abgleich mit dem Handy** (`mobile_sync`; das Handy kennt keinen Urlaub). Das
   an diesen Stellen zu verbieten hieße, in einen LWW-Merge eine Ablehnung
   einzubauen — LWW hat dafür kein Konzept. Also wird der Zustand
-  **behandelt statt verhindert**: `vacations.cap_by_worktime` kappt die
+  **behandelt statt verhindert**: `absence.cap_by_worktime` kappt die
   Urlaubsminuten eines Tages um die dort erfasste Ist-Zeit (Untergrenze 0),
   bevor der Wert in eine Summe geht. Ein Kalendertag kommt damit nie auf mehr
   Stunden, als er hat (Xveyn#97).
@@ -920,7 +920,7 @@ Regeln:
   Urlaubswert, die Arbeitszeit wird darin aufgezehrt. Die App entscheidet
   damit bewusst *nicht*, welche der beiden Zahlen die richtige ist: der Tag
   ist falsch erfasst, und das muss sichtbar sein. Deshalb ist die Kappung an
-  **beiden** Stellen beschriftet, wortgleich aus `vacations.cap_notice`:
+  **beiden** Stellen beschriftet, wortgleich aus `absence.cap_notice`:
   als Hinweiszeile in der Live-Vorschau des Zeitraum-Pickers
   (`period_picker.vacation_preview`, im Stil der `weekend_hint` daneben) und
   als Fußnote unter dem Urlaubs-Block im Bericht (`report._cap_footnote`).
@@ -1476,7 +1476,7 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
   `null` ohne Häkchen) und `vacation_minutes` (Summe daraus, `0` ohne
   Urlaub) — ohne gesetztes Häkchen bleiben beide Felder auf ihrem Leerwert,
   ein bestehender Empfänger läuft also unverändert weiter. Beide Werte sind
-  über `vacations.cap_by_worktime` gekappt wie in Mail-HTML und PDF (s.
+  über `absence.cap_by_worktime` gekappt wie in Mail-HTML und PDF (s.
   „Urlaub"): ein Empfänger, der `total_minutes` und `vacation_minutes`
   addiert, bekommt für einen Kalendertag nie mehr Stunden, als er hat. Die
   Shape ändert sich dadurch nicht — **kein** Schema-Bump.
