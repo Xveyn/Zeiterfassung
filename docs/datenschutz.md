@@ -194,3 +194,18 @@ dazu. Wer das Protokoll in ein Ticket kopiert, gibt diese Angaben weiter.
 
 Einträge werden nach 1, 7 oder 30 Tagen gelöscht (Standard 7 Tage), höchstens 500 bleiben erhalten. Im Reiter „Debug“
 lässt sich das Protokoll jederzeit sofort löschen.
+
+## 12. Krankheitstage
+
+Krankheitstage sind Gesundheitsdaten (Art. 9 DSGVO). Die App erfasst nur den Tag und die Stunden, nie eine
+Diagnose oder einen Grund.
+
+- **Wo sie liegen:** am Rechner in `sick.json`. Bei eingeschaltetem Drive-Sync zusätzlich im App-Ordner des
+  eigenen Google Drive, bei gekoppeltem Handy zusätzlich auf dem Handy.
+- **Transport zum Handy:** Ende-zu-Ende verschlüsselt, auch über den Relay. Der Relay sieht keine Krankheitstage,
+  genauso wenig wie Einträge (Abschnitt 1). Der lokale Speicher der Web-App auf dem Handy ist derzeit noch
+  unverschlüsselt (Abschnitt 9).
+- **Ausgabe:** In Bericht (Mail und PDF) und Webhook landen Krankheitstage nur mit dem Häkchen „Krankheit
+  ausweisen“. Ohne das Häkchen sind diese Ausgaben unverändert.
+- **Nie dabei:** die Teilen-Datei, der Google Kalender und das Protokoll der App (kein Datum, keine Minuten).
+- **Löschen:** „Zeiterfassung entfernen“ und die Deinstallation löschen `sick.json` mit den übrigen Nutzerdaten.
