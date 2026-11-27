@@ -23,19 +23,18 @@ from src.time_utils import (
 )
 from src.dialogs.date_row import build_date_row
 from src.reservations import reservations_active
-from src.absence import format_day_list
-from src.sick_plan import sick_blocking_vacation
+from src.sick_plan import vacation_sick_conflicts
 from src.vacation_plan import (
-    blocking_days, format_day_list as _format_day_list,
+    blocking_days, format_day_list,
     hours_to_minutes_exact as _hours_to_minutes_exact, plan_vacation_save,
 )
 
 log = logging.getLogger(__name__)
 
-def sick_blocked_message(plan_days, sick_days):
-    """Fehlertext, wenn der Urlaub über Krankheitstage (Minuten > 0) läge,
-    sonst None."""
-    blocked = sick_blocking_vacation(plan_days, sick_days)
+def sick_blocked_message(plan_days, sick_days, existing_days=None):
+    """Fehlertext, wenn der Urlaub neu über Krankheitstage (Minuten > 0) läge,
+    sonst None (`existing_days`: die Tage der bearbeiteten Periode)."""
+    blocked = vacation_sick_conflicts(plan_days, sick_days, existing_days)
     if not blocked:
         return None
     return ("An diesen Tagen bist du krank gemeldet:\n\n"
@@ -543,12 +542,14 @@ def _open_edit_dialog(parent, vacation_store, settings, period_id, on_saved,
                 dialog, "Urlaub nicht gespeichert",
                 "An diesen Tagen ist bereits Arbeitszeit oder eine "
                 "Reservierung erfasst:\n\n"
-                + _format_day_list(blocked)
+                + format_day_list(blocked)
                 + "\n\nUrlaub und Arbeitszeit schließen sich am selben Tag "
                   "aus. Lösche zuerst die Einträge (Rechtsklick im Kalender) "
                   "oder wähle einen anderen Zeitraum.")
             return
-        sick_msg = (sick_blocked_message(plan["days"], sick_store.day_minutes())
+        sick_msg = (sick_blocked_message(
+            plan["days"], sick_store.day_minutes(),
+            existing["days"] if existing else None)
                     if sick_store is not None else None)
         if sick_msg:
             themed_showerror(dialog, "Urlaub nicht gespeichert", sick_msg)

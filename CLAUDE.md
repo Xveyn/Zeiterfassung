@@ -860,13 +860,16 @@ Zeilenklasse). Derselbe Parameter entscheidet auch, ob eine Kategorie-Auswahl
 die hinterlegten Standardzeiten in die Zeile zieht: bei gespeicherten Slots
 sind die Zeiten bewusst gesetzt und bleiben unangetastet.
 
+**Krankheit** ist eine weitere löschbare Einheit: gelöscht wird immer der ganze Block
+(Schlüssel `sick:<Anfang>`, auch von einem 0-Minuten-Tag aus). Ein Linksklick auf einen
+Krankheitstag mit Stunden öffnet den Krankheits-Dialog seines Blocks, ein 0-Minuten-Tag
+den normalen Tages-Dialog.
+
 **Plattform-Ausnahme macOS:** Tkinters Maustasten-Nummerierung macht den
 Rechtsklick (`<Button-3>`) auf macOS unzuverlässig (Sekundärklick ist je nach
 Tk-Version `<Button-2>` bzw. Control-Klick). Damit Löschen auf dem Mac
 erreichbar bleibt, zeigt die Tageszelle **dort** ein kleines ✕ oben links,
 sobald der Tag löschbare Einheiten hat (Ist-Zeit, aktive Reservierung, Urlaub oder Krankheit).
-Krankheit löscht immer den ganzen Block (Schlüssel `sick:<Anfang>`); ein Linksklick auf
-einen Krankheitstag mit Stunden öffnet den Krankheits-Dialog seines Blocks.
 Der ✕-Button löst denselben Lösch-Pfad wie der Rechtsklick aus
 (`App._delete_day` inkl. Bestätigung/Slot-Auswahl). Gesteuert über
 `_should_show_delete_button` (`theme/geometry.py`) + `GridRenderer._add_delete_button` (`grid_renderer.py`).
@@ -886,6 +889,8 @@ Regeln:
 - **Urlaub gewinnt im Kalender** — er färbt die Zelle auch über Feiertag und
   Wochenende hinweg, damit der Zeitraum ein durchgehender Block bleibt. Der
   Feiertagsname geht nicht verloren, er wandert in den kombinierten Tooltip.
+  **Krankheit gewinnt über Urlaub:** an einem Krankheitstag zeigt die Zelle die
+  Krankheitsfarbe, der Urlaub steht im Tooltip.
 - **Urlaub und Arbeitszeit schließen sich am selben Tag aus.** Trägt ein Tag
   Urlaubsstunden, öffnet der Tages-Dialog gar nicht erst
   (`ui.App._open_dialog`); die Meldung dort trägt den Knopf „Krank melden…“

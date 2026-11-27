@@ -122,6 +122,7 @@ def themed_ask_action(parent, title: str, message: str, action_label: str,
     secondary_button(btn_frame, close_label, dialog.destroy).pack(
         side=tk.LEFT, padx=6)
 
+    dialog.bind("<Return>", lambda e: dialog.destroy())
     dialog.bind("<Escape>", lambda e: dialog.destroy())
     dialog.protocol("WM_DELETE_WINDOW", dialog.destroy)
 

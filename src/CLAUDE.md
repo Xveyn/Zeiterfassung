@@ -1305,6 +1305,11 @@ nimmt optional `on_resolved` (von beiden
 Einstiegen auf `App._refresh`/`on_change` gesetzt) — ohne den Callback bliebe die
 Kalenderzelle hinter dem Dialog nach dem Auflösen auf dem alten Stand.
 
+Danach folgen in `_open_dialog` die Schritte für Krankheit und Urlaub: ein Krankheitstag mit
+Minuten > 0 öffnet `sick_dialog.open_sick_dialog` für seinen Block (0-Minuten-Tage nicht),
+ein Urlaubstag mit Minuten > 0 zeigt die Meldung, mit dem Knopf „Krank melden…“
+(`themed_ask_action`) nur bei vorhandenem `sick_store`; erst dann der Tages-Dialog.
+
 Alle Dialoge beziehen ihre Fenster-Chrome über `theme.create_dialog(...)`
 (Audit M13); Content-Styles (`apply_combobox_style`/`apply_notebook_style`/
 `attach_unfocus_on_click`) und `center_dialog_on_parent` ruft jeder Dialog

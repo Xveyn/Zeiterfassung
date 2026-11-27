@@ -375,3 +375,25 @@ def test_edit_overrides_drops_stored_when_basis_changed():
     r = sick_plan.edit_overrides({"a": 480, "b": 480}, {"b": 60},
                                  basis_changed=True)
     assert r == {"b": 60}
+
+
+def test_vacation_sick_conflicts_new_vacation_blocks_on_every_sick_day():
+    from src.sick_plan import vacation_sick_conflicts
+    assert vacation_sick_conflicts(
+        {"2026-07-01": 480, "2026-07-02": 480},
+        {"2026-07-01": 480, "2026-07-02": 0}) == ["2026-07-01"]
+
+
+def test_vacation_sick_conflicts_editing_covered_day_is_free():
+    from src.sick_plan import vacation_sick_conflicts
+    existing = {"2026-07-01": 480}
+    assert vacation_sick_conflicts(
+        {"2026-07-01": 240}, {"2026-07-01": 480}, existing) == []
+
+
+def test_vacation_sick_conflicts_extension_blocks_only_new_day():
+    from src.sick_plan import vacation_sick_conflicts
+    existing = {"2026-07-01": 480}
+    assert vacation_sick_conflicts(
+        {"2026-07-01": 480, "2026-07-02": 480},
+        {"2026-07-01": 480, "2026-07-02": 480}, existing) == ["2026-07-02"]

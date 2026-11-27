@@ -4,7 +4,7 @@ Funktionen, nicht ins Widget)."""
 import pytest
 
 from src.dialogs.vacation_dialog import (
-    _format_day_list, blocking_days, parse_hours, plan_vacation_save,
+    format_day_list, blocking_days, parse_hours, plan_vacation_save,
     prune_overrides,
 )
 
@@ -111,22 +111,22 @@ def test_format_hours_uses_german_decimal_comma():
     assert _format_hours(0) == "0,00"
 
 
-# ---------------------------------------------------------- _format_day_list
+# ---------------------------------------------------------- format_day_list
 
-def test_format_day_list_renders_german_dates():
-    assert _format_day_list(["2026-07-01", "2026-07-02"]) == (
+def testformat_day_list_renders_german_dates():
+    assert format_day_list(["2026-07-01", "2026-07-02"]) == (
         "01.07.2026" + chr(10) + "02.07.2026")
 
 
-def test_format_day_list_truncates_long_lists():
+def testformat_day_list_truncates_long_lists():
     days = [f"2026-07-{d:02d}" for d in range(1, 15)]
-    lines = _format_day_list(days, limit=3).split(chr(10))
+    lines = format_day_list(days, limit=3).split(chr(10))
     assert lines[:3] == ["01.07.2026", "02.07.2026", "03.07.2026"]
     assert lines[3] == "… und 11 weitere"
 
 
-def test_format_day_list_without_truncation_has_no_suffix():
-    assert "weitere" not in _format_day_list(["2026-07-01"], limit=3)
+def testformat_day_list_without_truncation_has_no_suffix():
+    assert "weitere" not in format_day_list(["2026-07-01"], limit=3)
 
 
 # --------------------------------------------------- Obergrenze / Zahleneingabe
@@ -242,10 +242,13 @@ def test_blocking_days_counts_reservations_only_when_enabled(
 
 def test_vacation_save_blocked_by_sick_days():
     from src.dialogs.vacation_dialog import sick_blocked_message
-    assert sick_blocked_message({"2026-07-01": 480}, {"2026-07-01": 480}) == (
-        "An diesen Tagen bist du krank gemeldet:\n\n01.07.2026\n\n"
-        "Einen Urlaub über Krankheitstage legt die App nicht an; "
-        "Krankheit im Urlaub trägst du als Krankheit ein.")
+    msg = ("An diesen Tagen bist du krank gemeldet:\n\n01.07.2026\n\n"
+           "Einen Urlaub über Krankheitstage legt die App nicht an; "
+           "Krankheit im Urlaub trägst du als Krankheit ein.")
+    assert sick_blocked_message({"2026-07-01": 480}, {"2026-07-01": 480}) == msg
     # 0-Minuten-Tage (Wochenende) sperren nicht.
     assert sick_blocked_message({"2026-07-01": 480}, {"2026-07-01": 0}) is None
     assert sick_blocked_message({"2026-07-01": 0}, {"2026-07-01": 480}) is None
+    # Bearbeiten: ein schon abgedeckter Tag sperrt nicht.
+    assert sick_blocked_message(
+        {"2026-07-01": 240}, {"2026-07-01": 480}, {"2026-07-01": 480}) is None

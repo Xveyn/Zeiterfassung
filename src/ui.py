@@ -82,6 +82,43 @@ def _sick_delete_option(block):
     return sick_view.delete_key(block), sick_view.block_label(block)
 
 
+def _delete_units(entry_slots, res_slots, vacation, sick, slot_order="chrono"):
+    """Die löschbaren Einheiten eines Tages als (Schlüssel, Beschriftung):
+    Ist-Slots, Reservierungs-Slots, die Urlaubsperiode und der Krankheitsblock
+    (die beiden Letzten immer als Ganzes)."""
+    options = _delete_options(entry_slots, "entry", "Arbeitszeit",
+                              GridRenderer._fmt_slot_line, slot_order)
+    options += _delete_options(
+        res_slots, "reservation", "Reservierung",
+        lambda s: GridRenderer._fmt_slot_line(s, with_pause=True), slot_order)
+    if vacation is not None:
+        # Einzelne Tage aus der Mitte herauszubrechen würde die days-Invariante
+        # (lückenlos von from bis to) verletzen; Korrekturen laufen über den
+        # Verwaltungs-Dialog.
+        spanne = (f"{format_iso_date(vacation['from'])} – "
+                  f"{format_iso_date(vacation['to'])}")
+        options.append((f"vacation:{vacation['id']}",
+                        f"Urlaub „{vacation['name']}“ ({spanne})"))
+    if sick is not None:
+        options.append(_sick_delete_option(sick))
+    return options
+
+
+def _single_delete_question(key, date_de, vacation, sick):
+    """(Art, Frage) der Bestätigung, wenn der Tag genau eine Einheit hat."""
+    if key.startswith("entry"):
+        return "Arbeitszeit", f"Arbeitszeit für {date_de} löschen?"
+    if key.startswith("reservation"):
+        return "Reservierung", f"Reservierung für {date_de} löschen?"
+    if key.startswith("sick:"):
+        assert sick is not None
+        return "Krankheit", f"{sick_view.block_label(sick)} komplett löschen?"
+    assert vacation is not None
+    return "Urlaub", (f"Urlaub „{vacation['name']}“ "
+                      f"({format_iso_date(vacation['from'])} – "
+                      f"{format_iso_date(vacation['to'])}) komplett löschen?")
+
+
 def _delete_options(slots, prefix, label, fmt, slot_order="chrono"):
     """Löschbare Einheiten eines Typs: ein Slot = der Typ als Ganzes, sonst je
     Slot eine Zeile. Angezeigt wird im eingestellten Slot-Modus (#520), der Schlüssel trägt
@@ -948,50 +985,14 @@ class App:
         date_de = format_iso_date(date_str)
 
         # Löschbare Einheiten: bei genau einem Slot der Typ als Ganzes, bei
-        # mehreren je Slot eine Checkbox.
+        # mehreren je Slot eine Checkbox; Urlaub und Krankheit immer als
+        # ganze Periode bzw. ganzer Block.
         slot_order = normalize_mode(self.settings.get("slot_order_mode"))
-        options = _delete_options(entry_slots, "entry", "Arbeitszeit",
-                                  GridRenderer._fmt_slot_line, slot_order)
-        options += _delete_options(
-            res_slots, "reservation", "Reservierung",
-            lambda s: GridRenderer._fmt_slot_line(s, with_pause=True), slot_order)
-        if vacation is not None:
-            # Gelöscht wird IMMER die ganze Periode. Einzelne Tage aus der
-            # Mitte herauszubrechen würde den Zeitraum zerreißen und die
-            # days-Invariante (lückenlos von from bis to) verletzen; wer das
-            # will, bearbeitet die Periode im Verwaltungs-Dialog.
-            spanne = (f"{format_iso_date(vacation['from'])} – "
-                      f"{format_iso_date(vacation['to'])}")
-            options.append((
-                f"vacation:{vacation['id']}",
-                f"Urlaub „{vacation['name']}“ ({spanne})",
-            ))
-
-        if sick is not None:
-            # Gelöscht wird immer der ganze Block (wie beim Urlaub).
-            options.append(_sick_delete_option(sick))
+        options = _delete_units(entry_slots, res_slots, vacation, sick, slot_order)
 
         if len(options) == 1:
             key = options[0][0]
-            if key.startswith("entry"):
-                kind, frage = "Arbeitszeit", f"Arbeitszeit für {date_de} löschen?"
-            elif key.startswith("reservation"):
-                kind, frage = "Reservierung", f"Reservierung für {date_de} löschen?"
-            elif key.startswith("sick:"):
-                assert sick is not None
-                kind = "Krankheit"
-                frage = f"{sick_view.block_label(sick)} komplett löschen?"
-            else:
-                # Bei genau einer Option, die weder "entry" noch "reservation"
-                # ist, muss es die (einzige weitere Quelle von) options der
-                # Urlaubszweig sein — vacation ist dann zwangsläufig gesetzt.
-                # assert statt weiterer Verzweigung: narrowed für pyright,
-                # ohne das Verhalten zu ändern.
-                assert vacation is not None
-                kind = "Urlaub"
-                frage = (f"Urlaub „{vacation['name']}“ "
-                         f"({format_iso_date(vacation['from'])} – "
-                         f"{format_iso_date(vacation['to'])}) komplett löschen?")
+            kind, frage = _single_delete_question(key, date_de, vacation, sick)
             if not themed_askyesno(self.root, f"{kind} löschen", frage, lock_ms=600):
                 return
             selected = {key}
@@ -1051,6 +1052,14 @@ class App:
                 on_resolved=self._refresh,
             )
             return
+        sick = (self.sick_store.block_for(date_str)
+                if self.sick_store is not None else None)
+        if sick is not None and sick.days.get(date_str, 0):
+            # Ein Krankheitstag mit Stunden öffnet den Krankheits-Dialog seines
+            # Blocks statt des Tages-Dialogs (Ist-Zeit und Krankheit schließen
+            # sich aus); 0-Minuten-Tage bleiben normale Tage.
+            self._open_sick_dialog(date_str, sick)
+            return
         # Urlaub und Arbeitszeit schließen sich am selben Tag aus: trägt der
         # Tag Urlaubsstunden, öffnet der Tages-Dialog gar nicht erst. Sonst
         # stünden im Bericht beide Zahlen nebeneinander in „Zu vergüten
@@ -1062,36 +1071,22 @@ class App:
         # Urlaubstag — wer am Samstag mitten im Urlaub arbeitet, darf das
         # erfassen. Löschen bleibt über den Rechtsklick erreichbar, der
         # Urlaubstag ist damit keine Sackgasse.
-        sick = (self.sick_store.block_for(date_str)
-                if self.sick_store is not None else None)
-        if sick is not None and sick.days.get(date_str, 0):
-            # Ein Krankheitstag mit Stunden öffnet den Krankheits-Dialog seines
-            # Blocks statt des Tages-Dialogs (Ist-Zeit und Krankheit schließen
-            # sich aus); 0-Minuten-Tage bleiben normale Tage.
-            self._open_sick_dialog(date_str, sick)
-            return
         vacation = (self.vacation_store.period_for_date(date_str)
                     if self.vacation_store is not None else None)
         if vacation is not None and vacation.get("days", {}).get(date_str, 0):
-            if self.sick_store is not None:
-                if themed_ask_action(
-                        self.root, "Urlaub an diesem Tag",
-                        f"Für den {format_iso_date(date_str)} ist Urlaub eingetragen "
-                        f"(„{vacation.get('name', '')}“). An einem Urlaubstag lässt "
-                        f"sich keine Arbeitszeit erfassen.\n\nSoll hier doch "
-                        f"gearbeitet werden, lösche den Urlaub zuerst per Rechtsklick "
-                        f"auf den Tag.\n\nWar es ein Krankheitstag im Urlaub, "
-                        f"trägst du ihn als Krankheit ein.",
-                        "Krank melden…"):
-                    self._open_sick_dialog(date_str, None)
-                return
-            themed_showinfo(
-                self.root, "Urlaub an diesem Tag",
+            message = (
                 f"Für den {format_iso_date(date_str)} ist Urlaub eingetragen "
                 f"(„{vacation.get('name', '')}“). An einem Urlaubstag lässt "
                 f"sich keine Arbeitszeit erfassen.\n\nSoll hier doch "
                 f"gearbeitet werden, lösche den Urlaub zuerst per Rechtsklick "
                 f"auf den Tag.")
+            if self.sick_store is None:
+                themed_showinfo(self.root, "Urlaub an diesem Tag", message)
+            elif themed_ask_action(
+                    self.root, "Urlaub an diesem Tag",
+                    message + "\n\nWar es ein Krankheitstag im Urlaub, "
+                    "trägst du ihn als Krankheit ein.", "Krank melden…"):
+                self._open_sick_dialog(date_str, None)
             return
         # Bei ausgeschalteten Reservierungen KEIN reservation_store an den Dialog
         # geben — dann wird der Reservierungs-Block nicht angezeigt und ist per

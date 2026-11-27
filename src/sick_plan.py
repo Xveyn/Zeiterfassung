@@ -254,6 +254,19 @@ def sick_blocking_vacation(vacation_days: Mapping[str, int],
                   if m > 0 and vacation_days.get(d, 0) > 0)
 
 
+def vacation_sick_conflicts(plan_days: Mapping[str, int],
+                            sick_days: Mapping[str, int],
+                            existing_days: Mapping[str, int] | None = None,
+                            ) -> list[str]:
+    """Tage, die ein Urlaub neu über einen Krankheitstag (Minuten > 0) legt.
+    Beim Bearbeiten (`existing_days`) sperrt ein Tag nicht, den der Urlaub
+    schon mit Minuten > 0 abdeckte: Krankheit im Urlaub ist erlaubt, nur
+    das Neu-Überdecken nicht."""
+    covered = existing_days or {}
+    return [d for d in sick_blocking_vacation(plan_days, sick_days)
+            if covered.get(d, 0) <= 0]
+
+
 def block_hints(days: Mapping[str, int]) -> list[str]:
     hints = [HINT_SUGGESTION]
     if len(days) > SIX_WEEKS_DAYS:

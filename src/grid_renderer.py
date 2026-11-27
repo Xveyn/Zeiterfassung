@@ -615,7 +615,7 @@ class GridRenderer:
                         holiday_max_len, cell_size, conflict_dates=None,
                         entry_time_font=FONT_TINY, holiday_name_font=FONT_SMALL,
                         reservation=None, vacation=None, sick=None):
-        """Dispatcht auf Vacation-, Entry-, Holiday- oder Empty-Zelle.
+        """Dispatcht auf Sick-, Vacation-, Entry-, Holiday- oder Empty-Zelle.
 
         vacation: die Urlaubsperiode dieses Tages oder None. Urlaub GEWINNT —
         er färbt die Zelle auch über Feiertag und Wochenende hinweg, damit der
@@ -695,22 +695,24 @@ class GridRenderer:
             self._add_reservation_marker(cell)
         if reminder is not None:
             self._add_reminder_marker(cell)
-        tip_text = self._build_tooltip_text(
-            entry, reservation,
-            holidays_map[day_date] if is_holiday else None,
-            has_conflict=has_conflict,
-            vacation=vacation, vacation_minutes=vacation_minutes, reminder=reminder,
-            slot_order=self._slot_order())
+        holiday_name = holidays_map[day_date] if is_holiday else None
         if sick is not None:
-            rest = self._build_tooltip_text(
-                entry, reservation, None, has_conflict=has_conflict,
-                reminder=reminder, slot_order=self._slot_order())
+            # Urlaub und Feiertag stehen schon im Krankheits-Text, der Rest
+            # (Arbeitszeit, Reservierung, Konflikt) hängt darunter.
             tip_text = sick_view.cell_tooltip(
                 date_str, sick,
                 vacation_name=vacation.get("name", "") if vacation else None,
-                holiday=holidays_map[day_date] if is_holiday else None)
+                holiday=holiday_name)
+            rest = self._build_tooltip_text(
+                entry, reservation, None, has_conflict=has_conflict,
+                reminder=reminder, slot_order=self._slot_order())
             if rest:
                 tip_text += "\n" + rest
+        else:
+            tip_text = self._build_tooltip_text(
+                entry, reservation, holiday_name, has_conflict=has_conflict,
+                vacation=vacation, vacation_minutes=vacation_minutes,
+                reminder=reminder, slot_order=self._slot_order())
         if tip_text:
             attach_tooltip(cell, tip_text)
 
@@ -738,12 +740,12 @@ class GridRenderer:
 
         return cell
 
-    def _sick_block(self, sick_days, date_str):
-        """Der Krankheitsblock des Tages; der Store wird nur für Krankheitstage
-        gefragt."""
-        if date_str not in sick_days:
-            return None
-        return self._sick_store.block_for(date_str)
+    def _sick_blocks_by_day(self):
+        """`{Tag: Krankheitsblock}`, einmal je Render statt je Zelle."""
+        if not self._sick_store:
+            return {}
+        return {day: block for block in self._sick_store.blocks()
+                for day in block.days}
 
     def _get_inactive_grid(self):
         """Liefert das versteckte Grid-Frame (Double-Buffer-Backbuffer).
@@ -879,8 +881,7 @@ class GridRenderer:
             self._reservation_store.get_all() if self._reservations_active() else {})
         vacation_periods = (
             self._vacation_store.get_all() if self._vacation_store else {})
-        sick_days = (
-            self._sick_store.day_minutes() if self._sick_store else {})
+        sick_by_day = self._sick_blocks_by_day()
         total_minutes = 0
 
         state = self._settings.get("state")
@@ -931,7 +932,7 @@ class GridRenderer:
                     holiday_name_font=holiday_name_font,
                     reservation=reservations.get(date_str),
                     vacation=period_for_day(vacation_periods, date_str),
-                    sick=self._sick_block(sick_days, date_str),
+                    sick=sick_by_day.get(date_str),
                 )
                 cell.grid(row=row, column=col, sticky="nsew", padx=2, pady=2)
 
@@ -952,8 +953,7 @@ class GridRenderer:
             self._reservation_store.get_all() if self._reservations_active() else {})
         vacation_periods = (
             self._vacation_store.get_all() if self._vacation_store else {})
-        sick_days = (
-            self._sick_store.day_minutes() if self._sick_store else {})
+        sick_by_day = self._sick_blocks_by_day()
         total_minutes = 0
         spans = week_spans_months(self._iso_year, self._current_week)
         state = self._settings.get("state")
@@ -992,7 +992,7 @@ class GridRenderer:
                 holiday_name_font=holiday_name_font,
                 reservation=reservations.get(date_str),
                 vacation=period_for_day(vacation_periods, date_str),
-                sick=self._sick_block(sick_days, date_str),
+                sick=sick_by_day.get(date_str),
             )
             cell.grid(row=1, column=col, sticky="nsew", padx=2, pady=2)
 

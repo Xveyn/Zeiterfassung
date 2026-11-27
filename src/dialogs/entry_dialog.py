@@ -180,6 +180,10 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
                       on_report_sick=None):
     """Modaler Dialog zum Bearbeiten von Ist-Zeit und Reservierung eines Tages.
 
+    on_report_sick: Callback des Knopfs „Krank melden…“ (Knopf nur, wenn
+    gesetzt): der Dialog schließt sich und ruft ihn; ein Speicherweg, kein
+    Löschweg.
+
     Beide Blöcke führen eine Liste von Slot-Zeilen (Start/Ende/Pause/Kategorie
     bzw. Start/Ende/Kategorie) und teilen sich EINEN „Speichern"-Button unten
     im Dialog (statt je einen eigenen): der sammelt und validiert beide
