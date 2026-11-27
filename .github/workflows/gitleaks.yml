@@ -14,7 +14,11 @@ name: Gitleaks
 # Required Check im Ruleset „Protect master“ (das Ruleset liegt außerhalb des
 # Repos; die Liste steht in CLAUDE.md, „Branch Protection“).
 
-on: [push, pull_request]
+# `edited`: ein nachträglich geänderter PR-Text wird ebenfalls geprüft (s. letzter Schritt).
+on:
+  push:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
 
 permissions:
   contents: read
@@ -41,3 +45,29 @@ jobs:
       # --redact: Fundstellen erscheinen im öffentlichen Log nie im Klartext.
       - name: Historie scannen
         run: ./gitleaks git --redact --no-banner --verbose
+      # Links auf eine Claude-Code-Session (Regel `claude-session-link` in .gitleaks.toml) gehören
+      # auch nicht in Commit-Nachrichten und PR-Texte; die sieht `gitleaks git` nicht. Geprüft
+      # werden nur die neuen Commits des PRs bzw. Pushes: ältere Nachrichten auf master tragen
+      # solche Links aus der Zeit vor der Regel. Die Texte kommen über env herein, nie per
+      # Interpolation ins Skript.
+      - name: Commit-Nachrichten und PR-Text prüfen
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = pull_request ]; then
+            range="$PR_BASE..$PR_HEAD"
+          elif [ -n "$BEFORE" ] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            range="$BEFORE..$AFTER"
+          else
+            # Neuer Branch oder Force-Push: der Vorgänger ist unbekannt, die übrigen Commits prüft der PR.
+            range="$AFTER^!"
+          fi
+          { git log --format=%B "$range"; printf '%s\n%s\n' "${PR_TITLE:-}" "${PR_BODY:-}"; } \
+            | ./gitleaks stdin -c .gitleaks.toml --enable-rule claude-session-link --redact --no-banner --verbose

@@ -21,7 +21,7 @@
 - Fremddaten aus der Antwort werfen nie: eine unbrauchbare `notiz` wird bereinigt bzw. leer.
 - DOM nur über `createElement`/Textknoten (Test verbietet `innerHTML`); Farben nur aus den Tokens in `app.css`, Text mindestens 4,5:1 (`test/contrast.test.js`), neue Flächen dort eintragen; Animationen höchstens 200 ms, nur `transform`/`opacity`; Hover nur in `@media (hover: hover)`.
 - `PRECACHE` in `sw-core.js` listet jede neue Laufzeitdatei (`test/shell.test.js`).
-- Kommentare sagen das Warum, keine Historie. Commits enden mit `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>` und `Claude-Session: https://claude.ai/code/session_01C9TQTpqHqaEXeGMCPPoL1c`.
+- Kommentare sagen das Warum, keine Historie. Commits enden mit `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 
 ## Review Focus
 

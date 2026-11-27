@@ -24,7 +24,7 @@
 - UI-Regeln des Repos: Pixelwerte durch `px()`, Schrift nur aus benannten Fonts, Breiten von Eingabefeldern in Zeichen, ausgrauen über `theme.set_enabled`, keine Lösch-Knöpfe im Tages-Dialog, genau ein `attach_tooltip` je Widget, keine dialogspezifischen Farben.
 - Tk-freie, annotierte Module (`slot_notes.py`, `conflict_view.py`, `report.py`) bleiben vollständig annotiert. Kommentare sagen das Warum, keine Historie, Docstrings in der Regel ≤ 8 Zeilen.
 - Prüfung je Task: `.venv/bin/python -m pytest -q`, `ruff check .`, `uvx --quiet pyright@1.1.411 --pythonpath .venv/bin/python` (5 bekannte `websockets`-Importfehler der lokalen Umgebung).
-- Commits enden mit `Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>` und der Zeile `Claude-Session: https://claude.ai/code/session_01C9TQTpqHqaEXeGMCPPoL1c`.
+- Commits enden mit `Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>`.
 
 ## Review Focus
 

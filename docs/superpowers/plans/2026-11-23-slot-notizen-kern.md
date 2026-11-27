@@ -21,7 +21,7 @@
 - Notiz: einzeilig, getrimmt, keine Zeichen der Klassen `Cc`/`Cs`, höchstens 200 Zeichen. Eingaben werden abgelehnt, gespeicherte Daten bereinigt.
 - App-intern heißt das Slot-Feld `notiz` und ist nur vorhanden, wenn nicht leer. Leser nehmen `slot.get("notiz", "")`.
 - Repo-Regeln: Tk-freie Module vollständig annotiert mit `# pyright: reportOptionalMemberAccess=true`; Kommentare sagen das Warum, keine Historie, Docstrings in der Regel ≤ 8 Zeilen; `ruff check .` und `pyright` sauber; `pytest` grün.
-- Commits enden mit `Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>` und der Zeile `Claude-Session: https://claude.ai/code/session_01C9TQTpqHqaEXeGMCPPoL1c`.
+- Commits enden mit `Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>`.
 
 ## Review Focus
 
