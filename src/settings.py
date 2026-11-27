@@ -40,6 +40,7 @@ SYNCED_SETTING_KEYS = (
     "pause_warning_enabled",
     "workweek_only",
     "slot_order_mode",
+    "sick_hours_basis",
 )
 
 DEFAULTS = {
@@ -117,6 +118,9 @@ DEFAULTS = {
     # Reihenfolge der Slots eines Tages: "chrono", "category" oder "custom"
     # (src/slot_order.py). Synchronisiert, damit Berichte überall gleich aussehen.
     "slot_order_mode": "chrono",
+    # Grundlage der vorbelegten Krankheitsstunden: "standard" oder "average_3m"
+    # (src/sick_plan.py). Synchronisiert, damit jedes Gerät gleich vorbelegt.
+    "sick_hours_basis": "standard",
     "always_on_top": False,
     # Linux: bei Monitorwechsel mit anderer Skalierung ohne Rückfrage neu
     # starten, sobald nichts offen ist (Xveyn#201). Gerätelokal.

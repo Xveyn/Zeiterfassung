@@ -16,6 +16,7 @@ from typing import Any
 
 from src import slot_notes
 from src.devices import sanitize_device_name, short_device_id
+from src.sick_plan import BASIS_LABELS, normalize_basis
 from src.slot_order import MODE_LABELS, sorted_slots
 from src.time_utils import (
     DAYS_DE, WEEKDAYS_DE_FULL, format_iso_date, format_iso_datetime,
@@ -49,6 +50,7 @@ SETTING_LABELS: dict[str, str] = {
     "pause_warning_enabled": "Pausenwarnung",
     "workweek_only": "Nur Werktage",
     "slot_order_mode": "Reihenfolge der Slots",
+    "sick_hours_basis": "Grundlage der Krankheitsstunden",
 }
 
 
@@ -144,6 +146,8 @@ def format_setting_value(key: str, value: Any) -> str:
         return format_iso_date(str(value), fallback=str(value))
     if key == "slot_order_mode":
         return MODE_LABELS.get(str(value), str(value))
+    if key == "sick_hours_basis":
+        return BASIS_LABELS[normalize_basis(value)]
     if key == "hourly_rate" and isinstance(value, (int, float)):
         return f"{value:.2f}".replace(".", ",") + " €"
     if key == "werkstudent_limit_max_hours" and isinstance(value, (int, float)):
