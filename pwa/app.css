@@ -317,7 +317,7 @@ dialog[open]::backdrop { animation: backdrop-in .18s ease-out; }
 
 /* Einrichtungs-Screen (#496): ein rotes Ziel (der Hauptknopf), alles andere grau. */
 .setup-hero { text-align: center; margin: 8px 0 16px; }
-.setup-hero img { width: 84px; height: 84px; border-radius: 50%; display: block; margin: 0 auto 10px; }
+.setup-hero img { width: 84px; height: 84px; display: block; margin: 0 auto 10px; }
 .setup-hero h1 { font-size: 1.3rem; margin: 0 0 4px; }
 .setup-hero p { margin: 0; }
 .setup-heading { font-size: .75rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 16px 0 8px; }
