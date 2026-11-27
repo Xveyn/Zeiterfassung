@@ -29,7 +29,7 @@ def test_cell_tooltip_names_vacation_and_holiday():
     b = _block("2026-03-02", "2026-03-03", {"2026-03-02": 480, "2026-03-03": 0})
     assert cell_tooltip("2026-03-03", b, vacation_name="Ostern",
                         holiday="Feiertag X") == (
-        "Krank (02.03.2026 – 03.03.2026)\nUrlaub „Ostern“\nFeiertag: Feiertag X")
+        "Krank (02.03.2026 – 03.03.2026)\nUrlaub: Ostern\nFeiertag: Feiertag X")
 
 
 def test_manager_rows_newest_first():

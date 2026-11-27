@@ -37,7 +37,7 @@ def cell_tooltip(date_str: str, block: SickBlock, *,
     if minutes > 0:
         lines.append(format_minutes_hm(minutes))
     if vacation_name is not None:
-        lines.append(f"Urlaub „{vacation_name}“")
+        lines.append(f"Urlaub: {vacation_name}")
     if holiday is not None:
         lines.append(f"Feiertag: {holiday}")
     return "\n".join(lines)
