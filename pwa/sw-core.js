@@ -43,6 +43,7 @@ export const PRECACHE = [
   './sw-repair.js',
   './minutes.js',
   './reservations.js',
+  './sick.js',
   './reminders-plan.js',
   './slot-order.js',
   './notes.js',

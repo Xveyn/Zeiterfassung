@@ -1448,3 +1448,291 @@ test('double save: an answer that differs from what was sent still drops the kno
   assert.equal(store.getDay('2026-10-07').notes_known, false);
   assert.ok(store.snapshotDirty().entries['2026-10-07'].slots.every((slot) => !('notiz' in slot)));
 });
+
+// --- Krankheitstage ---------------------------------------------------------------------------------
+
+const SICK_TODAY = '2026-10-08';
+const desktopSick = (minutes, over = {}) => ({ minutes, modified_at: '2026-10-07T20:00:00Z', deleted: false, ...over });
+const sickResponse = (sick, over = {}) => parsedResponse({ window_ahead: 14, sick_days: true, sick, ...over });
+const sickSnapshot = (store) => ({ entries: {}, versions: {}, reservations: {}, reservationVersions: {}, ...store.snapshotSick() });
+
+async function makeSick(options) {
+  const made = await make(options);
+  await made.store.setMeta({ sick_capable: true });
+  return made;
+}
+
+test('marking a range sick stores live days without minutes; the snapshot never carries minutes', async () => {
+  const { store } = await makeSick();
+  await store.markSick('2026-09-30', '2026-10-01');
+
+  assert.deepEqual(store.sickDays(), {
+    '2026-09-30': { minutes: null, modified_at: '2026-10-08T12:00:00Z', deleted: false, dirty_version: 1, synced_version: 0, error: null },
+    '2026-10-01': { minutes: null, modified_at: '2026-10-08T12:00:00Z', deleted: false, dirty_version: 1, synced_version: 0, error: null },
+  });
+  const snapshot = store.snapshotSick();
+  assert.deepEqual(snapshot.sick, {
+    '2026-09-30': { modified_at: '2026-10-08T12:00:00Z', deleted: false },
+    '2026-10-01': { modified_at: '2026-10-08T12:00:00Z', deleted: false },
+  });
+  assert.deepEqual(snapshot.sickVersions, { '2026-09-30': 1, '2026-10-01': 1 });
+  assert.equal(store.pendingCount(), 2);
+});
+
+test('marking sick is refused without the capability, for nonsense ranges and beyond 366 days', async () => {
+  const { store } = await make();
+  await assert.rejects(() => store.markSick('2026-10-01', '2026-10-01'), /Desktop/);
+  await store.setMeta({ sick_capable: true });
+  await assert.rejects(() => store.markSick('2026-10-02', '2026-10-01'));
+  await assert.rejects(() => store.markSick('2026-02-30', '2026-03-01'));
+  await assert.rejects(() => store.markSick('2025-10-01', '2026-10-02'), /366/);
+  assert.deepEqual(store.sickDays(), {});
+  await store.markSick('2025-10-02', '2026-10-02');                 // genau 366 Tage
+  assert.equal(Object.keys(store.sickDays()).length, 366);
+});
+
+test('marking a known sick day again keeps its minutes, but sends it again', async () => {
+  const { store } = await makeSick();
+  await store.applyResponse(sickResponse({ '2026-10-01': desktopSick(450) }), sickSnapshot(store), SICK_TODAY);
+  await store.markSick('2026-10-01', '2026-10-02');
+
+  const days = store.sickDays();
+  assert.equal(days['2026-10-01'].minutes, 450);
+  assert.equal(days['2026-10-01'].dirty_version > days['2026-10-01'].synced_version, true);
+  assert.equal(days['2026-10-02'].minutes, null);
+  assert.deepEqual(Object.keys(store.snapshotSick().sick).sort(), ['2026-10-01', '2026-10-02']);
+});
+
+test('a stamp after a desktop stamp ahead of the phone clock stays within what the desktop accepts', async () => {
+  const { store } = await makeSick();
+  await store.applyResponse(sickResponse({ '2026-10-01': desktopSick(450, { modified_at: '2026-10-08T13:00:00Z' }) }),
+    sickSnapshot(store), SICK_TODAY);
+  await store.markSick('2026-10-01', '2026-10-01');
+  assert.equal(store.sickDays()['2026-10-01'].modified_at, '2026-10-08T12:14:00Z');
+});
+
+test('clearing a sick day the desktop never knew drops it locally', async () => {
+  const { store, adapter } = await makeSick();
+  await store.markSick('2026-10-01', '2026-10-02');
+  await store.clearSick(['2026-10-01']);
+
+  assert.deepEqual(Object.keys(store.sickDays()), ['2026-10-02']);
+  assert.deepEqual(Object.keys(store.snapshotSick().sick), ['2026-10-02']);
+  const again = new Store(adapter, clock());
+  await again.load();
+  assert.deepEqual(Object.keys(again.sickDays()), ['2026-10-02']);
+});
+
+test('clearing a sick day from the desktop makes a dirty tombstone; clearing again is a no-op', async () => {
+  const { store } = await makeSick();
+  await store.applyResponse(sickResponse({ '2026-10-01': desktopSick(450) }), sickSnapshot(store), SICK_TODAY);
+  await store.clearSick(['2026-10-01', '2026-10-05']);               // der 5. ist gar nicht krank
+
+  const cleared = store.sickDays()['2026-10-01'];
+  assert.equal(cleared.deleted, true);
+  assert.equal(cleared.dirty_version > cleared.synced_version, true);
+  assert.deepEqual(store.snapshotSick().sick, { '2026-10-01': { modified_at: cleared.modified_at, deleted: true } });
+  assert.deepEqual(Object.keys(store.sickDays()), ['2026-10-01']);
+
+  await store.clearSick(['2026-10-01']);
+  assert.deepEqual(store.sickDays()['2026-10-01'], cleared);
+});
+
+test('an answer with sick days confirms what was sent and takes the minutes of the desktop', async () => {
+  const { store } = await makeSick();
+  await store.markSick('2026-10-01', '2026-10-02');
+  const snapshot = sickSnapshot(store);
+
+  await store.applyResponse(sickResponse({
+    '2026-10-01': desktopSick(450, { modified_at: '2026-10-08T12:00:01Z' }),
+    '2026-10-02': desktopSick(0, { modified_at: '2026-10-08T12:00:01Z' }),
+    '2026-09-20': desktopSick(480),                                // am Desktop gemeldet
+    '2026-09-21': desktopSick(0, { deleted: true }),               // am Desktop gelöscht
+  }), snapshot, SICK_TODAY);
+
+  const days = store.sickDays();
+  assert.deepEqual(Object.keys(days).sort(), ['2026-09-20', '2026-09-21', '2026-10-01', '2026-10-02']);
+  assert.equal(days['2026-10-01'].minutes, 450);
+  assert.equal(days['2026-10-01'].modified_at, '2026-10-08T12:00:01Z');
+  assert.equal(days['2026-10-02'].minutes, 0);
+  assert.equal(days['2026-09-21'].deleted, true);
+  for (const record of Object.values(days)) {
+    assert.equal(record.dirty_version, record.synced_version);
+    assert.equal(record.error, null);
+  }
+  assert.deepEqual(store.snapshotSick().sick, {});
+  assert.equal(store.pendingCount(), 0);
+  assert.equal(store.getMeta().sick_capable, true);
+});
+
+test('for a sent, unchanged sick day the answer decides: an older stamp and the other state are taken as they are', async () => {
+  const { store } = await makeSick();
+  await store.applyResponse(sickResponse({ '2026-10-01': desktopSick(450), '2026-10-02': desktopSick(450) }),
+    sickSnapshot(store), SICK_TODAY);
+  await store.markSick('2026-10-01', '2026-10-01');                 // unverändert gemeldet: der Desktop behält seinen Datensatz
+  await store.markSick('2026-10-03', '2026-10-03');                 // ein neuerer Tombstone am Desktop gewinnt
+  await store.clearSick(['2026-10-02']);                             // ein neuerer lebender Tag am Desktop gewinnt
+  const snapshot = sickSnapshot(store);
+
+  await store.applyResponse(sickResponse({
+    '2026-10-01': desktopSick(450),
+    '2026-10-02': desktopSick(480, { modified_at: '2026-10-08T12:05:00Z' }),
+    '2026-10-03': desktopSick(0, { modified_at: '2026-10-08T12:05:00Z', deleted: true }),
+  }), snapshot, SICK_TODAY);
+
+  const days = store.sickDays();
+  assert.equal(days['2026-10-01'].modified_at, '2026-10-07T20:00:00Z');   // älter als der lokale Stempel
+  assert.deepEqual([days['2026-10-02'].deleted, days['2026-10-02'].minutes], [false, 480]);
+  assert.deepEqual([days['2026-10-03'].deleted, days['2026-10-03'].minutes], [true, 0]);
+  assert.deepEqual(store.snapshotSick().sick, {});
+});
+
+test('a sick day from the desktop counts as known: clearing it sends a tombstone', async () => {
+  const { store } = await makeSick();
+  await store.applyResponse(sickResponse({ '2026-09-20': desktopSick(480) }), sickSnapshot(store), SICK_TODAY);
+  await store.clearSick(['2026-09-20']);
+  assert.equal(store.snapshotSick().sick['2026-09-20'].deleted, true);
+});
+
+test('a sick day changed while the request was in flight stays local and dirty', async () => {
+  const { store } = await makeSick();
+  await store.markSick('2026-10-01', '2026-10-01');
+  const snapshot = sickSnapshot(store);
+  await store.applyResponse(sickResponse({ '2026-10-01': desktopSick(450) }), snapshot, SICK_TODAY);
+  await store.markSick('2026-10-02', '2026-10-02');
+  const inFlight = sickSnapshot(store);
+  await store.clearSick(['2026-10-01']);                              // während der Anfrage geleert
+
+  await store.applyResponse(sickResponse({
+    '2026-10-01': desktopSick(450), '2026-10-02': desktopSick(450) }), inFlight, SICK_TODAY);
+
+  const days = store.sickDays();
+  assert.equal(days['2026-10-01'].deleted, true);
+  assert.equal(days['2026-10-01'].dirty_version > days['2026-10-01'].synced_version, true);
+  assert.equal(days['2026-10-02'].minutes, 450);
+  assert.deepEqual(Object.keys(store.snapshotSick().sick), ['2026-10-01']);
+});
+
+test('a sick day dropped while the request was in flight, but taken by the desktop, goes out as a tombstone', async () => {
+  const { store } = await makeSick();
+  await store.markSick('2026-10-01', '2026-10-01');
+  const inFlight = sickSnapshot(store);
+  await store.clearSick(['2026-10-01']);                              // nie bestätigt: nur lokal verworfen
+  assert.deepEqual(store.sickDays(), {});
+
+  await store.applyResponse(sickResponse({ '2026-10-01': desktopSick(450, { modified_at: '2026-10-08T12:00:01Z' }) }),
+    inFlight, SICK_TODAY);
+
+  assert.equal(store.sickDays()['2026-10-01'].deleted, true);
+  assert.deepEqual(store.snapshotSick().sick, { '2026-10-01': { modified_at: '2026-10-08T12:00:02Z', deleted: true } });
+});
+
+test('a clean sick day the answer no longer lists goes inside the window and far outside, not at its edge', async () => {
+  const { store } = await makeSick();
+  await store.applyResponse(sickResponse({
+    '2026-10-01': desktopSick(450),                                // inneres Fenster
+    '2026-07-10': desktopSick(450),                                // Randtag (heute − 90)
+    '2026-10-22': desktopSick(450),                                // Randtag (heute + 14)
+    '2026-05-01': desktopSick(450),                                // weit davor
+  }), sickSnapshot(store), SICK_TODAY);
+  assert.deepEqual(Object.keys(store.sickDays()).sort(), ['2026-07-10', '2026-10-01', '2026-10-22']);
+
+  await store.applyResponse(sickResponse({}), sickSnapshot(store), SICK_TODAY);
+
+  assert.deepEqual(Object.keys(store.sickDays()).sort(), ['2026-07-10', '2026-10-22']);
+});
+
+test('a sent, unchanged sick day the answer does not list is done; an unsent one stays', async () => {
+  const { store } = await makeSick();
+  await store.applyResponse(sickResponse({ '2026-10-01': desktopSick(450) }), sickSnapshot(store), SICK_TODAY);
+  await store.clearSick(['2026-10-01']);
+  await store.markSick('2026-10-03', '2026-10-03');
+  await store.markSickError('2026-10-03', 'Krankheit 2026-10-03: abgelehnt');
+  const snapshot = sickSnapshot(store);                              // nur der Tombstone geht hinaus
+
+  await store.applyResponse(sickResponse({}), snapshot, SICK_TODAY);
+
+  assert.deepEqual(Object.keys(store.sickDays()), ['2026-10-03']);
+});
+
+test('an answer without sick days hides the feature, sends nothing and never deletes a sick day', async () => {
+  const { store } = await makeSick();
+  await store.applyResponse(sickResponse({ '2026-10-01': desktopSick(450) }), sickSnapshot(store), SICK_TODAY);
+  await store.markSick('2026-10-02', '2026-10-02');
+  const before = store.sickDays();
+
+  await store.applyResponse(parsedResponse({ window_ahead: 14, sick_days: false, sick: null }), sickSnapshot(store), SICK_TODAY);
+
+  assert.equal(store.getMeta().sick_capable, false);
+  assert.deepEqual(store.sickDays(), before);
+  assert.equal(store.pendingCount(), 0);                             // Funktion verborgen: zählt nicht
+  await store.markSickError('2026-10-02', 'abgelehnt');
+  assert.equal(store.errorCount(), 0);
+
+  await store.applyResponse(sickResponse({}), { entries: {}, versions: {} }, SICK_TODAY);   // Desktop kann es wieder
+  assert.equal(store.pendingCount(), 1);
+  assert.equal(store.errorCount(), 1);
+});
+
+test('an unreadable sick block keeps the capability, but confirms and deletes nothing', async () => {
+  const { store } = await makeSick();
+  await store.applyResponse(sickResponse({ '2026-10-01': desktopSick(450) }), sickSnapshot(store), SICK_TODAY);
+  await store.markSick('2026-10-02', '2026-10-02');
+  const before = store.sickDays();
+
+  await store.applyResponse(sickResponse(null), sickSnapshot(store), SICK_TODAY);
+
+  assert.equal(store.getMeta().sick_capable, true);
+  assert.deepEqual(store.sickDays(), before);
+});
+
+test('a rejected sick day is marked only in the version that was sent and is not sent again', async () => {
+  const { store } = await makeSick();
+  await store.markSick('2026-10-01', '2026-10-02');
+  const { sickVersions } = store.snapshotSick();
+  await store.markSick('2026-10-02', '2026-10-02');                 // seither erneut gemeldet
+
+  await store.markSickError('2026-10-01', 'Krankheit 2026-10-01: kaputt', sickVersions['2026-10-01']);
+  await store.markSickError('2026-10-02', 'Krankheit 2026-10-02: kaputt', sickVersions['2026-10-02']);
+  await store.markSickError('2026-10-09', 'kein Tag');
+
+  assert.equal(store.sickDays()['2026-10-01'].error, 'Krankheit 2026-10-01: kaputt');
+  assert.equal(store.sickDays()['2026-10-02'].error, null);
+  assert.deepEqual(Object.keys(store.snapshotSick().sick), ['2026-10-02']);
+  assert.equal(store.errorCount(), 1);
+  await store.markSick('2026-10-01', '2026-10-01');                 // erneut melden = erneut versuchen
+  assert.equal(store.sickDays()['2026-10-01'].error, null);
+});
+
+test('more than 400 untransferred sick days go out newest first, at most 400', async () => {
+  const { store } = await makeSick();
+  await store.markSick('2025-06-01', '2026-05-31');
+  await store.markSick('2026-06-01', '2026-08-31');
+  const { sick } = store.snapshotSick();
+  assert.equal(Object.keys(sick).length, 400);
+  assert.ok('2026-08-31' in sick);
+  assert.ok(!('2025-06-01' in sick));
+});
+
+test('broken sick records in the stored meta are skipped on load', async () => {
+  const adapter = createMemoryAdapter();
+  const good = { minutes: null, modified_at: '2026-10-08T12:00:00Z', deleted: false, dirty_version: 1, synced_version: 0, error: null };
+  await adapter.batch([{ store: 'meta', op: 'put', key: 'meta', value: { sick_capable: 'ja', sick: {
+    '2026-10-01': good,
+    '2026-10-02': { ...good, minutes: 'viel' },
+    '2026-10-03': { ...good, dirty_version: 'eins' },
+    '2026-10-04': { ...good, deleted: 1 },
+    'kein-datum': good,
+    '2026-10-05': 'krank',
+  } } }]);
+  const store = new Store(adapter, clock());
+  await store.load();
+  assert.deepEqual(Object.keys(store.sickDays()), ['2026-10-01']);
+  assert.equal(store.getMeta().sick_capable, false);
+
+  const other = createMemoryAdapter();
+  await other.batch([{ store: 'meta', op: 'put', key: 'meta', value: { sick: ['kaputt'] } }]);
+  const broken = new Store(other, clock());
+  await broken.load();
+  assert.deepEqual(broken.sickDays(), {});
+});

@@ -34,6 +34,10 @@ ES-Module flach im Ordner:
   `reservation_block_visible` über `test/fixtures/reservation-visibility-cases.json`),
   Slot-Normalisierung und -Prüfung samt Pause (ganze Zahl ≥ 0, sonst 0; geprüft wie bei Ist-Zeiten),
   Signatur und die Netto-Rechnung für „Noch ausstehend“ (s. „Reservierungen“).
+- `sick.js` — Krankheitstage ohne DOM: der Block `sick` der Antwort als Fremddaten (`parseSickBlock`, wie
+  `clean_record` am Desktop), Zeiträume (`sickRange`; `Store.markSick` nimmt höchstens `MAX_SICK_BLOCK_DAYS` Tage), der Block um einen Tag
+  (`blockOf`) und die lokale Sperre durch Ist-Zeit (`workBlockedDates`, `reservationDatesIn`). Gespeichert wird in der
+  Meta (`sick`, `sick_capable`), die Minuten rechnet der Desktop.
 - `categories.js` — Kategorien-Verwaltung ohne DOM: Zeilen aus `categories` +
   `category_times` (`categoryRows`), zurück in den Block (`rowsToBlock`),
   Prüfung (`validateCategoryRows`), Kurzfassung der Zeiten (`timesSummary`),
@@ -139,7 +143,7 @@ cd pwa && node --test
 Der CI-Job `pwa` (`.github/workflows/test.yml`) läuft mit Node 22.
 
 **Typprüfung (#513):** `npm run typecheck` (`tsc --noEmit` über JSDoc, CI-Job `typecheck-js`, Required Check). Geprüft
-wird nur, was `// @ts-check` am Dateianfang trägt: heute `store.js`, `sync.js`, `view-model.js` und `slot-order.js`. Die
+wird nur, was `// @ts-check` am Dateianfang trägt: heute `store.js`, `sync.js`, `view-model.js`, `slot-order.js` und `sick.js`. Die
 Liste wächst pro PR; TypeScript ist die einzige devDependency, zur Laufzeit bleibt die PWA ohne Abhängigkeiten.
 
 ## Vertrag gegen Drift
@@ -215,7 +219,8 @@ Desktop) ist seltener, kommt aber vor. Sieben Regeln:
    `compat/sync-request-pre-notes.json` (die Anfrage ohne `notiz`, die der Desktop weiter annehmen muss); das
    Live-Beispiel `sync-request.json` trägt `notiz` an einem Tag. Dazu der Stand vor den Krankheitstagen
    (`compat/sync-request-pre-sick.json`, `compat/sync-response-pre-sick.json`, ohne `sick` und `sick_days`); das
-   Live-Beispiel trägt `sick`, die PWA sendet es noch nicht (`test/sync.test.js` nimmt den Schlüssel beim Vergleich aus).
+   Live-Beispiel trägt `sick`, die PWA sendet es nur, wenn die Antwort die Fähigkeit `sick_days` trug (ohne sie bleibt
+   die Meta-Fähigkeit aus, `test/compat.test.js`).
 5. **Neue PWA, alter Desktop.** Ein Desktop vor #311 ignoriert `settings` in der
    Anfrage und kennt `writable_settings` nicht. Die PWA bietet das Bearbeiten
    der Kategorien deshalb nur an, wenn die Antwort `writable_settings` mit

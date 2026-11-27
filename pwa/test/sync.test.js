@@ -127,6 +127,18 @@ test('an invalid_entry error carries the day from the message', () => {
   assert.equal(classifyHttpError(422, { error: { code: 'invalid_entry', message: "'x': kaputt" } }).day, null);
 });
 
+test('the prefix of a rejected day tells work time, reservation and sick day apart', () => {
+  const kindOf = (message) => {
+    const error = classifyHttpError(422, { error: { code: 'invalid_entry', message } });
+    return [error.day, error.dayKind];
+  };
+  assert.deepEqual(kindOf('Krankheit 2026-03-02: modified_at liegt in der Zukunft.'), ['2026-03-02', 'sick']);
+  assert.deepEqual(kindOf('Reservierung 2026-03-02: Endzeit muss nach Startzeit liegen'), ['2026-03-02', 'reservation']);
+  assert.deepEqual(kindOf('2026-03-02: Endzeit muss nach Startzeit liegen'), ['2026-03-02', 'entry']);
+  assert.deepEqual(kindOf('Höchstens 400 Krankheitstage je Anfrage.'), [null, null]);
+  assert.deepEqual(kindOf('Krankheit: 2026-03-02 kaputt'), [null, null]);
+});
+
 test('a missing answer is offline, whatever the reason', () => {
   for (const error of [new TypeError('Failed to fetch'), new DOMException('x', 'AbortError'),
     new Error('irgendwas')]) {
@@ -346,6 +358,8 @@ test('a sync sends bearer, request shape and the dirty days, then applies the an
     { entries: {}, versions: {}, reservations: {}, reservationVersions: {} }, '2026-10-08');
   await store.setMeta({ token: 'T0', last_pull_at: '' });          // die Hilfsantwort hat beides verstellt
   await store.saveCategories({ categories: ['Neu'], category_times: { Neu: { start: '09:00' } } });
+  await store.markSick('2026-10-01', '2026-10-02');                 // erneut gemeldet: geht wieder hinaus
+  await store.clearSick(['2026-10-02']);                             // am Desktop bekannt: Tombstone
 
   const result = await client.sync();
 
@@ -359,8 +373,12 @@ test('a sync sends bearer, request shape and the dirty days, then applies the an
     assert.equal(JSON.stringify(call.body).includes(secret), false, secret);
   }
   const example = fixture('sync-request.json');
-  // `sick` sendet die PWA noch nicht; das Beispiel zeigt, was der Desktop annimmt (tests/test_mobile_contract.py).
-  assert.deepEqual(keysOf(call.plain), keysOf(example).filter((key) => key !== 'sick'));
+  assert.deepEqual(keysOf(call.plain), keysOf(example));
+  assert.deepEqual(Object.keys(call.plain.sick).sort(), Object.keys(example.sick).sort());
+  for (const date of Object.keys(example.sick)) {
+    assert.deepEqual(keysOf(call.plain.sick[date]), keysOf(example.sick[date]), date);
+    assert.equal(call.plain.sick[date].deleted, example.sick[date].deleted, date);
+  }
   assert.deepEqual(Object.keys(call.plain.entries).sort(), Object.keys(example.entries).sort());
   for (const date of Object.keys(example.entries)) {
     assert.deepEqual(keysOf(call.plain.entries[date]), keysOf(example.entries[date]), date);
@@ -386,6 +404,8 @@ test('a sync sends bearer, request shape and the dirty days, then applies the an
     received: Object.keys(response.entries).length, window: response.window_days });
   assert.equal(store.getMeta().token, fixture('sync-response.json').token);   // erneuert
   assert.deepEqual(store.dirtyDates(), []);
+  assert.deepEqual(store.snapshotSick().sick, {});                    // bestätigt
+  assert.equal(store.sickDays()['2026-10-01'].minutes, response.sick['2026-10-01'].minutes);
 });
 
 test('a day whose notes the phone does not know is sent exactly as before slot_notes (frozen request)', async () => {
@@ -915,6 +935,78 @@ test('exactly 400 untransferred days need one request, not two', async () => {
   await client.sync();
 
   assert.equal(fetchFn.calls.filter((c) => c.url.endsWith('/v1/sync')).length, 1);
+});
+
+// --- Krankheitstage ----------------------------------------------------------------------------------
+
+test('the answer carries the sick days only with the capability', () => {
+  const live = parseSyncResponse(fixture('sync-response.json'));
+  assert.equal(live.sick_days, true);
+  assert.deepEqual(live.sick, fixture('sync-response.json').sick);
+  const unflagged = parseSyncResponse({ ...fixture('sync-response.json'), sick_days: 'ja' });
+  assert.equal(unflagged.sick_days, false);
+  assert.equal(unflagged.sick, null);
+  const broken = parseSyncResponse({ ...fixture('sync-response.json'), sick: ['kaputt'] });
+  assert.equal(broken.sick_days, true);
+  assert.equal(broken.sick, null);
+});
+
+test('without the capability no sick day is sent or deleted; they go out once a desktop reports it', async () => {
+  let call = 0;
+  const { store, client, fetchFn } = await make({ handler: () => reply(200, ++call === 1
+    ? fixture('compat/sync-response-pre-sick.json') : fixture('sync-response.json')) });
+  await store.setMeta({ sick_capable: true });
+  await store.markSick('2026-10-05', '2026-10-06');
+  await store.setMeta({ sick_capable: false });                     // Desktop seither auf einer älteren Version
+
+  await client.sync();                                              // Antwort ohne `sick_days`
+  assert.equal('sick' in fetchFn.calls[0].plain, false);
+  assert.equal(store.getMeta().sick_capable, false);
+  assert.deepEqual(Object.keys(store.snapshotSick().sick).sort(), ['2026-10-05', '2026-10-06']);
+
+  await client.sync();                                              // die Fähigkeit kommt erst mit dieser Antwort
+  assert.equal('sick' in fetchFn.calls[1].plain, false);
+  assert.equal(store.getMeta().sick_capable, true);
+
+  await client.sync();
+  assert.deepEqual(fetchFn.calls[2].plain.sick, {
+    '2026-10-05': { modified_at: NOW, deleted: false }, '2026-10-06': { modified_at: NOW, deleted: false } });
+});
+
+test('a sync without untransferred sick days sends no sick block', async () => {
+  const { client, fetchFn } = await make();
+  await client.sync();
+  await client.sync();
+  assert.equal('sick' in fetchFn.calls[1].plain, false);
+});
+
+test('a rejected sick day is marked as rejected, not a work day of the same date', async () => {
+  const { store, client } = await make({ handler: () => reply(422,
+    { error: { code: 'invalid_entry', message: 'Krankheit 2026-10-05: modified_at liegt in der Zukunft.' } }, { sealed: true }) });
+  await store.setMeta({ sick_capable: true });
+  await store.saveDay('2026-10-05', [SLOT]);
+  await store.markSick('2026-10-05', '2026-10-06');
+
+  await assert.rejects(() => client.sync(), (error) => error instanceof SyncError && error.dayKind === 'sick');
+
+  assert.equal(store.sickDays()['2026-10-05'].error, 'Krankheit 2026-10-05: modified_at liegt in der Zukunft.');
+  assert.equal(store.sickDays()['2026-10-06'].error, null);
+  assert.equal(store.getDay('2026-10-05').error, null);
+  assert.deepEqual(Object.keys(store.snapshotSick().sick), ['2026-10-06']);
+});
+
+test('sick days go out only with the first chunk', async () => {
+  const { store, client, fetchFn } = await make();
+  await store.setMeta({ sick_capable: true });
+  await store.markSick('2026-10-05', '2026-10-05');
+  for (let i = 0; i < 450; i += 1) await store.saveDay(new Date(Date.UTC(2025, 0, 1 + i)).toISOString().slice(0, 10), [SLOT]);
+
+  await client.sync();
+
+  const calls = fetchFn.calls.filter((c) => c.url.endsWith('/v1/sync'));
+  assert.equal(calls.length, 2);
+  assert.deepEqual(Object.keys(calls[0].plain.sick), ['2026-10-05']);
+  assert.equal('sick' in calls[1].plain, false);
 });
 
 // --- Inhalte der Antwort prüfen (#262) --------------------------------------------------------------
