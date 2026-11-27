@@ -313,7 +313,9 @@ bietet sie nur an, wenn „Reservierungen verwenden“ an ist.
   (`withPause` ist dort falsch). `views.js` zieht das Label bei jeder Zeiteingabe nach.
 - **Löschen** wie bei den Ist-Zeiten: „Tag leeren“ (am Reiter „Reservierung“
   mit eigener Bestätigung) schreibt einen Tombstone — außer der Desktop kennt den Tag nie
-  (`synced_version` 0): dann wird er nur lokal verworfen.
+  (`synced_version` 0): dann wird er nur lokal verworfen. Ein Tag aus einer Antwort gilt als bekannt
+  (`_applyReservations` setzt die Versionen auf mindestens 1, auch bei einem gespeicherten Desktop-Tag mit 0);
+  sonst verschwände eine Desktop-Reservierung beim Löschen nur lokal und käme mit dem nächsten Abgleich zurück.
 - **Ablehnung je Tag.** Der Desktop nennt den Tag vorn in der Meldung
   (`Reservierung <Datum>: …`); `SyncError.dayKind` unterscheidet das von einem
   Ist-Tag, und nur dieser Tag wird als abgelehnt markiert.

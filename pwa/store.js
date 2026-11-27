@@ -592,10 +592,14 @@ export class Store {
       const record = this._reservations.get(date);
       const sent = sentVersions[date];
       if (record && isDirty(record) && !(sent !== undefined && sent === record.dirty_version)) continue;
+      // Ein Tag vom Desktop ist ihm bekannt: Version ab 1, denn `synced_version` 0 heißt „nie bestätigt“, und
+      // `clearReservation` verwürfe ihn dann nur lokal, ohne Tombstone; der nächste Abgleich brächte ihn zurück.
+      // Ein gespeicherter Desktop-Tag mit Version 0 rückt hier ebenso auf 1.
+      const version = Math.max(record ? record.dirty_version : 0, 1);
       const next = {
         entry: { slots: structuredClone(entry.slots), modified_at: entry.modified_at, deleted: false },
-        dirty_version: record ? record.dirty_version : 0,
-        synced_version: record ? record.dirty_version : 0,
+        dirty_version: version,
+        synced_version: version,
         error: null,
       };
       this._reservations.set(date, next);

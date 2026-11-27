@@ -734,6 +734,41 @@ test('clearing a confirmed reservation still leaves a tombstone', async () => {
   assert.equal(store.getReservation('2026-10-20').deleted, true);
 });
 
+test('a reservation that came from the desktop counts as known: clearing it sends a tombstone', async () => {
+  const { store } = await make();
+  await store.setMeta({ reservations_enabled: true });
+  await store.applyResponse(parsedWith({ '2026-10-20': { slots: [RES], modified_at: '2026-10-12T12:00:00Z' } }),
+    emptySnapshot(), RES_TODAY);
+  assert.equal(store.getReservation('2026-10-20').dirty, false);
+
+  await store.clearReservation('2026-10-20');
+
+  const cleared = store.getReservation('2026-10-20');
+  assert.equal(cleared.deleted, true);
+  assert.equal(cleared.dirty, true);
+  assert.deepEqual(store.snapshotReservations().reservations['2026-10-20'],
+    { slots: [], modified_at: cleared.modified_at, deleted: true });
+
+  // Der Desktop löscht ihn und nennt ihn nicht mehr: erledigt, er kommt nicht zurück.
+  const snapshot = emptySnapshot(store.snapshotReservations());
+  await store.applyResponse(parsedWith({}), snapshot, RES_TODAY);
+  assert.deepEqual(store.reservationDates(), []);
+});
+
+test('a stored desktop reservation at version 0 counts as known after the next answer', async () => {
+  const adapter = createMemoryAdapter();
+  await adapter.batch([{ store: 'reservations', op: 'put', key: '2026-10-20', value: {
+    entry: { slots: [RES], modified_at: '2026-10-12T12:00:00Z', deleted: false },
+    dirty_version: 0, synced_version: 0, error: null } }]);
+  const { store } = await make({ adapter });
+  await store.applyResponse(parsedWith({ '2026-10-20': { slots: [RES], modified_at: '2026-10-12T12:00:00Z' } }),
+    emptySnapshot(), RES_TODAY);
+
+  await store.clearReservation('2026-10-20');
+
+  assert.equal(store.snapshotReservations().reservations['2026-10-20'].deleted, true);
+});
+
 test('a rejected reservation that is now in the past is cleaned up', async () => {
   const { store } = await make();
   await store.saveReservation('2026-10-15', [RES]);
