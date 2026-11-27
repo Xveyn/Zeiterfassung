@@ -496,8 +496,10 @@ def _phone_sick(request: SyncRequest, *, sick_store: SickStore, storage: Storage
                 today: datetime.date) -> dict[str, SickDay]:
     """Die geänderten Krankheitstage des Handys als Datensätze, unter `data_lock`. Fehlende
     Minuten rechnet `prefill` je lückenloser Folge wie Dialog und API (`mobile_sick.fill_minutes`).
-    Reservierungen zählen nur, solange sie aktiv sind, und werden vor `merge_phone` gelesen: eine
-    in derselben Anfrage gelöschte Reservierung bestimmt die Minuten noch."""
+    Ist-Zeiten und Reservierungen derselben Anfrage zählen schon mit, obwohl sie erst danach
+    gemergt werden (`mobile_sick.prefill_entries`/`prefill_reservations`). Reservierungen nur,
+    solange sie aktiv sind, und im Stand vor `merge_phone`: eine in derselben Anfrage gelöschte
+    Desktop-Reservierung bestimmt die Minuten noch."""
     desktop_raw = sick_store.get_all_raw()
     inputs: dict[str, Any] = {}
 
@@ -505,8 +507,10 @@ def _phone_sick(request: SyncRequest, *, sick_store: SickStore, storage: Storage
         if not inputs:          # erst gelesen, wenn eine Folge wirklich etwas zu rechnen hat
             inputs.update(
                 basis=normalize_basis(settings.get("sick_hours_basis")),
-                entries=storage.get_all(),
-                reservations=(reservation_store.get_all() if reservation_store is not None
+                entries=mobile_sick.prefill_entries(storage.get_all(), request.entries),
+                reservations=(mobile_sick.prefill_reservations(reservation_store.get_all(),
+                                                               request.reservations)
+                              if reservation_store is not None
                               and reservations_active(reservation_store, settings) else None),
                 vacation_days=vacation_store.day_minutes() if vacation_store is not None else {})
         return prefill(first, last, sick_days=sick_days, settings=settings, today=today,
@@ -587,6 +591,11 @@ def perform_sync(request: SyncRequest, *, device_id: str, device_name: str,
             phone_doc = _phone_doc(request, device_id, device_name, now, changed_since,
                                    desktop_entries=desktop_doc.get("entries"), sick=phone_sick)
             merged = sync.merge(phone_doc, desktop_doc, last_pull_at)
+            if phone_sick:
+                merged["sick"] = mobile_sick.keep_phone_deletions(
+                    merged.get("sick") or {}, records=phone_sick,
+                    desktop_raw=desktop_doc.get("sick") or {},
+                    watermark=merged["meta"]["gc_watermark"])
             sync_journal.apply_merged_doc_journaled(
                 merged, storage, settings, conflicts_store,
                 os.path.join(base, sync_journal.JOURNAL_FILENAME), sick_store=sick_store)

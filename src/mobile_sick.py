@@ -8,6 +8,10 @@
 - `fill_minutes` und `phone_records`: die Datensätze des Handys für den Merge.
   Die Minuten rechnet der Desktop (`sick_plan.prefill`): das Handy kennt weder
   Feiertage noch die Regel „Stunden je Krankheitstag“. Unveränderte Tage bleiben weg.
+  `prefill_entries`/`prefill_reservations` legen die Ist-Zeiten und Reservierungen
+  derselben Anfrage über den Stand des Desktops.
+- `keep_phone_deletions`: hält eine Löschung des Handys, die der Merge unter dem
+  Watermark als erledigt entfernt hat.
 - `build_sick`: der Block `sick` der Antwort.
 
 Den Fehler hier übersetzt `mobile_sync` in `SyncError(422, "invalid_entry", …)`.
@@ -122,7 +126,10 @@ def fill_minutes(parsed: Mapping[str, Mapping[str, Any]], *,
     Krankheit zählen dabei die lebenden Desktop-Tage, die Handy-Tage mit eigenen Minuten und
     die Ergebnisse der früheren Folgen: als hätte jemand die Zeiträume nacheinander im Dialog
     gemeldet. Sonst zählten die übrigen neuen Krankheitstage im Durchschnitt als Arbeitstage
-    mit 0 Minuten. Eine Folge nur aus Desktop-Tagen braucht kein `fill`."""
+    mit 0 Minuten. Ein lebender Desktop-Tag, den das Handy in derselben Anfrage löscht, zählt
+    weiter als Krankheit: ob die Löschung gewinnt, entscheidet erst der Merge, und so fällt der
+    Tag aus dem Durchschnitt, statt ihn als Arbeitstag ohne Ist-Zeit zu senken. Eine Folge nur
+    aus Desktop-Tagen braucht kein `fill`."""
     desktop = {date: record["minutes"] for date, raw in desktop_raw.items()
                if (record := _live_record(raw)) is not None}
     sick_days = dict(desktop)
@@ -151,8 +158,11 @@ def phone_records(parsed: Mapping[str, Mapping[str, Any]], *,
     Desktop-Tombstone. Der Desktop-Datensatz behält so Stempel und Gerät; ein neuer Stempel
     ohne Änderung schlüge im LWW eine gleichzeitige Änderung auf einem anderen Gerät
     (`SickStore._put_days`/`delete_days`). Der Stempel wird auf `floor` angehoben
-    (`last_pull_at + 1 s`, leer bei `excluded`; Begründung in `mobile_sync._phone_doc`),
-    `device_id` kommt aus dem Token."""
+    (`last_pull_at + 1 s`, zwei Uhren: Begründung in `mobile_sync._phone_doc`), `device_id`
+    kommt aus dem Token. Bei `excluded` ist `floor` leer, weil `perform_sync` der ganzen Anfrage
+    eine Untergrenze gibt und die Einträge den Stempel dort für den Self-Heal brauchen;
+    Krankheitstage haben keinen. Einen Tombstone, den der Merge unter dem Watermark als erledigt
+    entfernt, setzt `keep_phone_deletions` wieder ein."""
     records: dict[str, SickDay] = {}
     for date, day in parsed.items():
         deleted = bool(day["deleted"])
@@ -174,6 +184,56 @@ def phone_records(parsed: Mapping[str, Mapping[str, Any]], *,
         records[date] = {"minutes": minutes, "modified_at": max(str(day["modified_at"]), floor),
                          "device_id": device_id, "deleted": deleted}
     return records
+
+
+def prefill_entries(stored: Mapping[str, Any],
+                    sent: Mapping[str, Mapping[str, Any]]) -> dict[str, Any]:
+    """Die Ist-Zeiten für `sick_plan.prefill`: `stored` (`Storage.get_all()`) mit den Tagen der
+    Anfrage (`SyncRequest.entries`) darüber. Ein lebender Handy-Tag ersetzt die Slots, ein
+    Tombstone nimmt den Tag heraus. Der Handy-Stand gilt ohne LWW-Vergleich: er ist der neueste,
+    den der Desktop kennt, und ein Konflikt auf Eintragsebene ändert am Durchschnitt nichts.
+    Sonst zählten die Werktage, die erst mit dieser Anfrage ankommen, als Tage ohne Arbeit."""
+    entries = dict(stored)
+    for date, entry in sent.items():
+        if entry.get("deleted"):
+            entries.pop(date, None)
+        else:
+            entries[date] = {"slots": list(entry.get("slots") or [])}
+    return entries
+
+
+def prefill_reservations(stored: Mapping[str, Any],
+                         sent: Mapping[str, Mapping[str, Any]]) -> dict[str, Any]:
+    """Die Reservierungen für `sick_plan.prefill`: `stored` (`ReservationStore.get_all()`, nur
+    lebende) plus die lebenden Handy-Tage der Anfrage an Tagen ohne lebende Desktop-Reservierung.
+    Es gilt der Stand vor `merge_phone`: eine Desktop-Reservierung, die das Handy in derselben
+    Anfrage ändert oder löscht, bestimmt die Minuten noch. Ein Tag, den nur das Handy hat, hat
+    keinen anderen Stand; ohne ihn bekäme er die Standardzeit oder den Durchschnitt."""
+    reservations = dict(stored)
+    for date, day in sent.items():
+        if not day.get("deleted") and day.get("slots") and date not in reservations:
+            reservations[date] = {"slots": list(day["slots"])}
+    return reservations
+
+
+def keep_phone_deletions(merged: Mapping[str, SickDay], *, records: Mapping[str, SickDay],
+                         desktop_raw: Mapping[str, SickDay], watermark: str) -> dict[str, SickDay]:
+    """Der gemergte Bereich `sick` plus jeder Tombstone aus `records` (`phone_records`), der darin
+    fehlt, obwohl der Desktop den Tag lebend hatte.
+
+    Dann hat der Tombstone im LWW gewonnen (`merge` entfernt nie einen lebenden Tag), lag aber
+    unter dem Watermark (Stempel bei `excluded` oder im ersten Abgleich nicht angehoben) und
+    wurde als erledigt entfernt; `apply_merged_doc` stellte sonst den lebenden Tag wieder her.
+    Er bekommt `max(Handy-Stempel, watermark)`: `_is_settled_entry` vergleicht mit `<`, er
+    bleibt bis zur nächsten Kompaktierung und erreicht so auch die anderen Geräte."""
+    result = dict(merged)
+    for date, record in records.items():
+        if not record["deleted"] or date in result:
+            continue
+        if _live_record(desktop_raw.get(date)) is None:
+            continue
+        result[date] = {**record, "modified_at": max(record["modified_at"], watermark)}
+    return result
 
 
 def build_sick(raw: Mapping[str, SickDay], *, first: str, last: str,

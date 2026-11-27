@@ -186,6 +186,84 @@ def test_a_run_of_desktop_days_only_needs_no_fill():
     assert minutes == {"2026-10-06": 300} and fill.calls == []
 
 
+# --- prefill_entries / prefill_reservations --------------------------------------------------------
+
+SLOT_A = {"start": "08:00", "end": "12:00", "pause": 0, "kategorie": "Projekt"}
+SLOT_B = {"start": "13:00", "end": "17:00", "pause": 30, "kategorie": ""}
+
+
+def test_the_entries_of_the_same_request_lie_over_the_stored_ones():
+    stored = {"2026-10-01": {"slots": [SLOT_A]}, "2026-10-02": {"slots": [SLOT_A]},
+              "2026-10-03": {"slots": [SLOT_A]}}
+    sent = {"2026-10-02": {"slots": [SLOT_B], "modified_at": STAMP, "deleted": False,
+                           "notes": {"13:00": "x"}},
+            "2026-10-03": {"slots": [], "modified_at": STAMP, "deleted": True},
+            "2026-10-04": {"slots": [SLOT_B], "modified_at": STAMP, "deleted": False},
+            "2026-10-05": {"slots": [], "modified_at": STAMP, "deleted": True}}
+
+    entries = mobile_sick.prefill_entries(stored, sent)
+
+    assert entries == {"2026-10-01": {"slots": [SLOT_A]}, "2026-10-02": {"slots": [SLOT_B]},
+                       "2026-10-04": {"slots": [SLOT_B]}}
+    assert stored["2026-10-03"] == {"slots": [SLOT_A]}               # Eingabe unverändert
+
+
+def test_phone_reservations_fill_only_days_without_a_live_desktop_reservation():
+    stored = {"2026-10-12": {"slots": [SLOT_A]}, "2026-10-13": {"slots": [SLOT_A]}}
+    sent = {"2026-10-12": {"slots": [SLOT_B], "modified_at": STAMP, "deleted": False},
+            "2026-10-13": {"slots": [], "modified_at": STAMP, "deleted": True},
+            "2026-10-14": {"slots": [SLOT_B], "modified_at": STAMP, "deleted": False},
+            "2026-10-15": {"slots": [], "modified_at": STAMP, "deleted": True}}
+
+    reservations = mobile_sick.prefill_reservations(stored, sent)
+
+    # Der Stand vor `merge_phone` gilt; ein Tombstone des Handys nimmt nichts heraus.
+    assert reservations == {"2026-10-12": {"slots": [SLOT_A]}, "2026-10-13": {"slots": [SLOT_A]},
+                            "2026-10-14": {"slots": [SLOT_B]}}
+    assert "2026-10-14" not in stored
+
+
+# --- keep_phone_deletions --------------------------------------------------------------------------
+
+WATERMARK = "2026-10-08T10:00:00Z"
+
+
+def test_a_phone_tombstone_stripped_over_a_live_desktop_day_is_put_back_at_the_watermark():
+    tombstone = _rec(0, deleted=True, modified_at=STAMP, device="phone-0001")
+    merged = {"2026-10-06": _rec(300)}
+
+    kept = mobile_sick.keep_phone_deletions(
+        merged, records={"2026-10-05": tombstone, "2026-10-06": _rec(120, device="phone-0001")},
+        desktop_raw={"2026-10-05": _rec(300, modified_at="2026-09-01T10:00:00Z"),
+                     "2026-10-06": _rec(300)},
+        watermark=WATERMARK)
+
+    assert kept == {"2026-10-05": {**tombstone, "modified_at": WATERMARK},
+                    "2026-10-06": _rec(300)}
+    assert merged == {"2026-10-06": _rec(300)}                        # Eingabe unverändert
+
+
+def test_a_phone_tombstone_above_the_watermark_keeps_its_stamp():
+    tombstone = _rec(0, deleted=True, modified_at="2026-10-08T11:00:00Z", device="phone-0001")
+
+    kept = mobile_sick.keep_phone_deletions(
+        {}, records={"2026-10-05": tombstone}, desktop_raw={"2026-10-05": _rec(300)},
+        watermark=WATERMARK)
+
+    assert kept == {"2026-10-05": tombstone}
+
+
+def test_nothing_is_put_back_without_a_live_desktop_day():
+    tombstone = _rec(0, deleted=True, modified_at=STAMP, device="phone-0001")
+    records = {"2026-10-03": tombstone, "2026-10-04": tombstone, "2026-10-05": tombstone}
+    desktop = {"2026-10-04": _rec(0, deleted=True),
+               "2026-10-05": {"minutes": "viel", "modified_at": "x", "device_id": "D",
+                              "deleted": False}}
+
+    assert mobile_sick.keep_phone_deletions({}, records=records, desktop_raw=desktop,
+                                            watermark=WATERMARK) == {}
+
+
 # --- phone_records ---------------------------------------------------------------------------------
 
 def test_phone_records_follow_the_rules_for_minutes_stamps_and_device():

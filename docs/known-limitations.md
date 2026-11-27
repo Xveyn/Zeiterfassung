@@ -875,6 +875,11 @@ Die Slots eines Tages stehen chronologisch, nach Kategorie oder in einer eigenen
   Krankheitstagen einen Block von mehr als 366 Tagen bilden; der Abgleich prüft die Länge des Blocks nicht. Der
   Krankheits-Dialog am Desktop lehnt das Speichern eines solchen Blocks ab, er lässt sich dort nur löschen oder kürzen.
   Die lokale API verhält sich genauso (`POST /v1/sick` an einen bestehenden Block angrenzend).
+- **Eine Reservierung, die nur am Handy lebte und im selben Abgleich gelöscht ankommt, kennt der Desktop nicht.** Legt
+  jemand am Handy eine Reservierung an, löscht sie vor dem nächsten Abgleich wieder und meldet sich für den Tag krank,
+  kommt nur ihr Tombstone an: der Tag wird aus der Standardzeit bzw. dem Durchschnitt vorbelegt, nicht aus der
+  Reservierung. Eine Reservierung, die das Handy lebend mitschickt, zählt dagegen schon, ebenso die Ist-Zeiten derselben
+  Anfrage.
 
 ## Beschädigte oder fremde Daten (Storage)
 

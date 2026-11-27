@@ -1251,13 +1251,26 @@ def test_prefill_runs_once_per_gap_free_run_with_the_desktop_date(env, sick_stor
     assert sick_store.day_minutes()["2026-10-06"] == 300
 
 
-def _average_desktop(env, sick_days):
-    """Ist-Zeit 08:00–16:00 an jedem Werktag vom 1.6. bis heute außer an `sick_days`: der
+EIGHT_HOURS = {"start": "08:00", "end": "16:00", "pause": 0, "kategorie": ""}
+
+
+def _workdays(first, last, skip=()):
+    out = []
+    day = first
+    while day <= last:
+        if day.weekday() < 5 and day.isoformat() not in skip:
+            out.append(day.isoformat())
+        day += datetime.timedelta(days=1)
+    return out
+
+
+def _average_desktop(env, sick_days, *, until=TODAY):
+    """Ist-Zeit 08:00–16:00 an jedem Werktag vom 1.6. bis `until` außer an `sick_days`: der
     Durchschnitt der letzten drei Monate ist überall genau 480 Minuten."""
     env.settings.set("sick_hours_basis", "average_3m")
     raw = {}
     day = datetime.date(2026, 6, 1)
-    while day <= TODAY:
+    while day <= until:
         iso = day.isoformat()
         if day.weekday() < 5 and iso not in sick_days:
             raw[iso] = {"slots": [{"start": "08:00", "end": "16:00", "pause": 0, "kategorie": ""}],
@@ -1273,6 +1286,29 @@ def test_average_counts_the_phones_earlier_runs_as_sick(env, sick_store):
     run_sick(env, sick_store, {day: sick_day() for day in days})
 
     assert sick_store.day_minutes() == {day: 480 for day in days}
+
+
+def test_average_sees_the_entries_of_the_same_request(env, sick_store):
+    # Der Desktop war fünf Wochen aus: die Ist-Zeit dieser Wochen kommt erst mit der Krankmeldung.
+    days = ["2026-10-05", "2026-10-06", "2026-10-07"]
+    _average_desktop(env, days, until=datetime.date(2026, 8, 30))
+    phone = {date: day(slots=(EIGHT_HOURS,))
+             for date in _workdays(datetime.date(2026, 8, 31), datetime.date(2026, 10, 2))}
+
+    run_sick(env, sick_store, {date: sick_day() for date in days}, entries=phone)
+
+    assert sick_store.day_minutes() == {date: 480 for date in days}
+
+
+def test_a_phone_tombstone_of_the_same_request_counts_as_a_day_without_work(env, sick_store):
+    _average_desktop(env, ["2026-10-05"])
+    # Referenzzeitraum 05.07.–04.10.: Werktage ohne Feiertage (kein Bundesland gesetzt).
+    workdays = len(_workdays(datetime.date(2026, 7, 5), datetime.date(2026, 10, 4)))
+
+    run_sick(env, sick_store, {"2026-10-05": sick_day()}, entries={"2026-09-30": tomb()})
+
+    assert "2026-09-30" not in env.storage.get_all()
+    assert sick_store.day_minutes() == {"2026-10-05": 480 * (workdays - 1) // workdays}
 
 
 def test_average_runs_over_a_day_the_desktop_already_has(env, sick_store):
@@ -1347,6 +1383,30 @@ def test_sick_minutes_come_from_reservation_deleted_in_same_request(env, sick_st
     assert res_store.get("2026-10-12") is None
 
 
+def test_sick_minutes_come_from_a_reservation_only_the_phone_has(env, sick_store, res_store):
+    env.settings.set_many({"reservations_enabled": True})
+
+    run_sick(env, sick_store, {"2026-10-12": sick_day()}, res_store=res_store,
+             reservations={"2026-10-12": res_day()})
+
+    assert sick_store.day_minutes() == {"2026-10-12": 180}          # 09:00–12:00, keine Pause
+    assert res_store.get("2026-10-12") is not None
+
+
+def test_a_desktop_reservation_counts_before_the_phones_change_of_it(env, sick_store, res_store):
+    # Die Minuten kommen aus dem Stand vor `merge_phone`, auch wenn das Handy den Tag ändert.
+    env.settings.set_many({"reservations_enabled": True})
+    res_store.merge_phone({"2026-10-12": {
+        "slots": [{"start": "09:00", "end": "13:00", "kategorie": "Projekt"}],
+        "modified_at": "2026-10-08T10:00:00Z", "deleted": False}}, now="2026-10-08T10:00:00Z")
+
+    run_sick(env, sick_store, {"2026-10-12": sick_day(modified_at="2026-10-08T11:00:00Z")},
+             res_store=res_store, reservations={"2026-10-12": res_day()})
+
+    assert sick_store.day_minutes() == {"2026-10-12": 240}
+    assert res_store.get("2026-10-12")["slots"][0]["end"] == "12:00"
+
+
 def test_reservations_do_not_count_when_the_feature_is_off(env, sick_store, res_store):
     res_store.merge_phone({"2026-10-12": {
         "slots": [{"start": "09:00", "end": "13:00", "kategorie": "Projekt"}],
@@ -1355,6 +1415,13 @@ def test_reservations_do_not_count_when_the_feature_is_off(env, sick_store, res_
     run_sick(env, sick_store, {"2026-10-12": sick_day()}, res_store=res_store)
 
     assert sick_store.day_minutes() == {"2026-10-12": 450}   # Standardzeit, nicht die Reservierung
+
+
+def test_phone_reservations_do_not_count_when_the_feature_is_off(env, sick_store, res_store):
+    run_sick(env, sick_store, {"2026-10-12": sick_day()}, res_store=res_store,
+             reservations={"2026-10-12": res_day()})
+
+    assert sick_store.day_minutes() == {"2026-10-12": 450}
 
 
 def test_entries_vacation_and_sick_days_reach_the_prefill(env, sick_store, monkeypatch):
@@ -1414,6 +1481,44 @@ def test_a_phone_tombstone_deletes_an_older_desktop_sick_day(env, sick_store):
     assert sick_store.day_minutes() == {}
     assert response["sick"]["2026-10-05"] == {"minutes": 0, "modified_at": "2026-10-07T18:30:00Z",
                                               "deleted": True}
+
+
+@pytest.mark.parametrize("last_pull_at", [
+    pytest.param("2026-10-06T00:00:00Z", id="excluded"),
+    pytest.param("", id="first-sync-after-re-pairing"),
+])
+def test_a_phone_tombstone_below_the_watermark_still_deletes(env, sick_store, last_pull_at):
+    # Der Tombstone gewinnt im LWW, liegt aber unter dem Watermark: ohne Gegenmittel entfernte
+    # ihn der Merge als erledigt, und das Anwenden stellte den lebenden Desktop-Tag wieder her.
+    env.settings.set("gc_watermark", "2026-10-08T10:00:00Z")
+    sick_store.apply_merge({"2026-10-05": desk_sick(300, modified_at="2026-09-01T10:00:00Z")})
+
+    response = run_sick(env, sick_store, {"2026-10-05": sick_day(deleted=True)},
+                        last_pull_at=last_pull_at)
+
+    assert sick_store.day_minutes() == {}
+    # Stempel = Watermark: `_is_settled_entry` vergleicht mit `<`, der Tombstone bleibt bis zur
+    # nächsten Kompaktierung und erreicht so die anderen Geräte.
+    assert sick_store.get_all_raw()["2026-10-05"] == desk_sick(
+        0, modified_at="2026-10-08T10:00:00Z", deleted=True, device=PHONE)
+    assert response["sick"]["2026-10-05"] == {"minutes": 0, "modified_at": "2026-10-08T10:00:00Z",
+                                              "deleted": True}
+    # dieselbe Anfrage noch einmal: nichts ändert sich
+    first = sick_store.get_all_raw()
+    run_sick(env, sick_store, {"2026-10-05": sick_day(deleted=True)}, last_pull_at=NOW)
+    assert sick_store.get_all_raw() == first
+
+
+def test_an_old_phone_tombstone_leaves_nothing_where_the_desktop_had_no_live_day(env, sick_store):
+    env.settings.set("gc_watermark", "2026-10-08T10:00:00Z")
+    sick_store.apply_merge({"2026-10-04": desk_sick(300, modified_at="2026-10-08T11:00:00Z")})
+
+    run_sick(env, sick_store, {"2026-10-03": sick_day(deleted=True),
+                               "2026-10-04": sick_day(deleted=True)}, last_pull_at="")
+
+    # 03.: unbekannt, der erledigte Tombstone entfällt; 04.: der neuere Desktop-Tag gewinnt.
+    assert sick_store.get_all_raw() == {
+        "2026-10-04": desk_sick(300, modified_at="2026-10-08T11:00:00Z")}
 
 
 def test_the_same_sick_request_twice_changes_nothing_the_second_time(env, sick_store):
