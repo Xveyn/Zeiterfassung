@@ -144,10 +144,19 @@ class TestAppIcon:
         assert icons and set(icons) == {"{app}\\assets\\app-icon.ico"}
 
     def test_upgrade_removes_old_icon_files(self):
-        """Ein Upgrade entfernt keine Datei, die das Setup nicht mehr ausliefert."""
+        """Ein Upgrade entfernt keine Datei, die das Setup nicht mehr ausliefert: die
+        Kopie für die Verknüpfungen und die im Bundle (`--add-data assets`). Die Liste
+        ist exakt, damit hier nie eine Nutzer- oder Zugangsdatei hineinrutscht, die
+        sonst jedes Update löschte."""
         body = _section("InstallDelete")
-        assert "{app}\\assets\\margenheld-icon.ico" in body
-        assert "{app}\\assets\\margenheld-icon.png" in body
+        names = set(re.findall(r'^Type: files; Name: "([^"]+)"$', body, re.MULTILINE))
+        assert names == {
+            "{app}\\assets\\margenheld-icon.ico",
+            "{app}\\assets\\margenheld-icon.png",
+            "{app}\\_internal\\assets\\margenheld-icon.ico",
+            "{app}\\_internal\\assets\\margenheld-icon.png",
+            "{app}\\_internal\\assets\\margenheld-icon.icns",
+        }
         assert "*" not in body
 
     def test_publisher_is_the_project(self):

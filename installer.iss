@@ -66,10 +66,14 @@ Name: "autostart"; Description: "Mit Windows starten (minimiert)"; GroupDescript
 
 [InstallDelete]
 ; Ein Upgrade entfernt keine Dateien, die das Setup nicht mehr ausliefert.
-; Diese beiden Icon-Dateien lieferten frühere Versionen aus; ausdrücklich
-; benannt, kein Platzhalter über {app}.
+; Diese Icon-Dateien lieferten frühere Versionen aus: die Kopie für die
+; Verknüpfungen und die im Bundle (build.py bündelt den ganzen assets-Ordner).
+; Ausdrücklich benannt, kein Platzhalter über {app}.
 Type: files; Name: "{app}\assets\margenheld-icon.ico"
 Type: files; Name: "{app}\assets\margenheld-icon.png"
+Type: files; Name: "{app}\_internal\assets\margenheld-icon.ico"
+Type: files; Name: "{app}\_internal\assets\margenheld-icon.png"
+Type: files; Name: "{app}\_internal\assets\margenheld-icon.icns"
 
 [Registry]
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "Zeiterfassung"; ValueData: """{app}\Zeiterfassung.exe"" --minimized"; Flags: uninsdeletevalue; Tasks: autostart
