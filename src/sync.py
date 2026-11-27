@@ -10,6 +10,7 @@ Doc-Struktur (Sync-File und Zwischenformate), Stand SCHEMA_VERSION = 4:
   "conflicts": [{id, kind, key, candidates, detected_at,
                  resolved, resolution, resolved_at, resolved_by}],
   "devices":   {device_id: {name, updated_at}},   # optional, s.u.
+  "sick":      {date: {minutes, modified_at, device_id, deleted}},   # optional, s.u.
   "meta":      {gc_watermark}
 }
 
@@ -33,12 +34,21 @@ das wäre für ein reines Anzeigefeld völlig unverhältnismäßig. Konsequenzen
 * Fehlt oder bricht das Feld, fällt die Anzeige auf die gekürzte `device_id`
   zurück: exakt das Verhalten von vor diesem Feature. Ein kaputtes `devices`
   ist deshalb **kein** Validierungsfehler — es wird verworfen, nicht das Doc.
+
+`sick` (Krankheitstage, s. `sick_days.py`) ist ebenso additiv ohne Schema-Bump und
+steht nur im Doc, wenn ein Gerät Krankheitstage (auch Tombstones) hat. Ältere
+Clients lassen den Bereich beim Push fallen, deshalb heißt **Fehlen nie
+„gelöscht“**: ein neueres Gerät lädt seinen Stand beim nächsten Push wieder hoch,
+Self-Heal greift nur gegen einen vorhandenen Bereich. Je Tag gewinnt der neuere
+Datensatz (`_lww_key`), Konflikte gibt es keine. Ein kaputter Bereich oder
+Datensatz wird verworfen, nicht das Doc.
 """
 
 from __future__ import annotations
 
 import contextlib
 import json
+import logging
 import uuid
 from collections.abc import Iterable
 from typing import TYPE_CHECKING, Any, Callable
@@ -59,13 +69,18 @@ from src.devices import merge_registries, sanitize_registry, with_own_entry
 # Store später schreibt. storage.py importiert sync.py nicht (kein Zyklus).
 from src.storage import REQUIRED_ENTRY_KEYS
 from src import slot_notes
+# sick_days importiert sync.py nicht (kein Zyklus).
+from src.sick_days import clean_section
 
 if TYPE_CHECKING:
     import threading
 
     from src.conflicts_store import ConflictsStore
     from src.settings import Settings
+    from src.sick_days import SickDay, SickStore
     from src.storage import Storage
+
+_log = logging.getLogger(__name__)
 
 # JSON-getragene Sync-Strukturen (Audit N8). Doc = ein komplettes Sync-Doc
 # ({schema_version, entries, settings, conflicts, meta}); Entry = ein
@@ -399,6 +414,39 @@ def _apply_resolutions(merged: Doc) -> None:
                 merged["settings"][key] = candidate
 
 
+def _sick_section(doc: Doc) -> dict[str, SickDay]:
+    """Der bereinigte Bereich `sick` eines Docs; fehlt er, ist er leer."""
+    raw = doc.get("sick")
+    if "sick" in doc and not isinstance(raw, dict):
+        _log.warning("Bereich sick im Sync-Doc ist kein Objekt, ignoriert")
+    return clean_section(raw)
+
+
+def _merge_sick(local: Doc, remote: Doc, excluded: bool,
+                remote_wm: str) -> dict[str, SickDay]:
+    """Krankheitstage beider Seiten, je Tag der neuere Stand; nie ein Konflikt.
+
+    Self-Heal (Regel 2) nur gegen einen Bereich, der remote als Objekt vorliegt
+    und den Tag gar nicht nennt: fehlt der Bereich, hat ein älterer Client ihn
+    beim Push weggelassen, und ein unbrauchbarer Datensatz ist kein
+    wegkompaktierter Tag."""
+    loc_days = _sick_section(local)
+    rem_days = _sick_section(remote)
+    rem_raw = remote.get("sick")
+    named = rem_raw.keys() if excluded and isinstance(rem_raw, dict) else None
+    merged: dict[str, SickDay] = {}
+    for day in sorted(loc_days.keys() | rem_days.keys()):
+        loc, rem = loc_days.get(day), rem_days.get(day)
+        if loc is not None and rem is not None:
+            merged[day] = _lww_winner(loc, rem)
+        elif rem is not None:
+            merged[day] = rem
+        elif loc is not None and not (named is not None and day not in named
+                                      and loc["modified_at"] < remote_wm):
+            merged[day] = loc
+    return merged
+
+
 def merge(local: Doc, remote: Doc, last_pull_at: str) -> Doc:
     merged = {
         "schema_version": SCHEMA_VERSION,
@@ -461,6 +509,9 @@ def merge(local: Doc, remote: Doc, last_pull_at: str) -> Doc:
 
     merged["conflicts"] = list(by_id.values())
 
+    if "sick" in local or "sick" in remote:
+        merged["sick"] = _merge_sick(local, remote, excluded, remote_wm)
+
     _apply_resolutions(merged)
 
     # Regel 1: settled Tombstones entfernen (Kompaktierung propagieren).
@@ -474,14 +525,22 @@ def merge(local: Doc, remote: Doc, last_pull_at: str) -> Doc:
             c for c in merged["conflicts"]
             if not _is_settled_conflict(c, watermark)
         ]
+        if "sick" in merged:
+            merged["sick"] = {
+                k: v for k, v in merged["sick"].items()
+                if not _is_settled_entry(v, watermark)
+            }
 
     return merged
 
 
 def build_local_doc(storage: Storage, settings: Settings,
-                    conflicts_store: ConflictsStore) -> Doc:
-    """Erzeugt das Sync-Doc-Format aus den lokalen Stores."""
-    return {
+                    conflicts_store: ConflictsStore,
+                    sick_store: SickStore | None = None) -> Doc:
+    """Erzeugt das Sync-Doc-Format aus den lokalen Stores. `sick` steht nur
+    darin, wenn der Store einen Datensatz hat: ohne Krankheitstage bleibt das
+    Doc wie bisher."""
+    doc: Doc = {
         "schema_version": SCHEMA_VERSION,
         "entries": storage.get_all_raw(),
         "settings": settings.get_synced_doc(),
@@ -496,14 +555,24 @@ def build_local_doc(storage: Storage, settings: Settings,
         ),
         "meta": {"gc_watermark": settings.get("gc_watermark") or ""},
     }
+    if sick_store is not None:
+        sick = sick_store.get_all_raw()
+        if sick:
+            doc["sick"] = sick
+    return doc
 
 
 def apply_merged_doc(merged_doc: Doc, storage: Storage, settings: Settings,
-                     conflicts_store: ConflictsStore) -> None:
-    """Schreibt das Merge-Ergebnis zurück in die lokalen Stores."""
+                     conflicts_store: ConflictsStore,
+                     sick_store: SickStore | None = None) -> None:
+    """Schreibt das Merge-Ergebnis zurück in die lokalen Stores. Den
+    Krankheits-Store nur, wenn das Doc den Bereich führt (wie die Registry
+    unten): Fehlen heißt nie „gelöscht“."""
     storage.apply_merge(merged_doc.get("entries", {}))
     settings.apply_synced(merged_doc.get("settings", {}))
     conflicts_store.save_all(merged_doc.get("conflicts", []))
+    if sick_store is not None and "sick" in merged_doc:
+        sick_store.apply_merge(clean_section(merged_doc["sick"]))
     # Ein set_many statt zweier set-Aufrufe: jedes set schreibt settings.json
     # komplett neu (atomic write + fsync), und diese Funktion läuft bei jedem
     # Pull, Push und jeder Kompaktierung.
@@ -518,11 +587,13 @@ def apply_merged_doc(merged_doc: Doc, storage: Storage, settings: Settings,
 
 
 def compact_local(storage: Storage, settings: Settings,
-                  conflicts_store: ConflictsStore, now: str) -> None:
+                  conflicts_store: ConflictsStore, now: str,
+                  sick_store: SickStore | None = None) -> None:
     """Schreibt das gc_watermark lokal und strippt settled Tombstones aus
-    Storage und ConflictsStore. Ein lokaler Schreibvorgang pro Store
-    (Wiederverwendung von storage.apply_merge — Required-Key-Validator +
-    Atomic-Write bleiben auf einem Pfad)."""
+    Storage, ConflictsStore und dem Krankheits-Store. Ein lokaler
+    Schreibvorgang pro Store (Wiederverwendung von storage.apply_merge —
+    Required-Key-Validator + Atomic-Write bleiben auf einem Pfad); den
+    Krankheits-Store nur, wenn ein Tombstone fällt."""
     settings.set("gc_watermark", now)
     storage.apply_merge({
         k: v for k, v in storage.get_all_raw().items()
@@ -532,6 +603,11 @@ def compact_local(storage: Storage, settings: Settings,
         c for c in conflicts_store.get_all()
         if not _is_settled_conflict(c, now)
     ])
+    if sick_store is not None:
+        sick = sick_store.get_all_raw()
+        kept = {k: v for k, v in sick.items() if not _is_settled_entry(v, now)}
+        if len(kept) != len(sick):
+            sick_store.apply_merge(kept)
 
 
 def never_synced(settings: Settings) -> bool:
@@ -540,8 +616,10 @@ def never_synced(settings: Settings) -> bool:
     return not settings.get("sync_enabled") and not (settings.get("last_pull_at") or "")
 
 
-def drop_orphan_tombstones(storage: Storage, settings: Settings) -> int:
-    """Verwirft Tombstones ohne Sync-Partner. Liefert die Anzahl (0 = No-op).
+def drop_orphan_tombstones(storage: Storage, settings: Settings,
+                           sick_store: SickStore | None = None) -> int:
+    """Verwirft Tombstones ohne Sync-Partner (Ist-Zeiten und Krankheitstage).
+    Liefert die Anzahl (0 = No-op).
 
     Ein Tombstone hat genau einen Zweck: beim Merge ein veraltetes Save eines
     anderen Geräts zu schlagen. Ohne Sync erfüllt er ihn nie und bleibt
@@ -567,6 +645,12 @@ def drop_orphan_tombstones(storage: Storage, settings: Settings) -> int:
         # apply_merge statt eigenem Write: Required-Key-Validator und
         # Atomic-Write bleiben auf einem Pfad (wie in compact_local).
         storage.apply_merge(kept)
+    if sick_store is not None:
+        sick = sick_store.get_all_raw()
+        sick_kept = {k: v for k, v in sick.items() if not v.get("deleted")}
+        if len(sick_kept) != len(sick):
+            sick_store.apply_merge(sick_kept)
+            dropped += len(sick) - len(sick_kept)
     return dropped
 
 
