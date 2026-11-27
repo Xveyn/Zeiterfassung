@@ -13,6 +13,7 @@ import pytest
 
 from src import keyring_store, secret_migration, smtp_store, webhook_secrets, webhook_store
 from src.reservations import ReservationStore
+from src.sick_days import SickStore
 from src.settings import Settings
 from src.storage import Storage
 from src.vacations import VacationStore, conflicting_days
@@ -72,6 +73,42 @@ def test_vacation_is_in_the_current_month_and_collides_with_nothing():
     assert blocked == []
 
 
+def test_sick_block_is_wednesday_to_friday_and_collides_with_nothing():
+    """Eine Folge Krankheitstage Mi–Fr im laufenden Monat, vor dem Urlaub:
+    ohne Ist-Zeit, ohne Reservierung, ohne Urlaub darunter, mit Stunden."""
+    demo = demo_data.build_demo(TODAY)
+    sick = demo["sick"]
+    days = sorted(sick)
+    assert [datetime.date.fromisoformat(d).weekday() for d in days] == [2, 3, 4]
+    assert all(d.startswith("2026-09") for d in days)
+    assert all(minutes > 0 for minutes in sick.values())
+    (vac,) = demo["vacations"]
+    assert days[-1] < vac["from"]
+    for day in days:
+        assert day not in demo["entries"]
+        assert day not in demo["reservations"]
+
+
+def test_sick_block_lies_in_the_current_month_on_other_dates_too():
+    for today in (datetime.date(2026, 11, 28), datetime.date(2027, 2, 15),
+                  datetime.date(2026, 6, 30)):
+        sick = demo_data.build_demo(today)["sick"]
+        assert len(sick) == 3
+        assert all(d[:7] == today.isoformat()[:7] for d in sick)
+
+
+def test_on_a_free_day_the_send_reminder_moves_to_the_next_reservation():
+    """Ein Samstag hat keine geteilte Reservierung; der bernsteinfarbene Punkt
+    soll trotzdem im Kalender stehen."""
+    saturday = datetime.date(2026, 11, 28)
+    demo = demo_data.build_demo(saturday)
+    assert saturday.isoformat() not in demo["reservations"]
+    first = min(demo["reservations"])
+    marked = [d for d, slots in demo["reservations"].items()
+              if any(s.get("send_reminder_minutes") for s in slots)]
+    assert marked == [first]
+
+
 def test_categories_used_exist_in_settings():
     demo = demo_data.build_demo(TODAY)
     known = set(demo["settings"]["categories"])
@@ -125,6 +162,7 @@ def test_write_creates_readable_stores_without_touching_the_keyring(
     assert set(Storage(p("zeiterfassung.json")).get_all()) == set(demo["entries"])
     assert set(ReservationStore(p("reservations.json")).get_all()) == set(demo["reservations"])
     assert len(VacationStore(p("vacations.json")).get_all()) == 1
+    assert SickStore(p("sick.json")).day_minutes() == demo["sick"]
     assert len(smtp_store.SmtpStore(p("smtp.json")).get_all()) == len(demo["smtp"])
     hooks = webhook_store.WebhookStore(p("webhooks.json"))
     assert len(hooks.get_all()) == len(demo["webhooks"])
