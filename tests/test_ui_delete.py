@@ -105,9 +105,12 @@ def test_single_sick_unit_question(tmp_path):
 
 
 def test_selecting_sick_key_deletes_all_block_days(tmp_path):
-    from src.ui import _delete_units
+    from src.ui import _apply_sick_selection
     store, block = _sick_block(tmp_path)
-    key = _delete_units([], [], None, block)[0][0]
-    if key in {k for k, _ in _delete_units([], [], None, block)}:
-        store.delete_days(block.days)
+    assert _apply_sick_selection({"entry:all"}, block, store) is False
+    assert len(store.blocks()) == 1
+    assert _apply_sick_selection({"sick:2026-03-02"}, block, store) is True
     assert store.blocks() == []
+    assert store.day_minutes() == {}
+    assert all(store.get_all_raw()[d]["deleted"] for d in block.days)
+    assert _apply_sick_selection({"sick:2026-03-02"}, None, store) is False

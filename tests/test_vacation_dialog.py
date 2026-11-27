@@ -113,19 +113,19 @@ def test_format_hours_uses_german_decimal_comma():
 
 # ---------------------------------------------------------- format_day_list
 
-def testformat_day_list_renders_german_dates():
+def test_format_day_list_renders_german_dates():
     assert format_day_list(["2026-07-01", "2026-07-02"]) == (
         "01.07.2026" + chr(10) + "02.07.2026")
 
 
-def testformat_day_list_truncates_long_lists():
+def test_format_day_list_truncates_long_lists():
     days = [f"2026-07-{d:02d}" for d in range(1, 15)]
     lines = format_day_list(days, limit=3).split(chr(10))
     assert lines[:3] == ["01.07.2026", "02.07.2026", "03.07.2026"]
     assert lines[3] == "… und 11 weitere"
 
 
-def testformat_day_list_without_truncation_has_no_suffix():
+def test_format_day_list_without_truncation_has_no_suffix():
     assert "weitere" not in format_day_list(["2026-07-01"], limit=3)
 
 

@@ -82,6 +82,15 @@ def _sick_delete_option(block):
     return sick_view.delete_key(block), sick_view.block_label(block)
 
 
+def _apply_sick_selection(selected, sick, sick_store):
+    """Löscht den Krankheitsblock, wenn seine Einheit gewählt ist; True, wenn
+    gelöscht wurde."""
+    if sick is None or sick_view.delete_key(sick) not in selected:
+        return False
+    sick_store.delete_days(sick.days)
+    return True
+
+
 def _delete_units(entry_slots, res_slots, vacation, sick, slot_order="chrono"):
     """Die löschbaren Einheiten eines Tages als (Schlüssel, Beschriftung):
     Ist-Slots, Reservierungs-Slots, die Urlaubsperiode und der Krankheitsblock
@@ -1025,8 +1034,7 @@ class App:
             vacation_touched = bool(vacation.get("gcal_event_id"))
             self.vacation_store.delete(vacation["id"])
 
-        if sick is not None and sick_view.delete_key(sick) in selected:
-            self.sick_store.delete_days(sick.days)
+        _apply_sick_selection(selected, sick, self.sick_store)
 
         self._refresh()
         if res_touched or vacation_touched:
