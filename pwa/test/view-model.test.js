@@ -1513,6 +1513,19 @@ test('the week marks sick days with hours, flags and no invitation; tombstones a
   assert.equal(week.days[4].addHint, '');
   assert.equal(week.days[3].addHint, 'Eintragen oder planen');
   assert.equal(week.totalMinutes, 0);                                  // Krankheit zählt nicht in die Ist-Zeit
+  // Eigene Zeile „Krankheit“: nur Minuten, die der Desktop schon gerechnet hat; Tombstones zählen nicht.
+  assert.equal(week.sickMinutes, 450);
+  assert.equal(week.sickLabel, '7:30');
+});
+
+test('the sick line of the week adds up the known hours and stays apart from the worked time', () => {
+  const sickDays = { '2026-10-05': sickRecord(450), '2026-10-06': sickRecord(240), '2026-10-10': sickRecord(0) };
+  const week = weekModel({ getDay: days({ '2026-10-07': live([SLOT]) }), anchor: SICK_TODAY, today: SICK_TODAY,
+    aheadDays: 14, sickDays, sickEnabled: true });
+  assert.equal(week.sickMinutes, 690);
+  assert.equal(week.sickLabel, '11:30');
+  assert.equal(week.totalMinutes, 240);                                // „Woche gesamt“ bleibt die Arbeitszeit
+  assert.equal(weekModel({ getDay: days({}), anchor: SICK_TODAY, today: SICK_TODAY }).sickMinutes, 0);
 });
 
 test('a reservation on a sick day is not pending: „Noch ausstehend“ leaves it out', () => {
@@ -1543,6 +1556,7 @@ test('without the capability the week shows no sick day', () => {
   const sickDays = { '2026-10-05': sickRecord(450) };
   const week = weekModel({ getDay: days({}), anchor: SICK_TODAY, today: SICK_TODAY, sickDays, sickEnabled: false });
   assert.equal(week.days[0].sick, null);
+  assert.equal(week.sickMinutes, 0);
   assert.equal(week.days[0].addHint, 'Eintragen');
   assert.equal(weekModel({ getDay: days({}), anchor: SICK_TODAY, today: SICK_TODAY }).days[0].sick, null);
 });
