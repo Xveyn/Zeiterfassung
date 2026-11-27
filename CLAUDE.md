@@ -1496,7 +1496,10 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
   über `absence.cap_by_worktime` gekappt wie in Mail-HTML und PDF (s.
   „Urlaub"): ein Empfänger, der `total_minutes` und `vacation_minutes`
   addiert, bekommt für einen Kalendertag nie mehr Stunden, als er hat. Die
-  Shape ändert sich dadurch nicht — **kein** Schema-Bump.
+  Shape ändert sich dadurch nicht — **kein** Schema-Bump. Mit dem Häkchen
+  „Krankheit" kommen `sick` und `sick_minutes` hinten dazu (gekappt, Krankheit
+  gewinnt gegen Urlaub); ohne das Häkchen fehlen beide Schlüssel und das
+  Dokument ist bitgleich zu vorher, die Version bleibt `2`.
 - `src/webhook_store.py` — gerätelokaler Store der Webhook-Konfiguration
   (`webhooks.json`). Enthält Konfiguration **und** Secrets und wird deshalb wie
   `token.json` gehärtet geschrieben; reist bewusst **nicht** per Drive-Sync.

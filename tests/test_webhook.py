@@ -707,3 +707,73 @@ def test_payload_cleans_foreign_note():
 def test_payload_schema_version_stays_2():
     from src.webhook import PAYLOAD_SCHEMA_VERSION
     assert PAYLOAD_SCHEMA_VERSION == 2
+
+
+_SICK_KW = dict(
+    date_from=datetime.date(2026, 9, 1), date_to=datetime.date(2026, 9, 30),
+    name="", sender="", categories=None, generated_at="2026-08-30T10:00:00Z")
+
+
+def test_payload_without_sick_flag_is_bit_identical_to_before():
+    entries = {"2026-09-01": {"slots": [_slot("08:00", "12:00")]}}
+    expected = {
+        "schema_version": 2,
+        "kind": "zeiterfassung-report",
+        "generated_at": "2026-08-30T10:00:00Z",
+        "sender": "",
+        "name": "",
+        "period": {"from": "2026-09-01", "to": "2026-09-30"},
+        "categories": None,
+        "total_minutes": 240,
+        "entries": build_json_payload(
+            entries=entries, **_SICK_KW)["entries"],
+        "vacation": {"2026-09-01": 240, "2026-09-02": 480},
+        "vacation_minutes": 720,
+    }
+    for extra in ({}, {"sick_days": None}):
+        payload = build_json_payload(
+            entries=entries,
+            vacation_days={"2026-09-01": 480, "2026-09-02": 480},
+            **_SICK_KW, **extra)
+        assert json.dumps(payload) == json.dumps(expected)
+
+
+def test_payload_without_sick_flag_has_no_sick_keys():
+    payload = build_json_payload(entries={}, vacation_days={}, **_SICK_KW)
+    assert "sick" not in payload and "sick_minutes" not in payload
+
+
+def test_payload_with_sick_flag_always_has_both_fields():
+    payload = build_json_payload(entries={}, sick_days={}, **_SICK_KW)
+    assert payload["sick"] == {}
+    assert payload["sick_minutes"] == 0
+    assert payload["vacation"] is None
+    assert list(payload)[-2:] == ["sick", "sick_minutes"]
+
+
+def test_sick_cuts_vacation_only_with_flag():
+    vac = {"2026-09-01": 480, "2026-09-02": 480}
+    sick = {"2026-09-01": 480, "2026-09-05": 0, "2026-10-01": 480}
+    with_flag = build_json_payload(
+        entries={}, vacation_days=vac, sick_days=sick, **_SICK_KW)
+    assert with_flag["vacation"] == {"2026-09-01": 0, "2026-09-02": 480}
+    assert with_flag["vacation_minutes"] == 480
+    assert with_flag["sick"] == {"2026-09-01": 480, "2026-09-05": 0}
+    assert with_flag["sick_minutes"] == 480
+    without = build_json_payload(entries={}, vacation_days=vac, **_SICK_KW)
+    assert without["vacation"] == vac
+    assert without["vacation_minutes"] == 960
+
+
+def test_sick_capped_by_worktime_in_payload():
+    payload = build_json_payload(
+        entries={"2026-09-01": {"slots": [_slot("08:00", "12:00")]}},
+        sick_days={"2026-09-01": 480}, **_SICK_KW)
+    assert payload["sick"] == {"2026-09-01": 240}
+    assert payload["sick_minutes"] == 240
+    assert payload["total_minutes"] == 240
+
+
+def test_schema_version_stays_2():
+    assert build_json_payload(
+        entries={}, sick_days={}, **_SICK_KW)["schema_version"] == 2

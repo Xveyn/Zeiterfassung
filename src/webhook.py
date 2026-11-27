@@ -22,6 +22,7 @@ from http.client import HTTPMessage
 from typing import IO, Any, NoReturn
 from urllib.parse import unquote, urlsplit
 
+from src.absence import cut_absences
 from src.mail import is_offline_error
 from src.report import filter_categories, filter_period
 from src.slot_notes import clean_note
@@ -233,7 +234,8 @@ def build_json_payload(*, date_from: datetime.date, date_to: datetime.date,
                        sender: str | None, categories: list[str] | None,
                        generated_at: str | None = None,
                        vacation_days: dict[str, int] | None = None,
-                       slot_order: str = "chrono"
+                       slot_order: str = "chrono",
+                       sick_days: dict[str, int] | None = None
                        ) -> dict[str, Any]:
     """Das JSON-Dokument für den Webhook.
 
@@ -250,6 +252,16 @@ def build_json_payload(*, date_from: datetime.date, date_to: datetime.date,
     ein Empfänger „nicht angefragt" von „angefragt, 0 Tage" unterscheiden
     (Xveyn#175). `vacation_minutes` ist in beiden Fällen 0, damit ein
     bestehender Empfänger unverändert weiterläuft.
+
+    `sick_days` ist der {ISO: minutes}-Snapshot der lebenden Krankheitstage
+    oder None (Häkchen nicht gesetzt). Mit None fehlen `sick` und
+    `sick_minutes` ganz und das Dokument ist bitgleich zu dem ohne
+    Krankheit; mit einem Dict (auch leer) stehen beide immer drin: `sick`
+    (`{ISO: minutes}` im Zeitraum, auch 0-Minuten-Tage, `{}` ohne Tage) und
+    `sick_minutes` (Summe, 0 ohne). „Fehlt" heißt für einen Empfänger also
+    „nicht ausgewiesen oder ältere App". Über `absence.cut_absences` gegen
+    `ranged` gekappt, und Krankheit gewinnt: `vacation` (nur wenn nicht
+    None) trägt an Krankheitstagen 0.
 
     Eigenes `kind` statt `zeiterfassung-share`: das Dokument trägt
     Report-Metadaten, die der Share-Validator als unbekannte Felder ablehnt.
@@ -270,9 +282,18 @@ def build_json_payload(*, date_from: datetime.date, date_to: datetime.date,
     # (Xveyn#97). Gegen `ranged`, also den bereits zeitraum- und
     # kategoriegefilterten, projizierten Ausschnitt, auf dem auch
     # `total_minutes` rechnet.
-    if vacation_ranged:
+    sick_ranged = (
+        filter_period(date_from, date_to, sick_days) or {}
+        if sick_days is not None else None
+    )
+    if sick_ranged is not None:
+        cut = cut_absences(ranged, vacation_ranged or {}, sick_ranged)
+        sick_ranged = cut.sick
+        if vacation_ranged is not None:
+            vacation_ranged = cut.vacation
+    elif vacation_ranged:
         vacation_ranged, _ = cap_by_worktime(vacation_ranged, ranged)
-    return {
+    payload = {
         "schema_version": PAYLOAD_SCHEMA_VERSION,
         "kind": PAYLOAD_KIND,
         "generated_at": generated_at or utc_now_iso(),
@@ -285,6 +306,10 @@ def build_json_payload(*, date_from: datetime.date, date_to: datetime.date,
         "vacation": vacation_ranged,
         "vacation_minutes": sum(vacation_ranged.values()) if vacation_ranged else 0,
     }
+    if sick_ranged is not None:
+        payload["sick"] = sick_ranged
+        payload["sick_minutes"] = sum(sick_ranged.values())
+    return payload
 
 
 def build_body(*, json_bytes: bytes | None, pdf_bytes: bytes | None,
