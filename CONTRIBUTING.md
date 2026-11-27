@@ -224,7 +224,8 @@ Zeiterfassung/
 │   └── smtp_testserver.py     # lokaler Test-Mailserver für den SMTP-Versand
 ├── .github/workflows/     # CI: test.yml, build.yml, release.yml, pages.yml (PWA veröffentlichen),
 │                          #   readme-version.yml, relay-deploy.yml (Relay ausrollen),
-│                          #   gitleaks.yml (Secret-Scan über die ganze Historie)
+│                          #   gitleaks.yml (Secret-Scan über die ganze Historie,
+│                          #   dazu Session-Links in Commits und PR-Texten)
 ├── installer.iss          # Inno Setup Script (Windows-Installer)
 ├── requirements.txt       # Python-Abhängigkeiten (App-Laufzeit, exakt gepinnt)
 ├── requirements-test.txt  # Test-/CI-Abhängigkeiten (pytest & Co., exakt gepinnt)
@@ -351,6 +352,9 @@ bewährt hat:
 - **Verantwortung bleibt bei dir.** Wer einen PR öffnet, hat den Diff selbst
   gelesen und kann ihn erklären. Das Werkzeug steht als `Co-Authored-By` im
   Commit, damit die Herkunft nachvollziehbar bleibt.
+- **Kein Link auf die Sitzung.** Ein Link auf eine Claude-Code-Session
+  (`claude.ai/code/session_…`) gehört weder in Commits noch in PR-Texte oder
+  Pläne. Der Check `gitleaks` (Regel `claude-session-link`) hält den PR sonst an.
 - **Erst Befund und Design, dann Code.** Bei Features und nicht trivialen Fixes
   wird das Problem zuerst reproduziert oder belegt und der Ansatz kurz
   abgestimmt; größere Vorhaben bekommen Spec und Plan unter `docs/superpowers/`.

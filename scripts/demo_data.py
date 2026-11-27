@@ -3,8 +3,8 @@
 Für Screenshots (`docs/screenshots/`) und zum Ausprobieren: Max Mustermann
 mit zwei Monaten Arbeitszeit in drei Kategorien, einem heute geteilten Tag
 (vormittags erfasst, nachmittags reserviert, mit Sende-Erinnerung),
-Reservierungen für die kommenden Tage, einem Urlaub im laufenden Monat, zwei
-SMTP-Konten und zwei Webhooks. Alle Daten sind relativ zu heute gebaut, damit
+Reservierungen für die kommenden Tage, einer Folge Krankheitstage (Mi–Fr) und
+einem Urlaub im laufenden Monat, zwei SMTP-Konten und zwei Webhooks. Alle Daten sind relativ zu heute gebaut, damit
 die Monatsansicht beim Start immer gefüllt ist.
 
     python scripts/demo_data.py                  # in den Datenordner des Repos
@@ -47,6 +47,7 @@ if _ROOT not in sys.path:
 from src.holidays_de import get_holidays  # noqa: E402  (nach Bootstrap)
 from src.reservations import ReservationStore  # noqa: E402
 from src.settings import Settings  # noqa: E402
+from src.sick_days import SickStore  # noqa: E402
 from src.smtp_store import SmtpStore  # noqa: E402
 from src.storage import Storage  # noqa: E402
 from src.vacations import VacationStore, expand_days  # noqa: E402
@@ -55,7 +56,7 @@ from src.webhook_store import WebhookStore  # noqa: E402
 # Alle Dateien, die das Skript schreibt — und damit die, deren Existenz es
 # ohne --force als „hier liegen schon Daten" wertet.
 DATA_FILES = ("zeiterfassung.json", "reservations.json", "vacations.json",
-              "smtp.json", "webhooks.json", "settings.json")
+              "sick.json", "smtp.json", "webhooks.json", "settings.json")
 
 STATE = "BY"
 CATEGORIES = ["Büro", "Homeoffice", "Kundentermin"]
@@ -88,17 +89,28 @@ def _vacation_week(today):
     return monday, monday + datetime.timedelta(days=4)
 
 
+def _sick_days(today):
+    """Mittwoch bis Freitag der ersten vollen Woche des laufenden Monats,
+    direkt vor der Urlaubswoche — beide Blöcke stehen so in der Monatsansicht."""
+    first = today.replace(day=1)
+    monday = first + datetime.timedelta(days=(7 - first.weekday()) % 7)
+    return (monday + datetime.timedelta(days=2), monday + datetime.timedelta(days=4))
+
+
 def build_demo(today, *, with_calendar=True):
     """Die Demo-Daten als Dicts, relativ zu `today`. Rein — schreibt nichts."""
     vac_from, vac_to = _vacation_week(today)
     vac_days = expand_days(vac_from.isoformat(), vac_to.isoformat(), 480, STATE)
+    sick_from, sick_to = _sick_days(today)
+    sick_days = expand_days(sick_from.isoformat(), sick_to.isoformat(), 480, STATE)
     holidays = set()
     for year in {today.year - 1, today.year, today.year + 1}:
         holidays |= set(get_holidays(STATE, year))
 
     def free(day):
         return (day.weekday() >= 5 or day in holidays
-                or vac_days.get(day.isoformat(), 0) > 0)
+                or vac_days.get(day.isoformat(), 0) > 0
+                or day.isoformat() in sick_days)
 
     # Ist-Zeit: jeder Werktag vom Ersten des Vormonats bis gestern (heute
     # folgt unten, geteilt mit einer Reservierung).
@@ -139,6 +151,12 @@ def build_demo(today, *, with_calendar=True):
                           "kategorie": "Homeoffice" if n % 2 else "Büro"}]
             reservations[day.isoformat()] = slots
         day += datetime.timedelta(days=1)
+
+    # Ist heute frei, fehlt die geteilte Reservierung mit der Sende-Erinnerung;
+    # dann hängt sie an der ersten kommenden, damit der Kalender sie zeigt.
+    if not any(s.get("send_reminder_minutes")
+               for slots in reservations.values() for s in slots):
+        reservations[min(reservations)][0]["send_reminder_minutes"] = 15
 
     vacations = [{"name": "Sommerurlaub", "from": vac_from.isoformat(),
                   "to": vac_to.isoformat(), "days": vac_days}]
@@ -188,8 +206,8 @@ def build_demo(today, *, with_calendar=True):
     }
 
     return {"entries": entries, "reservations": reservations,
-            "vacations": vacations, "smtp": smtp, "webhooks": webhooks,
-            "settings": settings}
+            "vacations": vacations, "sick": sick_days, "smtp": smtp,
+            "webhooks": webhooks, "settings": settings}
 
 
 def write_demo(base, demo, *, force=False):
@@ -219,6 +237,7 @@ def write_demo(base, demo, *, force=False):
     vacations = VacationStore(path("vacations.json"))
     for vac in demo["vacations"]:
         vacations.save(None, vac["name"], vac["from"], vac["to"], vac["days"])
+    SickStore(path("sick.json"), device_id="demo").save_range(demo["sick"])
     smtp = SmtpStore(path("smtp.json"))
     for account in demo["smtp"]:
         smtp.save(account)

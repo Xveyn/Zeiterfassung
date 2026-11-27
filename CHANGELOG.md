@@ -2,6 +2,21 @@
 
 Ältere Versionen stehen im [Archiv](CHANGELOG-archive.md).
 
+## 1.30.1 — 2026-11-28
+
+### Behoben
+- **Tages-Dialog zu breit**: Seit den Notizen war der Tages-Dialog deutlich
+  breiter als nötig, auch ganz ohne Slot. Die Notiz steht jetzt in einer
+  eigenen Zeile unter ihrem Slot und zeigt dort mehr Text. Jeder Slot steht in
+  einem Rahmen, damit klar ist, welche Notiz zu welchem Slot gehört.
+- **Kalender: abgeschnittene Zeiten**: Bei mehreren Slots an einem Tag war die
+  Zeitzeile ohne eingetragenen Stundenlohn links und rechts abgeschnitten.
+  Passt sie nicht in die Zelle, zeigt die Zelle jetzt den Beginn und die Zahl
+  der weiteren Slots („08:00 +2“). Alle Slots stehen weiter im Tooltip.
+- **Web-App: Krankheitsstunden in der Woche**: Unter „Woche gesamt“ steht jetzt
+  eine eigene Zeile „Krankheit“ mit den Krankheitsstunden der Woche.
+  „Woche gesamt“ bleibt die Arbeitszeit.
+
 ## 1.30.0 — 2026-11-27
 
 Krankheitstage lassen sich jetzt eintragen. Sie gleichen sich zwischen den
