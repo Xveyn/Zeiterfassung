@@ -7,7 +7,6 @@ Tkinter und das Theme in einen Serverthread-Pfad, der davon frei bleiben soll.
 `dialogs/vacation_dialog.py` importiert sie von hier unter ihren alten Namen.
 """
 
-from src.time_utils import format_iso_date
 from src.absence import format_day_list  # noqa: F401  (Re-Export, s. absence)
 from src.vacations import apportion_minutes, conflicting_days, expand_days
 

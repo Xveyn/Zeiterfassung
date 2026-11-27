@@ -21,11 +21,9 @@ reist NICHT per Drive-Sync und trägt daher — wie `reservations.py` — kein
 
 from __future__ import annotations
 
-import datetime
 import logging
 import secrets
 import threading
-from dataclasses import dataclass
 from typing import Any, Collection
 
 from src.absence import (  # noqa: F401  (Re-Export unter dem alten Namen)
@@ -34,7 +32,7 @@ from src.absence import (  # noqa: F401  (Re-Export unter dem alten Namen)
 )
 from src.json_store import atomic_write_json, load_json_or_quarantine
 from src.time_utils import (
-    calculate_hours, format_iso_date, hours_to_minutes, utc_now_iso,
+    utc_now_iso,
 )
 
 _log = logging.getLogger(__name__)
