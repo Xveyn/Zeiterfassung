@@ -871,6 +871,10 @@ Die Slots eines Tages stehen chronologisch, nach Kategorie oder in einer eigenen
 - **Ein gelöschter Krankheitstag kann zurückkehren.** Es gibt keinen Self-Heal (ein fehlender Tag beweist keine Löschung,
   ältere Geräte lassen den Bereich beim Push fallen): hat ein Gerät den Tombstone vor der Kompaktierung nicht erhalten,
   weil es offline war oder weil ein älteres Gerät den Bereich `sick` gerade fallen ließ, bringt es den Tag zurück.
+- **Ein Block kann länger als 366 Tage werden.** Das Handy kann Tage krank melden, die zusammen mit angrenzenden
+  Krankheitstagen einen Block von mehr als 366 Tagen bilden; der Abgleich prüft die Länge des Blocks nicht. Der
+  Krankheits-Dialog am Desktop lehnt das Speichern eines solchen Blocks ab, er lässt sich dort nur löschen oder kürzen.
+  Die lokale API verhält sich genauso (`POST /v1/sick` an einen bestehenden Block angrenzend).
 
 ## Beschädigte oder fremde Daten (Storage)
 

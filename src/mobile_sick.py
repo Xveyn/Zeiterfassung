@@ -5,9 +5,9 @@
 - `parse_sick`: der Teil `sick` der Anfrage ist **Fremddaten**. Ein Tag ist
   `{modified_at, deleted, minutes?}`; alles andere lehnt die ganze Anfrage ab.
   Die Meldung beginnt mit `Krankheit <Datum>:`, damit die PWA den Tag zuordnet.
-- `days_to_compute` und `phone_records`: die Datensätze des Handys für den Merge.
+- `fill_minutes` und `phone_records`: die Datensätze des Handys für den Merge.
   Die Minuten rechnet der Desktop (`sick_plan.prefill`): das Handy kennt weder
-  Feiertage noch die Regel „Stunden je Krankheitstag“.
+  Feiertage noch die Regel „Stunden je Krankheitstag“. Unveränderte Tage bleiben weg.
 - `build_sick`: der Block `sick` der Antwort.
 
 Den Fehler hier übersetzt `mobile_sync` in `SyncError(422, "invalid_entry", …)`.
@@ -20,8 +20,9 @@ import re
 from collections.abc import Callable, Iterable, Mapping
 from typing import Any
 
+from src.absence import date_range
 from src.api_entry_write import WriteError, check_date_range
-from src.sick_days import MAX_MINUTES, SickDay, clean_record
+from src.sick_days import MAX_MINUTES, SickDay, clean_record, runs
 
 MAX_SICK_DAYS = 400
 
@@ -102,33 +103,74 @@ def _live_record(raw: object) -> SickDay | None:
     return record if record is not None and not record["deleted"] else None
 
 
-def days_to_compute(parsed: Mapping[str, Mapping[str, Any]],
-                    desktop_raw: Mapping[str, SickDay]) -> list[str]:
-    """Die lebenden Handy-Tage ohne `minutes`, an denen der Desktop keinen lebenden
-    Krankheitstag hat, sortiert: für genau diese braucht `phone_records` `computed`."""
+def days_to_compute(parsed: Mapping[str, Mapping[str, Any]]) -> list[str]:
+    """Die lebenden Handy-Tage ohne `minutes`, sortiert. Auch Tage, die der Desktop schon
+    lebend hat: die Folgen bilden sich wie im Dialog über den ganzen gemeldeten Zeitraum,
+    der erste Tag einer Folge ist der Anker des Durchschnitts."""
     return sorted(date for date, day in parsed.items()
-                  if not day["deleted"] and "minutes" not in day
-                  and _live_record(desktop_raw.get(date)) is None)
+                  if not day["deleted"] and "minutes" not in day)
+
+
+def fill_minutes(parsed: Mapping[str, Mapping[str, Any]], *,
+                 desktop_raw: Mapping[str, SickDay],
+                 fill: Callable[[str, str, Mapping[str, int]], Mapping[str, int]],
+                 ) -> dict[str, int]:
+    """Die Minuten der lebenden Handy-Tage ohne `minutes` (`days_to_compute`).
+
+    Je lückenloser Folge, in Datumsreihenfolge, liefert `fill(first, last, sick_days)` die
+    Vorbelegung (`sick_plan.prefill`); ein lebender Desktop-Tag behält seine Minuten. Als
+    Krankheit zählen dabei die lebenden Desktop-Tage, die Handy-Tage mit eigenen Minuten und
+    die Ergebnisse der früheren Folgen: als hätte jemand die Zeiträume nacheinander im Dialog
+    gemeldet. Sonst zählten die übrigen neuen Krankheitstage im Durchschnitt als Arbeitstage
+    mit 0 Minuten. Eine Folge nur aus Desktop-Tagen braucht kein `fill`."""
+    desktop = {date: record["minutes"] for date, raw in desktop_raw.items()
+               if (record := _live_record(raw)) is not None}
+    sick_days = dict(desktop)
+    sick_days.update({date: int(day["minutes"]) for date, day in parsed.items()
+                      if not day["deleted"] and "minutes" in day})
+    filled: dict[str, int] = {}
+    for first, last in runs(days_to_compute(parsed)):
+        dates = [day.isoformat() for day in date_range(first, last)]
+        computed = (fill(first, last, dict(sick_days))
+                    if any(date not in desktop for date in dates) else {})
+        for date in dates:
+            filled[date] = desktop[date] if date in desktop else computed[date]
+        sick_days.update({date: filled[date] for date in dates})
+    return filled
 
 
 def phone_records(parsed: Mapping[str, Mapping[str, Any]], *,
                   desktop_raw: Mapping[str, SickDay], computed: Mapping[str, int],
                   device_id: str, floor: str) -> dict[str, SickDay]:
-    """Die Datensätze des Handys für `sync.merge`. Ein Tombstone trägt 0 Minuten; ein
-    lebender Tag ohne `minutes` behält die eines lebenden Desktop-Tags (dieselbe Regel
-    wie Dialog und API), sonst gilt `computed[date]` (`days_to_compute`). Der Stempel
-    wird auf `floor` angehoben (`last_pull_at + 1 s`, leer bei `excluded`; Begründung
-    in `mobile_sync._phone_doc`), `device_id` kommt aus dem Token."""
+    """Die Datensätze des Handys für `sync.merge`, nur für echte Änderungen.
+
+    Ein lebender Tag ohne `minutes` behält die eines lebenden Desktop-Tags (dieselbe Regel
+    wie Dialog und API), sonst gilt `computed[date]` (`fill_minutes`). Ein Tombstone trägt
+    0 Minuten. Keine Änderung und deshalb nicht dabei: ein lebender Tag, den der Desktop mit
+    denselben Minuten lebend hat (auch ohne `minutes`), und ein Tombstone über einem
+    Desktop-Tombstone. Der Desktop-Datensatz behält so Stempel und Gerät; ein neuer Stempel
+    ohne Änderung schlüge im LWW eine gleichzeitige Änderung auf einem anderen Gerät
+    (`SickStore._put_days`/`delete_days`). Der Stempel wird auf `floor` angehoben
+    (`last_pull_at + 1 s`, leer bei `excluded`; Begründung in `mobile_sync._phone_doc`),
+    `device_id` kommt aus dem Token."""
     records: dict[str, SickDay] = {}
     for date, day in parsed.items():
         deleted = bool(day["deleted"])
+        current = clean_record(desktop_raw.get(date))
         if deleted:
+            if current is not None and current["deleted"]:
+                continue
             minutes = 0
-        elif "minutes" in day:
-            minutes = int(day["minutes"])
         else:
-            desktop = _live_record(desktop_raw.get(date))
-            minutes = desktop["minutes"] if desktop is not None else computed[date]
+            live = current if current is not None and not current["deleted"] else None
+            if "minutes" in day:
+                minutes = int(day["minutes"])
+            elif live is not None:
+                minutes = live["minutes"]
+            else:
+                minutes = computed[date]
+            if live is not None and live["minutes"] == minutes:
+                continue
         records[date] = {"minutes": minutes, "modified_at": max(str(day["modified_at"]), floor),
                          "device_id": device_id, "deleted": deleted}
     return records

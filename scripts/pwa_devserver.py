@@ -39,7 +39,9 @@ from src.mobile_store import MobileStore  # noqa: E402
 from src.mobile_pairing import PairingSession  # noqa: E402
 from src.reservations import ReservationStore  # noqa: E402
 from src.settings import Settings  # noqa: E402
+from src.sick_days import SickStore  # noqa: E402
 from src.storage import Storage  # noqa: E402
+from src.vacations import VacationStore  # noqa: E402
 
 
 def build_id(directory: pathlib.Path) -> str:
@@ -154,7 +156,9 @@ def running(data_dir: pathlib.Path, *, web_port: int, api_port: int, address: st
         storage=storage,
         settings=settings, conflicts_store=ConflictsStore(str(data_dir / "conflicts.json")),
         base=str(data_dir), desktop_name=lambda: "Desktop (Dev)",
-        reservation_store=ReservationStore(str(data_dir / "reservations.json")) if reservations else None)
+        reservation_store=ReservationStore(str(data_dir / "reservations.json")) if reservations else None,
+        sick_store=SickStore(str(data_dir / "sick.json"), device_id="DESKTOP-DEV"),
+        vacation_store=VacationStore(str(data_dir / "vacations.json")))
 
     def run(fn, done=None):
         result = fn()

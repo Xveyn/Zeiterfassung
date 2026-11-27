@@ -118,37 +118,109 @@ def _rec(minutes, *, deleted=False, modified_at="2026-10-01T10:00:00Z", device="
     return {"minutes": minutes, "modified_at": modified_at, "device_id": device, "deleted": deleted}
 
 
-def test_only_live_days_without_minutes_and_without_a_live_desktop_day_are_computed():
+def test_every_live_day_without_minutes_is_computed_even_where_the_desktop_has_one():
+    # Die Folgen bilden sich wie im Dialog über den ganzen gemeldeten Zeitraum; ein lebender
+    # Desktop-Tag behält trotzdem seine Minuten (`fill_minutes`, `phone_records`).
     parsed = parse({"2026-10-05": live(), "2026-10-06": live(), "2026-10-07": live(300),
                     "2026-10-02": tomb(), "2026-10-01": live()})
-    desktop = {"2026-10-06": _rec(420), "2026-10-01": _rec(0, deleted=True)}
 
-    assert mobile_sick.days_to_compute(parsed, desktop) == ["2026-10-01", "2026-10-05"]
+    assert mobile_sick.days_to_compute(parsed) == ["2026-10-01", "2026-10-05", "2026-10-06"]
+
+
+# --- fill_minutes ----------------------------------------------------------------------------------
+
+class FakeFill:
+    """Liefert je Tag `value`, merkt sich die Aufrufe samt den übergebenen Krankheitstagen."""
+
+    def __init__(self, value=450):
+        self.value = value
+        self.calls = []
+
+    def __call__(self, first, last, sick_days):
+        self.calls.append((first, last, dict(sick_days)))
+        days = {}
+        day = datetime.date.fromisoformat(first)
+        while day.isoformat() <= last:
+            days[day.isoformat()] = self.value
+            day += datetime.timedelta(days=1)
+        return days
+
+
+def test_runs_are_filled_in_date_order_and_later_runs_see_the_earlier_ones():
+    parsed = parse({"2026-10-02": live(), "2026-09-28": live(), "2026-09-29": live(),
+                    "2026-10-01": live()})
+    fill = FakeFill()
+
+    minutes = mobile_sick.fill_minutes(parsed, desktop_raw={"2026-07-01": _rec(300)}, fill=fill)
+
+    assert minutes == {"2026-09-28": 450, "2026-09-29": 450, "2026-10-01": 450, "2026-10-02": 450}
+    assert [(first, last) for first, last, _ in fill.calls] == [
+        ("2026-09-28", "2026-09-29"), ("2026-10-01", "2026-10-02")]
+    assert fill.calls[0][2] == {"2026-07-01": 300}
+    assert fill.calls[1][2] == {"2026-07-01": 300, "2026-09-28": 450, "2026-09-29": 450}
+
+
+def test_a_live_desktop_day_keeps_its_minutes_inside_a_run_and_counts_as_sick():
+    parsed = parse({"2026-10-05": live(), "2026-10-06": live(), "2026-10-07": live(),
+                    "2026-10-09": live(), "2026-10-12": live(120)})
+    desktop = {"2026-10-06": _rec(300), "2026-10-08": _rec(0, deleted=True)}
+    fill = FakeFill()
+
+    minutes = mobile_sick.fill_minutes(parsed, desktop_raw=desktop, fill=fill)
+
+    assert minutes == {"2026-10-05": 450, "2026-10-06": 300, "2026-10-07": 450, "2026-10-09": 450}
+    assert [(first, last) for first, last, _ in fill.calls] == [
+        ("2026-10-05", "2026-10-07"), ("2026-10-09", "2026-10-09")]
+    # Minuten vom Handy zählen von Anfang an als Krankheit, der Desktop-Tombstone nicht.
+    assert fill.calls[0][2] == {"2026-10-06": 300, "2026-10-12": 120}
+    assert fill.calls[1][2] == {"2026-10-05": 450, "2026-10-06": 300, "2026-10-07": 450,
+                                "2026-10-12": 120}
+
+
+def test_a_run_of_desktop_days_only_needs_no_fill():
+    parsed = parse({"2026-10-06": live(), "2026-10-07": live(60), "2026-10-02": tomb()})
+    fill = FakeFill()
+
+    minutes = mobile_sick.fill_minutes(parsed, desktop_raw={"2026-10-06": _rec(300)}, fill=fill)
+
+    assert minutes == {"2026-10-06": 300} and fill.calls == []
 
 
 # --- phone_records ---------------------------------------------------------------------------------
 
 def test_phone_records_follow_the_rules_for_minutes_stamps_and_device():
     parsed = parse({"2026-10-05": live(), "2026-10-06": live(), "2026-10-07": live(300),
-                    "2026-10-02": tomb(), "2026-10-01": live(modified_at="2026-10-08T12:10:00Z")})
-    desktop = {"2026-10-06": _rec(420), "2026-10-07": _rec(480), "2026-10-02": _rec(480)}
+                    "2026-10-08": live(480), "2026-10-02": tomb(),
+                    "2026-10-01": live(modified_at="2026-10-08T12:10:00Z")})
+    desktop = {"2026-10-06": _rec(420), "2026-10-07": _rec(480), "2026-10-08": _rec(480),
+               "2026-10-02": _rec(480)}
 
     records = mobile_sick.phone_records(
-        parsed, desktop_raw=desktop, computed={"2026-10-05": 450, "2026-10-01": 0},
+        parsed, desktop_raw=desktop, computed={"2026-10-05": 450, "2026-10-06": 999, "2026-10-01": 0},
         device_id="phone-0001", floor="2026-10-08T09:00:01Z")
 
+    # 06. (ohne Minuten, lebender Desktop-Tag) und 08. (dieselben Minuten) sind keine Änderung:
+    # sie fehlen, der Desktop-Datensatz behält Stempel und Gerät (wie `SickStore._put_days`).
     assert records == {
         # ohne Minuten, kein Desktop-Tag: die Vorbelegung
         "2026-10-05": _rec(450, modified_at="2026-10-08T09:00:01Z", device="phone-0001"),
-        # ohne Minuten, lebender Desktop-Tag: dessen Minuten
-        "2026-10-06": _rec(420, modified_at="2026-10-08T09:00:01Z", device="phone-0001"),
-        # Minuten vom Handy gewinnen
+        # andere Minuten vom Handy gewinnen
         "2026-10-07": _rec(300, modified_at="2026-10-08T09:00:01Z", device="phone-0001"),
-        # Tombstone: 0 Minuten
+        # Tombstone über einem lebenden Tag: 0 Minuten
         "2026-10-02": _rec(0, deleted=True, modified_at="2026-10-08T09:00:01Z", device="phone-0001"),
         # ein Stempel über dem Boden bleibt
         "2026-10-01": _rec(0, modified_at="2026-10-08T12:10:00Z", device="phone-0001"),
     }
+
+
+def test_a_phone_tombstone_over_a_desktop_tombstone_is_no_change():
+    parsed = parse({"2026-10-02": tomb(), "2026-10-03": tomb()})
+
+    records = mobile_sick.phone_records(
+        parsed, desktop_raw={"2026-10-02": _rec(0, deleted=True)}, computed={},
+        device_id="phone-0001", floor="2026-10-08T09:00:01Z")
+
+    assert list(records) == ["2026-10-03"]               # unbekannter Tag: geht durch wie bisher
 
 
 def test_a_tombstone_from_the_phone_carries_zero_minutes_even_if_it_sent_some():

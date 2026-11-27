@@ -39,7 +39,6 @@ from src.api_summary import category_names
 from src.devices import sanitize_registry, with_own_entry
 from src.mobile_settings import clean_category_times, clock, pause
 from src.reservations import reservations_active
-from src.sick_days import runs
 from src.sick_plan import normalize_basis, prefill
 from src.slot_order import DEFAULT_MODE, normalize_mode
 from src.settings import WEEKDAY_KEYS
@@ -369,7 +368,8 @@ def build_response(merged: Mapping[str, Any], *, sent_dates: Iterable[str],
                    reservations: Mapping[str, Any] | None = None,
                    reminders: Mapping[str, Any] | None = None,
                    slot_order: str = DEFAULT_MODE,
-                   sick: Mapping[str, Any] | None = None) -> dict[str, Any]:
+                   sick: Mapping[str, Any] | None = None,
+                   sick_sent: Iterable[str] = ()) -> dict[str, Any]:
     """Die Antwort des Abgleichs aus dem Merge-Ergebnis, ohne `token`/`expires_at`
     (die ergänzt die Route). Fenster `[heute − Fenster, heute + WINDOW_AHEAD_DAYS]` (heute ist das lokale
     Datum des Desktops) plus alle gesendeten Tage — beides für Einträge **und**
@@ -381,8 +381,9 @@ def build_response(merged: Mapping[str, Any], *, sent_dates: Iterable[str],
     wenn die Einträge mehr als `MAX_RESPONSE_ENTRY_BYTES` ergäben (#250). Die Antwort
     nennt das Fenster, das tatsächlich gilt.
 
-    `sick` ist der fertige Block der Krankheitstage (`mobile_sick.build_sick`), `None` ohne
-    Krankheits-Store; er zählt nicht ins Mengenbudget."""
+    `sick` ist der Block der Krankheitstage (`mobile_sick.build_sick`), `None` ohne
+    Krankheits-Store. Die Antwort trägt davon die Tage im Fenster, das sie nennt, plus die
+    gesendeten (`sick_sent`); er zählt nicht ins Mengenbudget."""
     sent = set(sent_dates)
     last = (today + datetime.timedelta(days=WINDOW_AHEAD_DAYS)).isoformat()
 
@@ -435,7 +436,9 @@ def build_response(merged: Mapping[str, Any], *, sent_dates: Iterable[str],
     if sick is not None:
         # Fähigkeit: der Desktop nimmt `sick` an (Feature-Erkennung der PWA), auch mit leerem Block.
         response["sick_days"] = True
-        response["sick"] = dict(sick)
+        sent_sick = set(sick_sent)
+        response["sick"] = {date: day for date, day in sick.items()
+                            if date in sent_sick or first <= date <= last}
     return response
 
 
@@ -491,25 +494,25 @@ def _phone_sick(request: SyncRequest, *, sick_store: SickStore, storage: Storage
                 settings: Settings, reservation_store: ReservationStore | None,
                 vacation_store: VacationStore | None, device_id: str, floor: str,
                 today: datetime.date) -> dict[str, SickDay]:
-    """Die Krankheitstage des Handys als Datensätze, unter `data_lock`. Fehlende Minuten
-    rechnet `prefill` je lückenloser Folge wie Dialog und API. Reservierungen zählen nur,
-    solange sie aktiv sind, und werden vor `merge_phone` gelesen: eine in derselben Anfrage
-    gelöschte Reservierung bestimmt die Minuten noch."""
+    """Die geänderten Krankheitstage des Handys als Datensätze, unter `data_lock`. Fehlende
+    Minuten rechnet `prefill` je lückenloser Folge wie Dialog und API (`mobile_sick.fill_minutes`).
+    Reservierungen zählen nur, solange sie aktiv sind, und werden vor `merge_phone` gelesen: eine
+    in derselben Anfrage gelöschte Reservierung bestimmt die Minuten noch."""
     desktop_raw = sick_store.get_all_raw()
-    computed: dict[str, int] = {}
-    missing = mobile_sick.days_to_compute(request.sick, desktop_raw)
-    if missing:
-        reservations = (reservation_store.get_all() if reservation_store is not None
-                        and reservations_active(reservation_store, settings) else None)
-        entries = storage.get_all()
-        vacation_days = vacation_store.day_minutes() if vacation_store is not None else {}
-        sick_days = sick_store.day_minutes()
-        basis = normalize_basis(settings.get("sick_hours_basis"))
-        for first, last in runs(missing):
-            computed.update(prefill(
-                first, last, basis=basis, entries=entries, reservations=reservations,
-                vacation_days=vacation_days, sick_days=sick_days, settings=settings,
-                today=today).days)
+    inputs: dict[str, Any] = {}
+
+    def fill(first: str, last: str, sick_days: Mapping[str, int]) -> Mapping[str, int]:
+        if not inputs:          # erst gelesen, wenn eine Folge wirklich etwas zu rechnen hat
+            inputs.update(
+                basis=normalize_basis(settings.get("sick_hours_basis")),
+                entries=storage.get_all(),
+                reservations=(reservation_store.get_all() if reservation_store is not None
+                              and reservations_active(reservation_store, settings) else None),
+                vacation_days=vacation_store.day_minutes() if vacation_store is not None else {})
+        return prefill(first, last, sick_days=sick_days, settings=settings, today=today,
+                       **inputs).days
+
+    computed = mobile_sick.fill_minutes(request.sick, desktop_raw=desktop_raw, fill=fill)
     return mobile_sick.phone_records(request.sick, desktop_raw=desktop_raw, computed=computed,
                                      device_id=device_id, floor=floor)
 
@@ -608,6 +611,7 @@ def perform_sync(request: SyncRequest, *, device_id: str, device_name: str,
         names = categories if categories is not None else category_names(settings)
         cap = window_cap(settings.get("mobile_window_max_days"))
         granted = grant_window(request.window_days, cap)
+        # Vorauswahl über das gewährte Fenster; auf das Fenster nach `fit_window` kürzt `build_response`.
         sick = (mobile_sick.build_sick(
             sick_raw, first=(today - datetime.timedelta(days=granted)).isoformat(),
             last=(today + datetime.timedelta(days=WINDOW_AHEAD_DAYS)).isoformat(),
@@ -622,7 +626,7 @@ def perform_sync(request: SyncRequest, *, device_id: str, device_name: str,
                               window_max_days=cap, reservations=reservations,
                               reminders=reminders,
                               slot_order=normalize_mode(settings.get("slot_order_mode")),
-                              sick=sick)
+                              sick=sick, sick_sent=request.sick)
     finally:
         if sync_guard is not None:
             sync_guard.release()

@@ -128,6 +128,13 @@ def test_the_dev_server_never_touches_the_developers_keyring(devserver, tmp_path
     assert mobile_keys.keyring_store is original          # zurückgesetzt
 
 
+def test_the_dev_phone_context_has_sick_and_vacation_stores_in_the_data_dir(devserver, tmp_path):
+    with devserver.running(tmp_path, web_port=0, api_port=0, address="127.0.0.1") as dev:
+        context = dev.service._context
+        assert context.sick_store.filepath == str(tmp_path / "sick.json")
+        assert context.vacation_store.filepath == str(tmp_path / "vacations.json")
+
+
 def test_the_dev_origin_does_not_leak_into_the_process(devserver, tmp_path):
     from src import mobile_routes
     before = (mobile_routes.PWA_ORIGIN, mobile_routes.PWA_URL)

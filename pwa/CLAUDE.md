@@ -1166,7 +1166,8 @@ unter `pwa/` löst damit den normalen Update-Weg aus: der neue Worker wartet,
 „Neu laden“ übernimmt ihn — ohne Worker abzumelden oder Caches zu leeren.
 
 `--reservations` schaltet den Reservierungs-Abgleich ein (wie „Reservierungen verwenden“
-am Desktop); ohne den Schalter fehlt das Feld `reservations` in der Antwort.
+am Desktop); ohne den Schalter fehlt das Feld `reservations` in der Antwort. Krankheitstage
+und Urlaub liegen in der Datenablage des Dev-Servers, die Antwort meldet `sick_days` immer.
 
 Der Dev-Server legt Kategorien mit Standardzeiten an (Projekt mit festen
 Zeiten, Intern ohne Eintrag, Support als `per_day`) und nennt die Einstellungen

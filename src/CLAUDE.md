@@ -512,18 +512,26 @@ Minuten ist kein Inhalt).
   Stempel höchstens 15 Minuten in der Zukunft, höchstens 400 Tage, unbekannte Felder abgelehnt; `422 invalid_entry`, die
   Meldung beginnt mit `Krankheit <Datum>:`, damit die PWA den Tag zuordnet). **Die Minuten rechnet der Desktop, und zwar vor
   dem Merge** (`clean_section` verwirft einen Datensatz ohne Minuten): fehlen sie an einem lebenden Tag, behält er die eines
-  lebenden Desktop-Krankheitstags, sonst rechnet `sick_plan.prefill` einmal je lückenloser Folge — dieselbe Regel wie Dialog
-  und API. Eingaben: `sick_hours_basis`, `Storage.get_all()`, der Urlaub über `MobileContext.vacation_store`, die
-  Reservierungen nur bei `reservations_active` und **vor** `merge_phone` gelesen (eine in derselben Anfrage gelöschte
-  Reservierung bestimmt die Minuten noch), `today` als lokales Datum des Desktops. Schickt das Handy `minutes` doch, gelten
-  sie (das Protokoll erlaubt es, die PWA tut es nicht). `_phone_doc` setzt den Bereich `sick` nur mit Tagen, die Stempel wie
-  bei den Einträgen auf `last_pull_at + 1 s` angehoben (außer bei `excluded`); der Merge ist `sync.merge` (LWW je Tag, keine
-  Konflikte, kein Self-Heal), `build_local_doc` **und** `apply_merged_doc_journaled` bekommen den Store, im selben
-  `data_lock`. Eine Ist-Zeit am selben Tag lehnt den Abgleich nicht ab — anders als Dialog und API (`409
-  work_on_sick_days`): die Kappung (`absence.cut_absences`) behandelt den Zustand wie beim Urlaub. Die Antwort trägt
-  `sick_days: true` und `sick` (`{ISO: {minutes, modified_at, deleted}}`: lebende Tage und Tombstones von heute − gewährtes
-  Fenster (`grant_window`) bis heute + `WINDOW_AHEAD_DAYS` plus die gesendeten Tage, `mobile_sick.build_sick`) **nur** mit
-  `MobileContext.sick_store`; der Block zählt nicht ins Mengenbudget von `fit_window`. Eine Anfrage ohne `sick` (ältere
+  lebenden Desktop-Krankheitstags, sonst rechnet `sick_plan.prefill` — dieselbe Regel wie Dialog und API
+  (`mobile_sick.fill_minutes`). Die Folgen bilden sich über **alle** lebenden Handy-Tage ohne Minuten, auch über Tage, die
+  der Desktop schon hat (der erste Tag ist der Anker des Durchschnitts), und laufen in Datumsreihenfolge; spätere Folgen
+  sehen die früheren samt den Handy-Tagen mit eigenen Minuten als Krankheit, sonst zählten sie bei `average_3m` als
+  Arbeitstage mit 0 Minuten. Eingaben: `sick_hours_basis`, `Storage.get_all()`, der Urlaub über
+  `MobileContext.vacation_store`, die Reservierungen nur bei `reservations_active` und **vor** `merge_phone` gelesen (eine in
+  derselben Anfrage gelöschte Reservierung bestimmt die Minuten noch), `today` als lokales Datum des Desktops. Schickt das
+  Handy `minutes` doch, gelten sie (das Protokoll erlaubt es, die PWA tut es nicht). **Unveränderte Tage bleiben weg**
+  (`phone_records`): ein lebender Tag, den der Desktop mit denselben Minuten lebend hat (auch ohne `minutes`), und ein
+  Tombstone über einem Desktop-Tombstone; der Desktop-Datensatz behält Stempel und Gerät, sonst schlüge eine wiederholte
+  Anfrage eine gleichzeitige Änderung auf einem anderen Gerät (wie `SickStore._put_days`/`delete_days`). `_phone_doc` setzt
+  den Bereich `sick` nur mit Tagen, die Stempel wie bei den Einträgen auf `last_pull_at + 1 s` angehoben (außer bei
+  `excluded`); der Merge ist `sync.merge` (LWW je Tag, keine Konflikte, kein Self-Heal), `build_local_doc` **und**
+  `apply_merged_doc_journaled` bekommen den Store, im selben `data_lock`. Eine Ist-Zeit am selben Tag lehnt den Abgleich
+  nicht ab — anders als Dialog und API (`409 work_on_sick_days`): die Kappung (`absence.cut_absences`) behandelt den
+  Zustand wie beim Urlaub; auch die Länge eines entstehenden Blocks prüft der Abgleich nicht (Grenze:
+  `docs/known-limitations.md`). Die Antwort trägt `sick_days: true` und `sick` (`{ISO: {minutes, modified_at, deleted}}`:
+  lebende Tage und Tombstones im Fenster, das die Antwort nennt (`window_days` nach `fit_window`, bis heute +
+  `WINDOW_AHEAD_DAYS`), plus die gesendeten Tage, `mobile_sick.build_sick`) **nur** mit `MobileContext.sick_store`; der
+  Block zählt nicht ins Mengenbudget von `fit_window`. Eine Anfrage ohne `sick` (ältere
   PWA) bleibt gültig, eingefroren als `pwa/test/fixtures/compat/sync-request-pre-sick.json` (die Antwort davor:
   `sync-response-pre-sick.json`). Kein Log nennt einen Krankheitstag.
   `mobile_settings.py` — Prüfung und Helfer der Einstellungen im Handy-Abgleich, Tk-frei und ohne I/O.
