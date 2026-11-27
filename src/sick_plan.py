@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import calendar
 import datetime
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -20,6 +20,7 @@ from src.time_utils import calculate_hours, hours_to_minutes
 
 if TYPE_CHECKING:
     from src.settings import SettingsLike
+    from src.sick_days import SickStore
 
 SIX_WEEKS_DAYS = 42
 MAX_BLOCK_DAYS = 366
@@ -258,3 +259,30 @@ def block_hints(days: Mapping[str, int]) -> list[str]:
     if len(days) > SIX_WEEKS_DAYS:
         hints.insert(0, HINT_SIX_WEEKS)
     return hints
+
+
+def reservation_dates_in(days: Mapping[str, int],
+                         reservations: Mapping[str, Any] | None) -> list[str]:
+    """Tage des Blocks, an denen Reservierungs-Slots liegen."""
+    if not reservations:
+        return []
+    return sorted(d for d in days if (reservations.get(d) or {}).get("slots"))
+
+
+def commit_sick_block(sick_store: SickStore, reservation_store: Any, *,
+                      old_dates: Iterable[str], days: dict[str, int],
+                      delete_reservations: bool) -> list[str]:
+    """Schreibt den Block und löscht danach, nur auf Wunsch, die Reservierungen
+    seiner Tage. Die Minuten wurden vorher geplant, die Reservierungen
+    dürfen erst jetzt wegfallen. Liefert die gelöschten Reservierungstage."""
+    old = list(old_dates)
+    if old:
+        sick_store.replace_block(old, days)
+    else:
+        sick_store.save_range(days)
+    if not delete_reservations or reservation_store is None:
+        return []
+    dates = reservation_dates_in(days, reservation_store.get_all())
+    for date in dates:
+        reservation_store.delete(date)
+    return dates

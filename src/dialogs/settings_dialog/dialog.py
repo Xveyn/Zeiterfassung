@@ -28,7 +28,8 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
                          vacation_store=None, on_vacation_change=None,
                          on_vacation_display_change=None, initial_tab=None,
                          on_request_removal=None, api_service=None,
-                         mobile_service=None, relay_service=None, sick_store=None):
+                         mobile_service=None, relay_service=None, sick_store=None,
+                         on_sick_change=None, on_reservations_deleted=None):
     """Modaler Dialog zum Bearbeiten der App-Einstellungen, aufgeteilt auf acht
     Tabs (Arbeitszeit / Erinnerungen / Versand / Google / API / Mobil / App / Updates).
 
@@ -63,7 +64,10 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     relay_service: der `relay_service.RelayService` der App (#358); ohne ihn fehlt im Tab
     „Mobil" der Knopf „Über Relay koppeln".
     sick_store: der `SickStore` der App; die Kompaktierung im Google-Tab räumt damit
-    auch erledigte Krankheits-Tombstones ab.
+    auch erledigte Krankheits-Tombstones ab, und mit ihm erscheint im
+    Arbeitszeit-Tab der Knopf „Krankheit verwalten“ (zusammen mit `storage`).
+    on_sick_change/on_reservations_deleted: Neuzeichnen bzw. Kalender-Abgleich
+    nach Änderungen im Krankheits-Dialog.
     """
     dialog = create_dialog(parent, "Einstellungen", escape_closes=False)
 
@@ -83,7 +87,9 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
 
     work = WorkTab(frames["work"], dialog, settings, vacation_store,
                    on_vacation_change, storage, reservation_store, runner,
-                   on_vacation_display_change)
+                   on_vacation_display_change, sick_store=sick_store,
+                   data_lock=data_lock, on_sick_change=on_sick_change,
+                   on_reservations_deleted=on_reservations_deleted)
     reminders = RemindersTab(frames["reminders"], settings, mobile_service)
     sending = SendingTab(frames["sending"], dialog, settings, webhook_store,
                          smtp_store, runner, parent)

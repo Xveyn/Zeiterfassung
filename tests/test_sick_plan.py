@@ -281,3 +281,54 @@ def test_average_for_future_block_uses_the_three_months_before_today():
         datetime.date(2027, 1, 15), entries=e, vacation_days={},
         sick_days={}, state="", today=datetime.date(2026, 11, 28))
     assert avg == 480
+
+
+class _FakeReservations:
+    def __init__(self, data):
+        self.data = data
+        self.deleted = []
+
+    def get_all(self):
+        return self.data
+
+    def delete(self, date):
+        self.deleted.append(date)
+
+
+def _sick_store(tmp_path):
+    from src.sick_days import SickStore
+    return SickStore(str(tmp_path / "sick.json"), device_id="dev-a")
+
+
+def test_reservation_dates_in_lists_days_with_slots():
+    days = {"2026-03-02": 480, "2026-03-03": 480, "2026-03-04": 0}
+    res = {"2026-03-02": {"slots": [_slot()]}, "2026-03-03": {"slots": []},
+           "2026-03-04": {"slots": [_slot()]}, "2026-04-01": {"slots": [_slot()]}}
+    assert sick_plan.reservation_dates_in(days, res) == [
+        "2026-03-02", "2026-03-04"]
+    assert sick_plan.reservation_dates_in(days, None) == []
+
+
+def test_commit_deletes_reservations_only_when_asked(tmp_path):
+    days = {"2026-03-02": 480, "2026-03-03": 480}
+    fake = _FakeReservations({"2026-03-02": {"slots": [_slot()]}})
+    store = _sick_store(tmp_path)
+    out = sick_plan.commit_sick_block(
+        store, fake, old_dates=[], days=days, delete_reservations=False)
+    assert out == [] and fake.deleted == []
+    assert store.day_minutes() == days
+    out = sick_plan.commit_sick_block(
+        store, fake, old_dates=[], days=days, delete_reservations=True)
+    assert out == ["2026-03-02"] and fake.deleted == ["2026-03-02"]
+    out = sick_plan.commit_sick_block(
+        store, None, old_dates=[], days=days, delete_reservations=True)
+    assert out == []
+
+
+def test_commit_tombstones_days_outside_edited_block(tmp_path):
+    store = _sick_store(tmp_path)
+    store.save_range({"2026-03-02": 480, "2026-03-03": 480, "2026-03-04": 480})
+    sick_plan.commit_sick_block(
+        store, None, old_dates=["2026-03-02", "2026-03-03", "2026-03-04"],
+        days={"2026-03-02": 60, "2026-03-03": 60}, delete_reservations=False)
+    assert store.day_minutes() == {"2026-03-02": 60, "2026-03-03": 60}

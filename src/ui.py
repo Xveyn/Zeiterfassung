@@ -696,6 +696,8 @@ class App:
             mobile_service=self._mobile,
             relay_service=self._relay,
             sick_store=self.sick_store,
+            on_sick_change=self._refresh,
+            on_reservations_deleted=self._on_remote_calendar_data_changed,
             initial_tab=initial_tab,
             auto_updater=self._updates.auto_updater,
             on_request_removal=self.remove_application,
