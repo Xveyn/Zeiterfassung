@@ -123,7 +123,7 @@ def test_ensure_icon_copies_the_bundled_png(tmp_path):
     assert (data / "icon.png").read_bytes() == b"PNGDATA"
 
 
-def test_ensure_icon_does_not_copy_again_when_sizes_match(tmp_path):
+def test_ensure_icon_does_not_copy_again_when_contents_match(tmp_path):
     bundle = tmp_path / "bundle" / "assets"
     bundle.mkdir(parents=True)
     (bundle / "app-icon.png").write_bytes(b"PNGDATA")
@@ -131,10 +131,23 @@ def test_ensure_icon_does_not_copy_again_when_sizes_match(tmp_path):
     data.mkdir()
     ensure_icon(str(tmp_path / "bundle"), str(data))
     target = data / "icon.png"
-    target.write_bytes(b"MARKIER")   # gleiche Länge wie b"PNGDATA"
+    os.utime(target, ns=(1_000_000_000, 1_000_000_000))
 
     ensure_icon(str(tmp_path / "bundle"), str(data))
-    assert target.read_bytes() == b"MARKIER"   # nicht überschrieben
+    assert target.stat().st_mtime_ns == 1_000_000_000   # nicht neu geschrieben
+
+
+def test_ensure_icon_recopies_a_changed_icon_of_the_same_size(tmp_path):
+    """Ein neues Icon kann zufällig gleich groß sein wie das alte."""
+    bundle = tmp_path / "bundle" / "assets"
+    bundle.mkdir(parents=True)
+    (bundle / "app-icon.png").write_bytes(b"PNGDATA")
+    data = tmp_path / "data"
+    data.mkdir()
+    (data / "icon.png").write_bytes(b"MARKIER")   # gleiche Länge wie b"PNGDATA"
+
+    ensure_icon(str(tmp_path / "bundle"), str(data))
+    assert (data / "icon.png").read_bytes() == b"PNGDATA"
 
 
 def test_ensure_icon_recopies_when_size_differs(tmp_path):
