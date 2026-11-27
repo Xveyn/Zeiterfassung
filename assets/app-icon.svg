@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <radialGradient id="tile-gradient" cx="50%" cy="38%" r="62%">
+      <stop offset="0" stop-color="#1b2a4a"/>
+      <stop offset="1" stop-color="#0e172b"/>
+    </radialGradient>
+  </defs>
+  <rect id="tile" x="6" y="6" width="244" height="244" rx="56" fill="url(#tile-gradient)"/>
+  <g transform="translate(128 128) scale(1.18) translate(-138 -134)">
+    <rect x="62" y="70" width="132" height="118" rx="14" fill="#e6ecef"/>
+    <path d="M62 84 a14 14 0 0 1 14 -14 h104 a14 14 0 0 1 14 14 v20 h-132 z" fill="#04cd9f"/>
+    <rect x="88" y="56" width="11" height="28" rx="5.5" fill="#e6ecef" stroke="#0e172b" stroke-width="3"/>
+    <rect x="157" y="56" width="11" height="28" rx="5.5" fill="#e6ecef" stroke="#0e172b" stroke-width="3"/>
+    <g fill="#b6c2cc">
+      <rect x="76" y="116" width="20" height="15" rx="3"/>
+      <rect x="104" y="116" width="20" height="15" rx="3"/>
+      <rect x="132" y="116" width="20" height="15" rx="3"/>
+      <rect x="160" y="116" width="20" height="15" rx="3"/>
+      <rect x="76" y="139" width="20" height="15" rx="3"/>
+      <rect x="132" y="139" width="20" height="15" rx="3"/>
+      <rect x="76" y="162" width="20" height="15" rx="3"/>
+      <rect x="104" y="162" width="20" height="15" rx="3"/>
+    </g>
+    <rect x="104" y="139" width="20" height="15" rx="3" fill="#19ebec"/>
+    <circle cx="182" cy="180" r="32" fill="none" stroke="#19ebec" stroke-opacity="0.25" stroke-width="16"/>
+    <circle cx="182" cy="180" r="32" fill="#0e172b" stroke="#19ebec" stroke-width="6"/>
+    <line x1="182" y1="180" x2="182" y2="162" stroke="#ffffff" stroke-width="5" stroke-linecap="round"/>
+    <line x1="182" y1="180" x2="196" y2="188" stroke="#ffffff" stroke-width="5" stroke-linecap="round"/>
+  </g>
+</svg>

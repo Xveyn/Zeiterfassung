@@ -45,7 +45,7 @@ class MacTrayBackend:
 
     def _load_image(self):
         from AppKit import NSImage  # pyright: ignore[reportMissingImports]  # pyobjc, nur macOS
-        png = os.path.join(self.resource_path, "assets", "margenheld-icon.png")
+        png = os.path.join(self.resource_path, "assets", "app-icon.png")
         if not os.path.exists(png):
             return None
         image = NSImage.alloc().initByReferencingFile_(png)

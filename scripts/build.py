@@ -149,7 +149,7 @@ def build_windows(label=None, sha=""):
     cmd = _pyinstaller_common([
         "--onedir",
         "--noconsole",
-        "--icon", "assets/margenheld-icon.ico",
+        "--icon", "assets/app-icon.ico",
     ])
     subprocess.run(cmd, check=True)
     generate_third_party_notices()
@@ -169,7 +169,7 @@ def build_macos():
     cmd = _pyinstaller_common([
         "--windowed",
         "-D",
-        "--icon", "assets/margenheld-icon.icns",
+        "--icon", "assets/app-icon.icns",
         "--osx-bundle-identifier", "com.margenheld.zeiterfassung",
         # tray/mac.py importiert AppKit/Foundation lazy → explizit bündeln,
         # sonst fehlt PyObjC im DMG und das native Tray fällt still aus (#88).
@@ -232,7 +232,9 @@ def build_linux():
     shutil.copy2("dist/Zeiterfassung", os.path.join(appdir, "usr", "bin", "Zeiterfassung"))
     os.chmod(os.path.join(appdir, "usr", "bin", "Zeiterfassung"), 0o755)
 
-    shutil.copy2("assets/margenheld-icon.png", os.path.join(appdir, "margenheld-icon.png"))
+    # Der Icon-Name landet bei der Desktop-Integration (z. B. appimaged) im Icon-Theme; ein
+    # generischer Name wie „app-icon“ kollidierte dort mit anderen Programmen.
+    shutil.copy2("assets/app-icon.png", os.path.join(appdir, "zeiterfassung.png"))
     shutil.copy2(NOTICES_PATH, os.path.join(appdir, "THIRD-PARTY-NOTICES.txt"))
 
     desktop = (
@@ -240,7 +242,7 @@ def build_linux():
         "Type=Application\n"
         "Name=Zeiterfassung\n"
         "Exec=Zeiterfassung\n"
-        "Icon=margenheld-icon\n"
+        "Icon=zeiterfassung\n"
         "Categories=Office;\n"
     )
     with open(os.path.join(appdir, "Zeiterfassung.desktop"), "w", encoding="utf-8") as f:

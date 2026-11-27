@@ -16,14 +16,14 @@ AppName=Zeiterfassung
 AppVersion={#AppLabel}
 ; Produktversion in den Datei-Eigenschaften der Setup.exe — mit Commit.
 VersionInfoProductTextVersion={#AppBuild}
-AppPublisher=Margenheld
+AppPublisher=Xveyn
 AppPublisherURL=https://github.com/Xveyn/Zeiterfassung
 DefaultDirName={autopf}\Zeiterfassung
 DefaultGroupName=Zeiterfassung
 UninstallDisplayIcon={app}\Zeiterfassung.exe
 OutputDir=dist
 OutputBaseFilename=Zeiterfassung_Setup
-SetupIconFile=assets\margenheld-icon.ico
+SetupIconFile=assets\app-icon.ico
 Compression=lzma2
 SolidCompression=yes
 PrivilegesRequired=lowest
@@ -52,17 +52,28 @@ Source: "dist\THIRD-PARTY-NOTICES.txt"; DestDir: "{app}"; Flags: ignoreversion
 ; IconFilename für Start-Menü und Desktop. Die App liest Assets seit dem Wechsel
 ; zu get_resource_path() aus dem PyInstaller-Bundel (_internal\assets), nicht von
 ; hier. Nicht löschen — die Verknüpfungen verlieren sonst ihr Icon.
-Source: "assets\margenheld-icon.ico"; DestDir: "{app}\assets"; Flags: ignoreversion
-Source: "assets\margenheld-icon.png"; DestDir: "{app}\assets"; Flags: ignoreversion
+Source: "assets\app-icon.ico"; DestDir: "{app}\assets"; Flags: ignoreversion
+Source: "assets\app-icon.png"; DestDir: "{app}\assets"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\Zeiterfassung"; Filename: "{app}\Zeiterfassung.exe"; IconFilename: "{app}\assets\margenheld-icon.ico"
+Name: "{group}\Zeiterfassung"; Filename: "{app}\Zeiterfassung.exe"; IconFilename: "{app}\assets\app-icon.ico"
 Name: "{group}\Zeiterfassung deinstallieren"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\Zeiterfassung"; Filename: "{app}\Zeiterfassung.exe"; IconFilename: "{app}\assets\margenheld-icon.ico"; Tasks: desktopicon
+Name: "{autodesktop}\Zeiterfassung"; Filename: "{app}\Zeiterfassung.exe"; IconFilename: "{app}\assets\app-icon.ico"; Tasks: desktopicon
 
 [Tasks]
 Name: "desktopicon"; Description: "Desktop-Verknüpfung erstellen"; GroupDescription: "Zusätzliche Optionen:"
 Name: "autostart"; Description: "Mit Windows starten (minimiert)"; GroupDescription: "Zusätzliche Optionen:"
+
+[InstallDelete]
+; Ein Upgrade entfernt keine Dateien, die das Setup nicht mehr ausliefert.
+; Diese Icon-Dateien lieferten frühere Versionen aus: die Kopie für die
+; Verknüpfungen und die im Bundle (build.py bündelt den ganzen assets-Ordner).
+; Ausdrücklich benannt, kein Platzhalter über {app}.
+Type: files; Name: "{app}\assets\margenheld-icon.ico"
+Type: files; Name: "{app}\assets\margenheld-icon.png"
+Type: files; Name: "{app}\_internal\assets\margenheld-icon.ico"
+Type: files; Name: "{app}\_internal\assets\margenheld-icon.png"
+Type: files; Name: "{app}\_internal\assets\margenheld-icon.icns"
 
 [Registry]
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "Zeiterfassung"; ValueData: """{app}\Zeiterfassung.exe"" --minimized"; Flags: uninsdeletevalue; Tasks: autostart

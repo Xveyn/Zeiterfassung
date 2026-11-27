@@ -15,6 +15,7 @@ Tk-frei und stdlib-only, damit ohne Display testbar.
 
 from __future__ import annotations
 
+import filecmp
 import logging
 import os
 import shlex
@@ -23,7 +24,7 @@ import shutil
 logger = logging.getLogger(__name__)
 
 ICON_FILENAME = "icon.png"
-BUNDLED_ICON = os.path.join("assets", "margenheld-icon.png")
+BUNDLED_ICON = os.path.join("assets", "app-icon.png")
 
 
 def _quote_arg(value: str) -> str:
@@ -91,9 +92,9 @@ def ensure_icon(resource_path: str, data_path: str) -> str | None:
     `sys._MEIPASS` ist tot, sobald die App beendet ist, und das Menü zeigte
     dann ein leeres Icon.
 
-    Idempotent über einen Dateigrößen-Vergleich — bewusst ohne Hash: das Icon
-    ändert sich praktisch nie, und ein Hash pro Start wäre Aufwand ohne
-    Gegenwert.
+    Idempotent über einen Inhaltsvergleich: ein neues Icon kann gleich groß sein
+    wie das alte, und zwei Lesevorgänge von ein paar Dutzend KB pro Start
+    kosten nichts.
     """
     source = os.path.join(resource_path, BUNDLED_ICON)
     if not os.path.exists(source):
@@ -101,8 +102,7 @@ def ensure_icon(resource_path: str, data_path: str) -> str | None:
         return None
     target = os.path.join(data_path, ICON_FILENAME)
     try:
-        if (os.path.exists(target)
-                and os.path.getsize(target) == os.path.getsize(source)):
+        if os.path.exists(target) and filecmp.cmp(source, target, shallow=False):
             return target
         shutil.copyfile(source, target)
         return target

@@ -206,7 +206,7 @@ Zeiterfassung/
 ├── relay/                 # Push-Relay (Cloudflare Worker + Durable Object), s. relay/CLAUDE.md
 ├── tests/                 # pytest-Testdateien
 ├── assets/
-│   └── margenheld-icon    # App-Icon (.png + .ico + .icns)
+│   └── app-icon           # App-Icon: Quelle .svg, daraus .png/.ico/.icns
 ├── docs/                  # Specs/Plans, Known Limitations
 ├── scripts/               # Entwickler-Skripte (nicht Teil der App), s. scripts/README.md
 │   ├── build.py           # Plattform-Dispatcher für den PyInstaller-Build
@@ -215,7 +215,7 @@ Zeiterfassung/
 │   ├── archive_changelog.py   # ältere CHANGELOG-Abschnitte ins Archiv
 │   ├── coverage_gate.py   # Coverage-Untergrenze für die Tk-freien Module (CI)
 │   ├── pwa_devserver.py   # Dev-Server: echte Handy-Instanz plus pwa/ auf localhost:8099
-│   ├── pwa_icons.py       # erzeugt pwa/icons aus dem Markenbild
+│   ├── app_icons.py       # erzeugt alle Icon-Dateien aus assets/app-icon.svg
 │   ├── pwa_stamp.py       # stempelt die Build-Kennung der Handy-PWA (pages.yml)
 │   ├── qr_fixtures.py     # Referenz-Matrizen für den QR-Decoder der PWA
 │   ├── privacy_fixtures.py # Blöcke der Datenschutzhinweise für den Parser-Gleichlauf (pwa/test/fixtures)
